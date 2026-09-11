@@ -1,6 +1,7 @@
 import 'fake-indexeddb/auto'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/svelte'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { PANE_WIDTHS_STORAGE_KEY } from './lib/panes'
 import App from './App.svelte'
 
 const T0 = '2026-09-03T00:00:00Z'
@@ -86,6 +87,7 @@ describe('App', () => {
     localStorage.removeItem('snp.theme')
     localStorage.removeItem('snp.textScale')
     localStorage.removeItem('snp.version')
+    localStorage.removeItem(PANE_WIDTHS_STORAGE_KEY)
     document.documentElement.removeAttribute('data-theme')
     document.documentElement.style.removeProperty('--text-scale')
   })
@@ -103,6 +105,63 @@ describe('App', () => {
     expect(screen.getByText('Redis flush')).toBeDefined()
     expect(screen.getByText('online')).toBeDefined()
     expect(fetchMock).toHaveBeenCalled()
+    unmount()
+  })
+
+  it('resizes the panes with the dividers and persists the widths', async () => {
+    stubFetch()
+    const { unmount } = render(App)
+    await waitFor(() => expect(screen.getByText('Caddyfile')).toBeDefined())
+
+    const dividers = screen.getAllByRole('separator')
+    expect(dividers.length).toBe(2)
+    const panes = document.querySelector('.panes') as HTMLElement
+    // jsdom does no layout, so the component falls back to its documented
+    // defaults (folders 230 / list 360) — the same baseline the first drag in
+    // a browser would start from.
+    panes.getBoundingClientRect = () => ({ width: 1200 }) as DOMRect
+
+    // Dragging the folders divider right trades width with the list pane.
+    await fireEvent.pointerDown(dividers[0], { clientX: 230, pointerId: 1 })
+    await fireEvent.pointerMove(dividers[0], { clientX: 280, pointerId: 1 })
+    await fireEvent.pointerUp(dividers[0], { clientX: 280, pointerId: 1 })
+
+    await waitFor(() => expect(panes.getAttribute('style')).toContain('--folders-w: 280px'))
+    expect(panes.getAttribute('style')).toContain('--list-w: 310px')
+    expect(JSON.parse(localStorage.getItem(PANE_WIDTHS_STORAGE_KEY) ?? '')).toEqual({
+      folders: 280,
+      list: 310,
+    })
+
+    // The list divider is absorbed by the flexible detail pane.
+    await fireEvent.pointerDown(dividers[1], { clientX: 600, pointerId: 2 })
+    await fireEvent.pointerMove(dividers[1], { clientX: 660, pointerId: 2 })
+    await fireEvent.pointerUp(dividers[1], { clientX: 660, pointerId: 2 })
+    await waitFor(() => expect(panes.getAttribute('style')).toContain('--list-w: 370px'))
+    expect(panes.getAttribute('style')).toContain('--folders-w: 280px')
+    unmount()
+  })
+
+  it('nudges the panes from the keyboard and resets them on double-click', async () => {
+    stubFetch()
+    const { unmount } = render(App)
+    await waitFor(() => expect(screen.getByText('Caddyfile')).toBeDefined())
+
+    const dividers = screen.getAllByRole('separator')
+    const panes = document.querySelector('.panes') as HTMLElement
+    panes.getBoundingClientRect = () => ({ width: 1200 }) as DOMRect
+
+    // A focused divider responds to the arrow keys (1px with Shift).
+    await fireEvent.keyDown(dividers[0], { key: 'ArrowRight' })
+    await waitFor(() => expect(panes.getAttribute('style')).toContain('--folders-w: 246px'))
+    await fireEvent.keyDown(dividers[0], { key: 'ArrowLeft', shiftKey: true })
+    await waitFor(() => expect(panes.getAttribute('style')).toContain('--folders-w: 245px'))
+
+    // Double-click clears the stored widths and hands the layout back to the
+    // stylesheet default (no custom properties at all).
+    await fireEvent.dblClick(dividers[0])
+    await waitFor(() => expect(panes.getAttribute('style')).not.toContain('--folders-w'))
+    expect(localStorage.getItem(PANE_WIDTHS_STORAGE_KEY)).toBeNull()
     unmount()
   })
 

@@ -267,18 +267,75 @@ button.danger {
 
 .panes {
   display: grid;
-  grid-template-columns: 230px minmax(280px, 1fr) minmax(0, 2fr);
+  /* folders | divider | list | divider | detail.
+   *
+   * `--folders-w` and `--list-w` are set inline on this element by
+   * App.svelte (see lib/panes.ts) once the layout has been measured, or as
+   * soon as a divider is dragged. Until then the fallbacks reproduce the
+   * original flexible proportions — 1fr : 2fr of the space the folders pane
+   * leaves — so first paint does not shift. Detail is the flexible pane: it
+   * absorbs whatever the two fixed panes leave, which is what makes the
+   * dividers draggable without tracking a third width. */
+  grid-template-columns:
+    var(--folders-w, 230px)
+    var(--splitter-w, 6px)
+    var(--list-w, minmax(280px, 1fr))
+    var(--splitter-w, 6px)
+    minmax(0, 2fr);
   min-height: 0;
 }
 
 .pane {
   min-height: 0;
   overflow: auto;
-  border-right: 1px solid var(--border);
 }
 
-.pane:last-child {
-  border-right: none;
+/* ---- draggable pane dividers ---- */
+
+/* The column is a 6px hit area; the visible rule is a pseudo-element so it
+ * stays 1px at rest and thickens on hover/drag. The width must match
+ * SPLITTER_WIDTH in lib/panes.ts, which subtracts both dividers when
+ * clamping. `touch-action: none` stops a touch drag from scrolling the pane
+ * underneath instead of resizing. */
+.splitter {
+  position: relative;
+  cursor: col-resize;
+  background: transparent;
+  touch-action: none;
+}
+
+.splitter::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 1px;
+  margin-left: -0.5px;
+  background: var(--border);
+}
+
+.splitter:hover::before,
+.splitter:focus-visible::before,
+.splitter.dragging::before {
+  width: 3px;
+  margin-left: -1.5px;
+  background: var(--accent);
+}
+
+.splitter:focus-visible {
+  outline: none;
+}
+
+/* While a divider is held, keep the resize cursor everywhere and suppress
+ * text selection across the panes. */
+.panes.resizing {
+  cursor: col-resize;
+  user-select: none;
+}
+
+.panes.resizing .pane {
+  cursor: col-resize;
 }
 
 .pane-head {

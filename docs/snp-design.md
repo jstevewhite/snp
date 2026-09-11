@@ -9,6 +9,7 @@ Revised: 2026-09-09 (§6 notes Markdown rendering; §13 explain emits Markdown)
 Revised: 2026-09-09 (§6 read-view syntax highlighting)
 Revised: 2026-09-10 (§3 SPA auth exception; §5 sync `>=` boundary; §2/§4/§9/§10 reconciled with the implementation)
 Revised: 2026-09-11 (§13 Ask-AI output kind; §6 read-view long-body collapse; §12 Linux desktop build; §5 starter pack)
+Revised: 2026-09-11 (§6 draggable pane dividers)
 Status: approved design, revised after review, implemented
 
 > Revision note (2026-09-06): §6 originally specified a CodeMirror 6
@@ -444,6 +445,17 @@ target builds both.
 Three panes: folders with a tag list below (left), search box and result
 list (middle), snippet view or editor (right). Snippet tags are also
 shown as chips in the detail pane.
+
+The two dividers between the panes are draggable: dragging the folders
+divider trades width with the list pane, and dragging the list divider
+is absorbed by the detail pane, which is the flexible one and always
+takes what the other two leave. A divider also takes focus, so the
+arrow keys resize by 16px (1px with Shift) and Home or a double-click
+restores the default layout. Widths persist in localStorage
+(`snp.paneWidths`, see `web/src/lib/panes.ts`); a window whose dividers
+were never dragged keeps the stylesheet's own flexible proportions and
+so still adapts to its size. Panes stay side by side at every width —
+stacking them on narrow screens remains unbuilt (see the revision note).
 
 ### Behaviors
 

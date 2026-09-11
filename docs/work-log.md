@@ -14,8 +14,8 @@ Spec: `docs/snp-design.md` · Plan: `docs/snp-implementation-plan.md`
 
 ## Current status
 
-- Updated: 2026-09-11 13:08
-- Phase: review fixes + desktop app (macOS **and Linux** builds) + appearance + AI generation (command/script/function kinds) + tag filter + .app bundle + **bundled starter pack** merged to main; **Markdown notes**, **read-view syntax highlighting**, **notarization in `make app`**, the **Linux desktop build/launcher** and **`snp seed`** landed; the **GitHub release workflows** and the **header version chip** (`GET /api/version`) landed; **v0.1.0 shipped** (signed + notarized macOS bundle, 7 assets, verified after publish); `make test` green (go test + vet + 214 Vitest + svelte-check 0). The Linux desktop binary **build was verified on an ARM Ubuntu 24 host** (git bundle → `make desktop`), after a first attempt failed because that work was still uncommitted and the bundle therefore carried the old darwin-only tree.
+- Updated: 2026-09-11 13:25
+- Phase: review fixes + desktop app (macOS **and Linux** builds) + appearance + AI generation (command/script/function kinds) + tag filter + .app bundle + **bundled starter pack** merged to main; **Markdown notes**, **read-view syntax highlighting**, **notarization in `make app`**, the **Linux desktop build/launcher** and **`snp seed`** landed; the **GitHub release workflows** and the **header version chip** (`GET /api/version`) landed; **v0.1.0 shipped** (signed + notarized macOS bundle, 7 assets, verified after publish); **draggable pane dividers** landed (spec §6, `web/src/lib/panes.ts`); `make test` green (go test + vet + 230 Vitest + svelte-check 0 errors / 0 warnings). The Linux desktop binary **build was verified on an ARM Ubuntu 24 host** (git bundle → `make desktop`), after a first attempt failed because that work was still uncommitted and the bundle therefore carried the old darwin-only tree.
 - Next: **bump the Node-20 GitHub Actions** (`checkout`, `setup-node`, `setup-go`, `upload-artifact`, `download-artifact` — all still work but are force-run on Node 24 and annotate the run) **to their Node-24 majors** before the next release; then **Linux desktop container build + verification** (podman; `libgtk-3-dev` + `libwebkit2gtk-4.1-dev` + Go, `make web` then the desktop build, and exercise `install-desktop.sh` with a scratch `PREFIX=`); then the Windows port, desktop follow-ons (real app icon, startup-error surfacing in the window); then remaining v1 follow-ons (CLI client, SnippetsLab converter)
 
 ## Log
@@ -968,3 +968,59 @@ Spec: `docs/snp-design.md` · Plan: `docs/snp-implementation-plan.md`
   profile edit or restart was needed. botmem's active project is the
   shared `dsh` base; snp-specific knowledge stays in this `docs/` tree
   (per AGENTS.md, this log is the resume point).
+- 13:25 — Draggable **pane dividers** (user request; spec §6 revised). The
+  three panes were a fixed
+  `grid-template-columns: 230px minmax(280px, 1fr) minmax(0, 2fr)`; they are
+  now `var(--folders-w) | 6px | var(--list-w) | 6px | minmax(0, 2fr)` with
+  two focusable `role="separator"` drag handles. `App.svelte` renders both
+  from one `{#snippet}` so they share a single ARIA/keyboard wiring; the
+  width arithmetic lives in the new `web/src/lib/panes.ts` (+
+  `panes.test.ts`, 14 cases). Three choices worth keeping:
+  - **The detail pane is the flexible one**, so only two widths are tracked.
+    Dragging the folders divider therefore trades width with the list pane
+    (their sum is held constant, which is what keeps the detail pane still);
+    dragging the list divider is absorbed by the detail pane. Each divider
+    clamps against its own min/max *and* against the room the container
+    leaves once `DETAIL_MIN` (280px) is reserved, so no drag can collapse
+    the detail pane to nothing.
+  - **First paint is unchanged.** Widths start unset, so the stylesheet's
+    own `1fr : 2fr` proportions still drive the layout; a `$effect`
+    measures the rendered panes once they are in the DOM and pins *those
+    pixels*. Hardcoding a default list width instead would have frozen it
+    (≈776px → 360px on a 2560px window) and let the detail pane balloon on
+    wide screens.
+  - **Only a real drag persists** (`snp.paneWidths`, localStorage, same
+    best-effort pattern as `lib/settings.ts`), so a window whose dividers
+    were never touched keeps adapting to its size. Stored widths are
+    clamped on load.
+  Pointer/keyboard parity: arrows resize by 16px (1px with Shift); Home or
+  double-click clears the stored pair and re-measures the default layout
+  (clearing the vars forces the CSS default back, and reading a rect then
+  forces the synchronous layout the measurement needs). `touch-action:
+  none` keeps a touch drag from scrolling the pane instead of resizing.
+  Tests: `panes.test.ts` (clamping, the container-aware room limit,
+  persistence plus malformed/clamped stored values, style vars, measurement
+  including the jsdom zero-rect case) and two `App.test.ts` cases that drive
+  real pointer and keyboard events through the rendered dividers and assert
+  the inline custom properties and the persisted JSON. `make test` green
+  (230 Vitest, svelte-check 0 errors / 0 warnings).
+- Gotchas for the next person in this area:
+  - The splitter's 6px CSS width and `SPLITTER_WIDTH` in `lib/panes.ts` must
+    agree — the clamp math subtracts two of them from the container.
+  - Svelte's a11y linter fires `a11y_no_noninteractive_element_interactions`
+    *and* `a11y_no_noninteractive_tabindex` at a focusable
+    `role="separator"`, which is the documented ARIA window-splitter pattern
+    rather than a mistake; both are suppressed by one `svelte-ignore` above
+    the element. Multiple codes must be **comma-separated** —
+    space-separated codes silently suppress only the first, which cost a
+    check cycle here.
+  - `measurePaneWidths` deliberately returns `null` on zero rects (jsdom has
+    no layout, and so would a hidden window) so callers keep the stylesheet
+    default instead of pinning 0px. That is why the App test drags from the
+    documented 230/360 fallback rather than from measured widths.
+  - In `clampPaneWidths` the folders-shrink branch only triggers when the
+    available room is below `FOLDERS_MAX + LIST_MIN` (700px here); at or
+    above it the list alone absorbs the overflow. A first draft of that test
+    asserted the wrong scenario and failed against correct code.
+  - Still unbuilt and unrelated: responsive pane **stacking** at narrow
+    widths (spec §6 revision note). Panes stay side by side at every width.

@@ -13,6 +13,21 @@
     type SnpDB,
   } from './lib/db'
   import { OnlineTracker } from './lib/online'
+  import {
+    FOLDERS_MAX,
+    FOLDERS_MIN,
+    LIST_MAX,
+    LIST_MIN,
+    NUDGE_PX,
+    fallbackPaneWidths,
+    loadPaneWidths,
+    measurePaneWidths,
+    paneStyleVars,
+    resizePane,
+    savePaneWidths,
+    type PaneWidths,
+    type SplitterId,
+  } from './lib/panes'
   import { SnippetIndex } from './lib/search'
   import {
     THEMES,
@@ -76,6 +91,106 @@
     applyTextScale(textScale)
     saveTextScale(textScale)
   })
+
+  // Pane layout (spec §6): the folders and list panes are sized by inline
+  // custom properties and the detail pane stays flexible, so only two widths
+  // are tracked. They start unset — the stylesheet's own proportions — and
+  // are measured after mount so a drag has a baseline without changing what
+  // the first paint looked like. Only a real drag persists a pair, so a
+  // window the user never resized keeps adapting to its size.
+  let paneWidths = $state<PaneWidths | null>(loadPaneWidths())
+  let panesEl = $state<HTMLElement | undefined>()
+  /** Divider being held, for the drag styling. */
+  let dragging = $state<SplitterId | null>(null)
+  /** Pointer anchor for the in-flight drag; handlers only, so not reactive. */
+  let dragOrigin: {
+    which: SplitterId
+    x: number
+    widths: PaneWidths
+    container: number
+    moved: boolean
+  } | null = null
+
+  // Measure once the panes are in the DOM — and again after a reset clears
+  // the widths, since reading a rect forces a synchronous layout and so sees
+  // the default proportions rather than the pixels just discarded.
+  $effect(() => {
+    if (paneWidths !== null) return
+    const measured = measurePaneWidths(panesEl)
+    if (measured !== null) paneWidths = measured
+  })
+
+  function currentPaneWidths(): PaneWidths {
+    return paneWidths ?? measurePaneWidths(panesEl) ?? fallbackPaneWidths()
+  }
+
+  function paneContainerWidth(): number {
+    return panesEl?.getBoundingClientRect().width ?? 0
+  }
+
+  function startPaneDrag(which: SplitterId, event: PointerEvent): void {
+    dragOrigin = {
+      which,
+      x: event.clientX,
+      widths: currentPaneWidths(),
+      container: paneContainerWidth(),
+      moved: false,
+    }
+    dragging = which
+    // Capture keeps the drag alive once the pointer leaves the 6px divider.
+    // jsdom has no implementation, hence the guard.
+    try {
+      ;(event.currentTarget as HTMLElement | null)?.setPointerCapture?.(event.pointerId)
+    } catch {
+      // Capture is an enhancement; the drag works without it.
+    }
+    event.preventDefault()
+  }
+
+  function movePaneDrag(event: PointerEvent): void {
+    if (dragOrigin === null) return
+    dragOrigin.moved = true
+    paneWidths = resizePane(
+      dragOrigin.widths,
+      dragOrigin.which,
+      event.clientX - dragOrigin.x,
+      dragOrigin.container,
+    )
+  }
+
+  function endPaneDrag(event: PointerEvent): void {
+    const origin = dragOrigin
+    if (origin === null) return
+    dragOrigin = null
+    dragging = null
+    try {
+      ;(event.currentTarget as HTMLElement | null)?.releasePointerCapture?.(event.pointerId)
+    } catch {
+      // Nothing was captured (or jsdom): nothing to release.
+    }
+    if (origin.moved && paneWidths !== null) savePaneWidths(paneWidths)
+  }
+
+  /** Keyboard equivalent of a drag: arrows, 1px at a time with Shift held. */
+  function nudgePane(which: SplitterId, event: KeyboardEvent, direction: 1 | -1): void {
+    const step = event.shiftKey ? 1 : NUDGE_PX
+    paneWidths = resizePane(currentPaneWidths(), which, direction * step, paneContainerWidth())
+    savePaneWidths(paneWidths)
+  }
+
+  function onSplitterKeydown(which: SplitterId, event: KeyboardEvent): void {
+    if (event.key === 'ArrowLeft') nudgePane(which, event, -1)
+    else if (event.key === 'ArrowRight') nudgePane(which, event, 1)
+    else if (event.key === 'Home') resetPaneWidths()
+    else return
+    event.preventDefault()
+  }
+
+  /** Double-click, or Home on a focused divider: back to the default layout. */
+  function resetPaneWidths(): void {
+    savePaneWidths(null)
+    paneWidths = null
+  }
 
   /**
    * Non-reactive "sync in progress" mutex. Deliberately NOT $state: tick()
@@ -594,7 +709,48 @@
     {/if}
   </div>
 
-  <main class="panes">
+  <!-- Drag handle between two panes. The folders divider trades width with
+       the list pane; the list divider is absorbed by the flexible detail
+       pane (lib/panes.ts). Kept as a snippet so both dividers share the
+       ARIA wiring and the keyboard path. -->
+  {#snippet paneSplitter(
+    which: SplitterId,
+    label: string,
+    value: number | null,
+    min: number,
+    max: number,
+  )}
+    <!-- Focusable "separator" is the ARIA window-splitter pattern: tabindex
+         plus aria-value* make it operable while the role stays structural.
+         The a11y linter does not model that, hence the ignores. -->
+    <!-- svelte-ignore a11y_no_noninteractive_element_interactions, a11y_no_noninteractive_tabindex -->
+    <div
+      class="splitter"
+      class:dragging={dragging === which}
+      role="separator"
+      aria-orientation="vertical"
+      aria-label={label}
+      aria-valuenow={value ?? undefined}
+      aria-valuemin={min}
+      aria-valuemax={max}
+      tabindex="0"
+      title="Drag to resize · double-click to reset"
+      onpointerdown={(e) => startPaneDrag(which, e)}
+      onpointermove={movePaneDrag}
+      onpointerup={endPaneDrag}
+      onpointercancel={endPaneDrag}
+      onlostpointercapture={endPaneDrag}
+      onkeydown={(e) => onSplitterKeydown(which, e)}
+      ondblclick={resetPaneWidths}
+    ></div>
+  {/snippet}
+
+  <main
+    class="panes"
+    class:resizing={dragging !== null}
+    bind:this={panesEl}
+    style={paneStyleVars(paneWidths)}
+  >
     <aside class="pane folders">
       <div class="pane-head">
         <h2>Folders</h2>
@@ -611,6 +767,14 @@
       <TagList tags={tagItems} active={activeTags} onselect={toggleTag} />
     </aside>
 
+    {@render paneSplitter(
+      'folders',
+      'Resize folders pane',
+      paneWidths?.folders ?? null,
+      FOLDERS_MIN,
+      FOLDERS_MAX,
+    )}
+
     <section class="pane list">
       <SnippetList
         snippets={visibleSnippets}
@@ -626,6 +790,14 @@
         oncreate={startCreate}
       />
     </section>
+
+    {@render paneSplitter(
+      'list',
+      'Resize snippet list pane',
+      paneWidths?.list ?? null,
+      LIST_MIN,
+      LIST_MAX,
+    )}
 
     <section class="pane detail">
       {#if editing}
