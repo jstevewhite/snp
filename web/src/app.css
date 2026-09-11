@@ -682,6 +682,32 @@ button.danger {
   color: var(--text);
 }
 
+/* A box label and its copy action on one row, so the button reads as
+   belonging to that box (Template / Rendered) rather than to the pane. */
+.detail .box-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.copy-button.small {
+  font-size: calc(11px * var(--text-scale, 1));
+  padding: 1px 6px;
+}
+
+/* Transient result on the button itself: a copy that failed must not look
+   like one that worked. */
+.copy-button.copied {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.copy-button.failed {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
 .detail .sensitive {
   margin: 0;
   font-size: calc(12px * var(--text-scale, 1));
@@ -809,13 +835,13 @@ button.danger {
 /* Copy is the pane's primary action, so it gets the same subtle accent
    treatment as an active tag: a tinted fill plus an accent border/text.
    Edit is pushed to the far right, opposite Copy. */
-.detail .actions .copy {
+.detail .actions .copy-button {
   background: color-mix(in srgb, var(--accent) 12%, var(--bg));
   border-color: var(--accent);
   color: var(--accent);
 }
 
-.detail .actions .copy:hover:not(:disabled) {
+.detail .actions .copy-button:hover:not(:disabled) {
   background: color-mix(in srgb, var(--accent) 20%, var(--bg));
 }
 

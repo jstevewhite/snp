@@ -29,7 +29,7 @@ function renderDetail(
     body?: string | null
     folderName?: string | null
     offline?: boolean
-    oncopy?: () => void
+    oncopy?: (text: string) => void
     onsavedefaults?: (defaults: Record<string, string>) => void
     onreveal?: () => void
   } = {},
@@ -198,6 +198,32 @@ describe('SnippetDetail', () => {
     renderDetail({ body: 'echo hi', uses_variables: false })
     expect(screen.queryByText('Template')).toBeNull()
     expect(screen.queryByText('Rendered')).toBeNull()
+  })
+
+  it('copies the raw placeholders from the Template box', async () => {
+    const oncopy = vi.fn()
+    renderDetail(
+      { body: 'curl {{host|example.com}}', uses_variables: true },
+      { oncopy },
+    )
+    await fireEvent.click(screen.getByText('Copy template'))
+    expect(oncopy).toHaveBeenCalledWith('curl {{host|example.com}}')
+  })
+
+  it('copies the filled-in command from the Rendered box', async () => {
+    const oncopy = vi.fn()
+    renderDetail(
+      { body: 'curl {{host|example.com}}', uses_variables: true },
+      { oncopy },
+    )
+    await fireEvent.click(screen.getByText('Copy rendered'))
+    expect(oncopy).toHaveBeenCalledWith('curl example.com')
+  })
+
+  it('offers neither box copy action for a non-template snippet', () => {
+    renderDetail({ body: 'echo hi', uses_variables: false })
+    expect(screen.queryByText('Copy template')).toBeNull()
+    expect(screen.queryByText('Copy rendered')).toBeNull()
   })
 
   it('shows a decorative icon beside the language and the folder', () => {

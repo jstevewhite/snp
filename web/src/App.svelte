@@ -1,5 +1,6 @@
 <script lang="ts">
   import * as api from './lib/api'
+  import { writeClipboard } from './lib/clipboard'
   import { ApiError } from './lib/types'
   import {
     allFolders,
@@ -602,11 +603,13 @@
   /**
    * Copy the rendered body to the clipboard. SnippetDetail computes the
    * text — filling in template variables (spec §4) — and passes it here.
-   * The Copy button is disabled while the body is hidden, so the text is
-   * always available when this runs.
+   * The copy buttons are disabled while the body is hidden, so the text is
+   * always available when this runs. lib/clipboard.ts performs the write
+   * (with a webview fallback) and rejects when the text did not reach the
+   * clipboard, which the button reports as "Copy failed".
    */
   async function copySelected(text: string): Promise<void> {
-    await navigator.clipboard.writeText(text)
+    await writeClipboard(text)
   }
 
   /**
@@ -817,7 +820,7 @@
           body={revealed[selectedSnippet.id] ?? null}
           folderName={selectedFolderName}
           offline={!online}
-          oncopy={(text) => void copySelected(text)}
+          oncopy={(text) => copySelected(text)}
           onedit={startEdit}
           onremove={() => (dialog = { kind: 'snippetDelete', id: selectedSnippet.id })}
           onreveal={() => void reveal(selectedSnippet.id)}

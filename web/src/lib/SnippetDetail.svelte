@@ -1,4 +1,5 @@
 <script lang="ts">
+  import CopyButton from './CopyButton.svelte'
   import { highlightBody } from './highlight'
   import { renderMarkdown } from './markdown'
   import type { Snippet } from './types'
@@ -26,8 +27,12 @@
     folderName?: string | null
     /** Offline: server writes and sensitive reveals are unavailable (spec §6). */
     offline?: boolean
-    /** Receives the text to write to the clipboard (the rendered body). */
-    oncopy: (text: string) => void
+    /**
+     * Writes the given text to the clipboard (the rendered body). A
+     * returned promise lets the copy buttons report a failed write
+     * instead of claiming success.
+     */
+    oncopy: (text: string) => void | Promise<void>
     onedit: () => void
     onremove: () => void
     onreveal: () => void
@@ -99,8 +104,11 @@
 
   /** Live preview: unfilled vars without a default stay visible. */
   const preview = $derived(showVars ? previewTemplate(shown, values) : shown)
-  /** What Copy writes: blank/missing values fall back to the default, and a
-   * var without a default renders as an empty string (spec §4). */
+  /** What the copy buttons write for the rendered form: blank/missing
+   * values fall back to the default, and a var without a default renders
+   * as an empty string (spec §4). The preview above deliberately differs —
+   * it keeps unfilled placeholders visible — so the copied text is the
+   * filled-in command, never a half-substituted one. */
   const copyText = $derived(showVars ? renderTemplate(shown, values) : shown)
 
   // The Rendered preview collapses on the same rule, but independently: a
@@ -190,7 +198,12 @@
 
   <div class="box">
     {#if showVars}
-      <div class="box-label">Template</div>
+      <!-- The original and the copy of it sit together: Copy template
+           reuses the placeholders, while Copy rendered (below) fills them. -->
+      <div class="box-head">
+        <span class="box-label">Template</span>
+        <CopyButton small label="Copy template" text={shown} {oncopy} />
+      </div>
     {/if}
     {#if hidden}
       <div class="reveal-block">
@@ -230,7 +243,10 @@
         </label>
       {/each}
       <div class="box">
-        <div class="box-label">Rendered</div>
+        <div class="box-head">
+          <span class="box-label">Rendered</span>
+          <CopyButton small label="Copy rendered" text={copyText} {oncopy} />
+        </div>
         <pre class="preview" class:clamped={renderedCapped}>{preview}</pre>
         {#if renderedLong}
           <button
@@ -252,7 +268,7 @@
   {/if}
 
   <footer class="actions">
-    <button class="copy" disabled={hidden} onclick={() => oncopy(copyText)}>Copy</button>
+    <CopyButton label="Copy" text={copyText} disabled={hidden} {oncopy} />
     <button class="edit" disabled={offline} onclick={onedit}>Edit</button>
   </footer>
 
