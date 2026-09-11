@@ -1,0 +1,16 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=snp
+GenericName=Snippet Manager
+Comment=Personal snippet manager with a local store
+Exec=snp-desktop
+Icon=snp
+Terminal=false
+Categories=Utility;Development;
+Keywords=snippet;snippets;clipboard;code;
+# Must match cmd/snp-desktop/platform_linux.go's linux.Options.ProgramName
+# (GTK's g_set_prgname); otherwise the window shows up as a second,
+# unnamed launcher entry while running.
+StartupWMClass=snp
+StartupNotify=true

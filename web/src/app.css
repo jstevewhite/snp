@@ -1,0 +1,1245 @@
+:root {
+  --text: #54545e;
+  --text-h: #17171f;
+  --bg: #fff;
+  --syn-keyword: #8250df;
+  --syn-string: #0a3069;
+  --syn-comment: #6e7781;
+  --syn-function: #8250df;
+  --syn-constant: #953800;
+  --bg-alt: #f7f7f5;
+  --border: #e4e4e1;
+  --code-bg: #f4f3ec;
+  --accent: #aa3bff;
+  --danger: #b3372c;
+  --sans: system-ui, 'Segoe UI', Roboto, sans-serif;
+  --mono: ui-monospace, 'Cascadia Code', Consolas, monospace;
+
+  /* Interface text-size multiplier (settings → interface text size).
+   * Every font-size below multiplies by this; the settings module sets
+   * it on <html> via inline style. */
+  --text-scale: 1;
+
+  font-family: var(--sans);
+  font-size: calc(14px * var(--text-scale, 1));
+  line-height: 1.45;
+  color-scheme: light dark;
+  color: var(--text);
+  background: var(--bg);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --text: #9ca3af;
+    --text-h: #f3f4f6;
+    --bg: #16171d;
+  --syn-keyword: #c084fc;
+  --syn-string: #a5d6ff;
+  --syn-comment: #8b949e;
+  --syn-function: #d2a8ff;
+  --syn-constant: #ffa657;
+    --bg-alt: #1d1f26;
+    --border: #2e303a;
+    --code-bg: #1f2028;
+    --accent: #c084fc;
+    --danger: #e06c5f;
+  }
+}
+
+/* ---- appearance themes (settings → theme) ----
+ *
+ * Each :root[data-theme=…] block remaps the palette variables. These
+ * rules sit after the media query and match with higher specificity,
+ * so an explicit theme always wins over prefers-color-scheme. The
+ * "auto" theme is the absence of the attribute (lib/settings.ts),
+ * which keeps the media-query behavior above. */
+
+:root[data-theme='light'] {
+  color-scheme: light;
+  --text: #54545e;
+  --text-h: #17171f;
+  --bg: #fff;
+  --syn-keyword: #8250df;
+  --syn-string: #0a3069;
+  --syn-comment: #6e7781;
+  --syn-function: #8250df;
+  --syn-constant: #953800;
+  --bg-alt: #f7f7f5;
+  --border: #e4e4e1;
+  --code-bg: #f4f3ec;
+  --accent: #aa3bff;
+  --danger: #b3372c;
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --text: #9ca3af;
+  --text-h: #f3f4f6;
+  --bg: #16171d;
+  --syn-keyword: #c084fc;
+  --syn-string: #a5d6ff;
+  --syn-comment: #8b949e;
+  --syn-function: #d2a8ff;
+  --syn-constant: #ffa657;
+  --bg-alt: #1d1f26;
+  --border: #2e303a;
+  --code-bg: #1f2028;
+  --accent: #c084fc;
+  --danger: #e06c5f;
+}
+
+:root[data-theme='solarized-light'] {
+  color-scheme: light;
+  --text: #657b83;
+  --text-h: #073642;
+  --bg: #fdf6e3;
+  --syn-keyword: #859900;
+  --syn-string: #2aa198;
+  --syn-comment: #93a1a1;
+  --syn-function: #268bd2;
+  --syn-constant: #cb4b16;
+  --bg-alt: #eee8d5;
+  --border: #d3cdb5;
+  --code-bg: #eee8d5;
+  --accent: #268bd2;
+  --danger: #dc322f;
+}
+
+:root[data-theme='solarized-dark'] {
+  color-scheme: dark;
+  --text: #93a1a1;
+  --text-h: #eee8d5;
+  --bg: #002b36;
+  --syn-keyword: #859900;
+  --syn-string: #2aa198;
+  --syn-comment: #586e75;
+  --syn-function: #268bd2;
+  --syn-constant: #cb4b16;
+  --bg-alt: #073642;
+  --border: #405b64;
+  --code-bg: #073642;
+  --accent: #268bd2;
+  --danger: #dc322f;
+}
+
+:root[data-theme='kimbie-dark'] {
+  color-scheme: dark;
+  --text: #d3af86;
+  --text-h: #f6e8d8;
+  --bg: #221a0f;
+  --syn-keyword: #f79a32;
+  --syn-string: #88974f;
+  --syn-comment: #a57a4c;
+  --syn-function: #ffd246;
+  --syn-constant: #dc3958;
+  --bg-alt: #2e2417;
+  --border: #4b3a26;
+  --code-bg: #2b2116;
+  --accent: #f79a32;
+  --danger: #dc3958;
+}
+
+:root[data-theme='tokyo-night'] {
+  color-scheme: dark;
+  --text: #a9b1d6;
+  --text-h: #c0caf5;
+  --bg: #1a1b26;
+  --syn-keyword: #bb9af7;
+  --syn-string: #9ece6a;
+  --syn-comment: #565f89;
+  --syn-function: #7aa2f7;
+  --syn-constant: #ff9e64;
+  --bg-alt: #16161e;
+  --border: #363b54;
+  --code-bg: #1f2335;
+  --accent: #7aa2f7;
+  --danger: #f7768e;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+}
+
+#app {
+  height: 100dvh;
+}
+
+.app {
+  display: grid;
+  grid-template-rows: auto 1fr;
+  height: 100dvh;
+  color: var(--text-h);
+}
+
+/* ---- top bar ---- */
+
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
+}
+
+.brand {
+  font-family: var(--mono);
+  font-weight: 700;
+  font-size: calc(15px * var(--text-scale, 1));
+}
+
+.conn {
+  font-size: calc(12px * var(--text-scale, 1));
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  color: var(--text);
+}
+
+.conn.offline {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
+.synced {
+  font-size: calc(12px * var(--text-scale, 1));
+  color: var(--text);
+}
+
+.spacer {
+  flex: 1;
+}
+
+.error {
+  font-size: calc(12px * var(--text-scale, 1));
+  color: var(--danger);
+  max-width: 320px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+button {
+  font: inherit;
+  color: var(--text-h);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px 10px;
+  cursor: pointer;
+}
+
+button:hover {
+  background: var(--bg-alt);
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+button.danger {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
+/* ---- panes ---- */
+
+.panes {
+  display: grid;
+  grid-template-columns: 230px minmax(280px, 1fr) minmax(0, 2fr);
+  min-height: 0;
+}
+
+.pane {
+  min-height: 0;
+  overflow: auto;
+  border-right: 1px solid var(--border);
+}
+
+.pane:last-child {
+  border-right: none;
+}
+
+.pane-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  background: var(--bg);
+  z-index: 1;
+}
+
+.pane-head h2 {
+  margin: 0;
+  font-size: calc(13px * var(--text-scale, 1));
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text);
+}
+
+/* ---- folder tree ---- */
+
+.folder-tree {
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.folder-tree .all {
+  text-align: left;
+  width: 100%;
+}
+
+.folder-tree .all.selected,
+.folder-tree .name.selected {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  border-color: var(--accent);
+}
+
+.folder-tree .row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.folder-tree .caret {
+  border: none;
+  background: none;
+  padding: 2px 4px;
+  color: var(--text);
+  font-size: calc(11px * var(--text-scale, 1));
+}
+
+.folder-tree .name {
+  text-align: left;
+  flex: 1;
+  border: 1px solid transparent;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.folder-tree .rename {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  color: var(--text-h);
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  padding: 3px 6px;
+  background: var(--bg);
+}
+
+.folder-tree .actions {
+  display: none;
+  gap: 2px;
+}
+
+.folder-tree .row:hover .actions {
+  display: flex;
+}
+
+.folder-tree .actions button {
+  padding: 1px 5px;
+  font-size: calc(11px * var(--text-scale, 1));
+  line-height: 1.3;
+}
+
+.folder-tree .hint {
+  padding: 8px;
+  color: var(--text);
+  font-size: calc(12px * var(--text-scale, 1));
+}
+
+/* ---- snippet list ---- */
+
+.snippet-list .toolbar {
+  display: flex;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  background: var(--bg);
+  z-index: 1;
+}
+
+.snippet-list .search {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  color: var(--text-h);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 5px 8px;
+  background: var(--bg);
+}
+
+.snippet-list .items {
+  list-style: none;
+  margin: 0;
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.snippet-list .item {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  width: 100%;
+  text-align: left;
+  border: 1px solid transparent;
+  padding: 7px 8px;
+}
+
+.snippet-list .item.selected {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+
+.snippet-list .title {
+  font-weight: 600;
+  color: var(--text-h);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.snippet-list .meta {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  font-size: calc(11px * var(--text-scale, 1));
+  color: var(--text);
+  flex-wrap: wrap;
+}
+
+.lang {
+  font-family: var(--mono);
+  font-size: calc(11px * var(--text-scale, 1));
+  padding: 0 5px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+
+.tag {
+  font-size: calc(11px * var(--text-scale, 1));
+  color: var(--accent);
+}
+
+.snippet-list .meta .when {
+  margin-left: auto;
+}
+
+.snippet-list .empty {
+  padding: 16px 8px;
+  color: var(--text);
+  font-size: calc(13px * var(--text-scale, 1));
+}
+
+/* ---- detail ---- */
+
+.detail {
+  padding: 18px 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.detail h1 {
+  margin: 0;
+  font-size: calc(22px * var(--text-scale, 1));
+  letter-spacing: -0.02em;
+}
+
+/* Title row: the name, with the delete control flush right on the same line. */
+.detail .title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.detail .title-row h1 {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* Delete: an icon-only control, neutral until hovered, then danger red. */
+.detail .trash {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: var(--text);
+}
+
+.detail .trash:hover:not(:disabled) {
+  color: var(--danger);
+  border-color: var(--border);
+  background: var(--code-bg);
+}
+
+.detail .trash .icon {
+  width: calc(16px * var(--text-scale, 1));
+  height: calc(16px * var(--text-scale, 1));
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.detail .meta {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+  font-size: calc(12px * var(--text-scale, 1));
+  color: var(--text);
+}
+
+.detail .folder {
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0 6px;
+  font-size: calc(11px * var(--text-scale, 1));
+}
+
+/* Language and folder carry a leading icon. The icon is a flat, monochrome
+   SVG (stroke = currentColor, no fill) sized with the badge text so
+   --text-scale still applies; aria-hidden, so assistive tech and text
+   queries see only the value. */
+.detail .lang,
+.detail .folder {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.detail .lang .icon,
+.detail .folder .icon {
+  flex: none;
+  width: calc(13px * var(--text-scale, 1));
+  height: calc(13px * var(--text-scale, 1));
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* Tags sit apart from the language/folder metadata: a divider when either
+   precedes them, and a chip per tag. (`.tag`/`.lang` are also used by the
+   snippet list, so all of this is scoped to `.detail`.) */
+.detail .tags {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.detail .tags.divided {
+  padding-left: 10px;
+  border-left: 1px solid var(--border);
+}
+
+.detail .tag {
+  background: var(--code-bg);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 1px 8px;
+}
+
+.detail .body {
+  margin: 0;
+  font-family: var(--mono);
+  font-size: calc(13px * var(--text-scale, 1));
+  background: var(--code-bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* A long body or Rendered preview (a generated script, say) is capped at
+   ten lines with an inner scroll; the Show all button below expands it.
+   1.45 is the inherited line-height, 26px the box's padding + border. */
+.detail .body.clamped,
+.detail .preview.clamped {
+  max-height: calc(10 * 1.45em + 26px);
+  overflow-y: auto;
+}
+
+.detail .show-all {
+  align-self: flex-start;
+  font-size: calc(12px * var(--text-scale, 1));
+  padding: 2px 8px;
+}
+
+/* A labeled code box (Template / Rendered): the label sits tight to its
+   box while the .detail flex gap separates the group from its siblings. */
+.detail .box {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.detail .box-label {
+  font-size: calc(11px * var(--text-scale, 1));
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text);
+}
+
+.detail .sensitive {
+  margin: 0;
+  font-size: calc(12px * var(--text-scale, 1));
+  color: var(--text);
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+  padding: 8px 10px;
+}
+
+.detail .reveal {
+  align-self: flex-start;
+}
+
+/* ---- detail: variables panel ---- */
+
+.detail .vars {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border-top: 1px solid var(--border);
+  padding-top: 10px;
+}
+
+.detail .vars h2 {
+  margin: 0;
+  font-size: calc(13px * var(--text-scale, 1));
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text);
+}
+
+.detail .var {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: calc(12px * var(--text-scale, 1));
+  color: var(--text);
+}
+
+.detail .var > span {
+  font-weight: 600;
+}
+
+.detail .var input {
+  font: inherit;
+  color: var(--text-h);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 8px;
+}
+
+.detail .preview {
+  margin: 0;
+  font-family: var(--mono);
+  font-size: calc(13px * var(--text-scale, 1));
+  background: var(--code-bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.detail .vars-actions {
+  display: flex;
+}
+
+.detail .notes {
+  border-top: 1px solid var(--border);
+  padding-top: 10px;
+}
+
+.detail .notes h2 {
+  margin: 0 0 6px;
+  font-size: calc(13px * var(--text-scale, 1));
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text);
+}
+
+.detail .notes p {
+  margin: 0 0 8px;
+  white-space: pre-wrap;
+}
+
+.detail .notes .notes-body > :last-child {
+  margin-bottom: 0;
+}
+
+.detail .notes ul,
+.detail .notes ol {
+  margin: 0 0 8px;
+  padding-left: 20px;
+}
+
+.detail .notes code {
+  font-family: var(--mono);
+  background: var(--code-bg);
+  border-radius: 4px;
+  padding: 0 4px;
+}
+
+.detail .notes pre {
+  margin: 0 0 8px;
+  background: var(--code-bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px;
+  overflow-x: auto;
+}
+
+.detail .notes pre code {
+  padding: 0;
+  background: none;
+}
+
+.detail .actions {
+  display: flex;
+  gap: 8px;
+  border-top: 1px solid var(--border);
+  padding-top: 12px;
+}
+
+/* Copy is the pane's primary action, so it gets the same subtle accent
+   treatment as an active tag: a tinted fill plus an accent border/text.
+   Edit is pushed to the far right, opposite Copy. */
+.detail .actions .copy {
+  background: color-mix(in srgb, var(--accent) 12%, var(--bg));
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.detail .actions .copy:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent) 20%, var(--bg));
+}
+
+.detail .actions .edit {
+  margin-left: auto;
+}
+
+/* The updated timestamp is a footer, below Notes. */
+.detail .when {
+  border-top: 1px solid var(--border);
+  padding-top: 8px;
+  font-size: calc(11px * var(--text-scale, 1));
+  color: var(--text);
+  opacity: 0.75;
+}
+
+/* ---- form ---- */
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 18px 22px;
+}
+
+.form label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: calc(12px * var(--text-scale, 1));
+  color: var(--text);
+}
+
+.form label > span {
+  font-weight: 600;
+}
+
+.form input,
+.form select,
+.form textarea {
+  font: inherit;
+  color: var(--text-h);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 8px;
+}
+
+.form textarea.code {
+  font-family: var(--mono);
+  font-size: calc(13px * var(--text-scale, 1));
+}
+
+.form .row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.form .check {
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+}
+
+.form .actions {
+  display: flex;
+  gap: 8px;
+}
+
+/* ---- empty state ---- */
+
+.empty {
+  padding: 24px;
+  color: var(--text);
+}
+
+/* ---- offline banner (spec §6) ---- */
+
+.offline-banner {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  padding: 6px 14px;
+  border-bottom: 1px solid var(--border);
+  background: color-mix(in srgb, var(--danger) 8%, var(--bg));
+  font-size: calc(12px * var(--text-scale, 1));
+  color: var(--text-h);
+}
+
+.offline-banner strong {
+  color: var(--danger);
+}
+
+/* ---- settings panel (theme select, text-size slider, actions) ---- */
+
+.settings {
+  position: relative;
+}
+
+.settings .panel {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 4px);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 250px;
+  padding: 12px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgb(0 0 0 / 0.12);
+  z-index: 10;
+}
+
+.settings .panel .field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.settings .panel .field > span {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-size: calc(12px * var(--text-scale, 1));
+  font-weight: 600;
+  color: var(--text);
+}
+
+.settings .panel .field > span em {
+  font-style: normal;
+  font-weight: 400;
+  color: var(--text);
+}
+
+.settings .panel select,
+.settings .panel input[type='range'] {
+  font: inherit;
+  color: var(--text-h);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px 6px;
+}
+
+.settings .panel input[type='range'] {
+  padding: 0;
+  accent-color: var(--accent);
+  width: 100%;
+}
+
+/* Two actions share the panel now (starter snippets, full resync), so
+   they stack instead of being squeezed side by side. */
+.settings .panel .actions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* Result line under the starter-snippets action; same muted treatment as
+   the other inline hints. */
+.settings .panel .note {
+  margin: 0;
+  font-size: calc(12px * var(--text-scale, 1));
+  color: var(--text);
+}
+
+.settings .panel hr {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 0;
+}
+
+.settings .panel button.danger {
+  background: none;
+}
+
+/* ---- detail: reveal hint ---- */
+
+.detail .reveal-block {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.detail .reveal-hint {
+  margin: 0;
+  font-size: calc(12px * var(--text-scale, 1));
+  color: var(--text);
+}
+
+/* In-app dialog (folder create, full resync, snippet delete). Replaces
+   window.prompt/confirm, which the wails desktop webview (WKWebView)
+   does not implement (spec §12). */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 15vh;
+  background: rgb(0 0 0 / 0.45);
+}
+
+.modal {
+  width: min(360px, calc(100vw - 48px));
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 12px 40px rgb(0 0 0 / 0.25);
+  padding: 16px 18px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.modal h2 {
+  margin: 0;
+  font-size: calc(15px * var(--text-scale, 1));
+  color: var(--text-h);
+}
+
+.modal p {
+  margin: 0;
+}
+
+.modal input {
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: inherit;
+  font: inherit;
+}
+
+.modal input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.modal-actions button {
+  padding: 5px 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-alt);
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.modal-actions button.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.modal-actions button.danger {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: #fff;
+}
+
+.modal-actions button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* ---- form: Ask-AI (spec §13) ---- */
+
+.form .ai {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: var(--bg-alt);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.form .ai summary {
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--text-h);
+}
+
+.form .ai textarea {
+  /* Form controls are replaced elements: flexbox stretch does not
+   * widen them, so the box kept its intrinsic ~half-width. Fill the
+   * inset explicitly; the resize handle then remains a vertical
+   * drag, which is what a full-width prompt box wants. */
+  width: 100%;
+  min-width: 0;
+  font: inherit;
+  color: var(--text-h);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 8px;
+  resize: vertical;
+}
+
+/* Same replaced-element caveat for the other text controls: inputs and
+ * selects inside a stacked label keep their intrinsic width unless told
+ * to fill. Checkboxes are excluded (they size to their glyph). */
+.form label > input:not([type='checkbox']),
+.form label > select,
+.form label > textarea {
+  width: 100%;
+  min-width: 0;
+}
+
+.form .ai-actions {
+  display: flex;
+}
+
+.form .ai-error {
+  margin: 0;
+  color: var(--danger);
+  font-size: calc(12px * var(--text-scale, 1));
+}
+
+.form .ai-done {
+  margin: 0;
+  color: var(--text);
+  font-size: calc(12px * var(--text-scale, 1));
+}
+
+/* ---- tags pane (spec §6): left column under the folder tree ---- */
+
+.tag-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 8px 12px;
+  border-top: 1px solid var(--border);
+}
+
+.tag-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 4px 6px;
+}
+
+.tag-head h2 {
+  margin: 0;
+  font-size: calc(12px * var(--text-scale, 1));
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text);
+}
+
+.tag-list .hint {
+  margin: 4px;
+  font-size: calc(12px * var(--text-scale, 1));
+  color: var(--text);
+}
+
+.tag-list .tag {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  border: none;
+  background: none;
+  border-radius: 6px;
+  padding: 3px 6px;
+  text-align: left;
+  color: var(--text-h);
+}
+
+.tag-list .tag:hover {
+  background: var(--bg-alt);
+}
+
+.tag-list .tag.active {
+  background: color-mix(in srgb, var(--accent) 14%, var(--bg));
+  border: 1px solid var(--accent);
+  color: var(--text-h);
+  padding: 2px 5px;
+}
+
+.tag-list .tag .tag-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tag-list .tag .tag-count {
+  flex: none;
+  font-size: calc(11px * var(--text-scale, 1));
+  color: var(--text);
+  background: var(--bg-alt);
+  border-radius: 999px;
+  padding: 0 6px;
+}
+
+.tag-list .tag.active .tag-count {
+  background: var(--accent);
+  color: #fff;
+}
+
+.tag-list .tag-active-hint {
+  margin: 6px 4px 0;
+  font-size: calc(11px * var(--text-scale, 1));
+  color: var(--text);
+}
+
+/* Hint under the Template checkbox: makes the auto-detected state
+   visible so a templatized (Ask-AI) body is obviously already a
+   template instead of silently auto-checked. */
+.form .template-hint {
+  margin: -8px 0 0 6px;
+  font-size: calc(12px * var(--text-scale, 1));
+  color: var(--text);
+}
+
+/* Suggest-tags control under the Tags field (spec §13). */
+.form .tags-ai {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: -8px;
+}
+
+/* ---- syntax highlighting (read view, spec §6) ---- */
+
+.detail .body.hljs code {
+  font-family: inherit;
+  background: none;
+  padding: 0;
+}
+
+.hljs-keyword,
+.hljs-selector-tag,
+.hljs-literal,
+.hljs-section,
+.hljs-link {
+  color: var(--syn-keyword);
+}
+
+.hljs-string,
+.hljs-regexp,
+.hljs-addition,
+.hljs-attribute {
+  color: var(--syn-string);
+}
+
+.hljs-comment,
+.hljs-quote {
+  color: var(--syn-comment);
+  font-style: italic;
+}
+
+.hljs-title,
+.hljs-name,
+.hljs-selector-id,
+.hljs-selector-class {
+  color: var(--syn-function);
+}
+
+.hljs-number,
+.hljs-built_in,
+.hljs-type,
+.hljs-attr,
+.hljs-variable,
+.hljs-template-variable,
+.hljs-symbol,
+.hljs-meta,
+.hljs-bullet,
+.hljs-tag,
+.hljs-params {
+  color: var(--syn-constant);
+}
+
+.hljs-emphasis {
+  font-style: italic;
+}
+
+.hljs-strong {
+  font-weight: 700;
+}
+
+.hljs-deletion {
+  color: var(--danger);
+}

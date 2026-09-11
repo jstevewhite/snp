@@ -1,0 +1,77 @@
+import { afterEach, describe, expect, it } from 'vitest'
+import {
+  TEXT_SCALE_MAX,
+  TEXT_SCALE_MIN,
+  THEMES,
+  applyTextScale,
+  applyTheme,
+  clampTextScale,
+  defaultSettings,
+  loadSettings,
+  saveTextScale,
+  saveTheme,
+  TEXT_SCALE_STORAGE_KEY,
+  THEME_STORAGE_KEY,
+} from './settings'
+
+const keys = [THEME_STORAGE_KEY, TEXT_SCALE_STORAGE_KEY]
+
+afterEach(() => {
+  for (const k of keys) localStorage.removeItem(k)
+  document.documentElement.removeAttribute('data-theme')
+  document.documentElement.style.removeProperty('--text-scale')
+})
+
+describe('settings', () => {
+  it('offers the full theme list including the requested ones', () => {
+    const ids = THEMES.map((t) => t.id)
+    expect(ids).toContain('auto')
+    expect(ids).toContain('solarized-light')
+    expect(ids).toContain('solarized-dark')
+    expect(ids).toContain('kimbie-dark')
+    expect(ids).toContain('tokyo-night')
+  })
+
+  it('defaults to auto theme at 100% and loads those when storage is empty', () => {
+    expect(defaultSettings()).toEqual({ theme: 'auto', textScale: 100 })
+    expect(loadSettings()).toEqual({ theme: 'auto', textScale: 100 })
+  })
+
+  it('round-trips saved values through storage', () => {
+    saveTheme('tokyo-night')
+    saveTextScale(125)
+    expect(loadSettings()).toEqual({ theme: 'tokyo-night', textScale: 125 })
+    // Auto persists as absence of the key.
+    saveTheme('auto')
+    expect(localStorage.getItem(THEME_STORAGE_KEY)).toBeNull()
+  })
+
+  it('ignores unknown stored values and falls back to defaults', () => {
+    localStorage.setItem(THEME_STORAGE_KEY, 'not-a-theme')
+    localStorage.setItem(TEXT_SCALE_STORAGE_KEY, 'nope')
+    expect(loadSettings()).toEqual({ theme: 'auto', textScale: 100 })
+  })
+
+  it('applies a theme via the data-theme attribute and auto removes it', () => {
+    applyTheme('tokyo-night')
+    expect(document.documentElement.getAttribute('data-theme')).toBe('tokyo-night')
+    applyTheme('auto')
+    expect(document.documentElement.hasAttribute('data-theme')).toBe(false)
+    // Unknown ids behave like auto (never an unstyled state).
+    applyTheme('bogus')
+    expect(document.documentElement.hasAttribute('data-theme')).toBe(false)
+  })
+
+  it('applies the text scale as the --text-scale custom property', () => {
+    applyTextScale(125)
+    expect(document.documentElement.style.getPropertyValue('--text-scale')).toBe('1.25')
+  })
+
+  it('clamps text scale to the slider bounds', () => {
+    expect(clampTextScale(50)).toBe(TEXT_SCALE_MIN)
+    expect(clampTextScale(500)).toBe(TEXT_SCALE_MAX)
+    expect(clampTextScale(Number.NaN)).toBe(100)
+    applyTextScale(10)
+    expect(document.documentElement.style.getPropertyValue('--text-scale')).toBe('0.75')
+  })
+})

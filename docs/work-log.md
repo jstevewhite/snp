@@ -1,0 +1,875 @@
+# snp — Work Log
+
+Append-only log of implementation work against
+`docs/snp-implementation-plan.md`. Newest entry at the bottom.
+
+**To resume after an interruption:**
+
+1. Read "Current status" below.
+2. Read the last log entry.
+3. Run `go test ./...` and confirm the tree is green before starting new
+   work.
+
+Spec: `docs/snp-design.md` · Plan: `docs/snp-implementation-plan.md`
+
+## Current status
+
+- Updated: 2026-09-11 09:00
+- Phase: review fixes + desktop app (macOS **and Linux** builds) + appearance + AI generation (command/script/function kinds) + tag filter + .app bundle + **bundled starter pack** merged to main; **Markdown notes**, **read-view syntax highlighting**, **notarization in `make app`**, the **Linux desktop build/launcher** and **`snp seed`** landed; `make test` green (go test + vet + 209 Vitest + svelte-check 0). The Linux desktop binary **build was verified on an ARM Ubuntu 24 host** (git bundle → `make desktop`), after a first attempt failed because that work was still uncommitted and the bundle therefore carried the old darwin-only tree.
+- Next: **Linux desktop container build + verification** (podman; `libgtk-3-dev` + `libwebkit2gtk-4.1-dev` + Go, `make web` then the desktop build, and exercise `install-desktop.sh` with a scratch `PREFIX=`); then the Windows port, desktop follow-ons (real app icon, startup-error surfacing in the window); then remaining v1 follow-ons (CLI client, SnippetsLab converter)
+
+## Log
+
+### 2026-09-02
+
+- 09:45 — Started execution. Environment: Go 1.24.4 darwin/arm64, Node
+  26.4.0, npm 11.17.0. Repo is a git worktree.
+  Created this log.
+- 13:00 — Phase 1 (config) and Phase 2 (store) complete; full suite
+  green. Fixed the FTS5 "database disk image is malformed" corruption:
+  root cause was the old `rewriteFTS` helper DELETE-ing the FTS row on
+  every write, including for rowids never indexed — a DELETE for an
+  unindexed rowid corrupts the FTS5 external-content index. Split into
+  `insertFTSTx`/`deleteFTSTx`: new rows insert only; replace deletes the
+  old FTS row before the content update, then inserts; purge deletes FTS
+  before the main row. Also: full sync (`since=""`) now returns
+  tombstones for soft-deleted snippets and folders;
+  `TestFTSUnbalancedQuote` expectation corrected (phrase `abc"` tokenizes
+  to `abc` and matches the title → 1 result, not 0);
+  `zz_debug_test.go` integrity-check corrected to the FTS5 command form
+  `INSERT INTO snippets_fts(snippets_fts) VALUES('integrity-check')`
+  (zero rows = consistent). Spec §4 now documents the
+  `snippets.body_text` and `snippets.tags` mirror columns and the
+  corrected FTS write discipline. Next: Phase 3 (internal/tsauth).
+- 14:21 — Phase 3 (internal/tsauth) complete; full suite green. Added
+  `tailscale.com v1.102.3` as a direct dependency (go.mod now
+  `go 1.26.6`). Package: `Identity{Login,DisplayName}` and the
+  `IdentityResolver` interface; `Tailscale` wraps `*tsnet.Server`
+  behind a narrow `server`/`whoisClient` interface (adapter
+  `realServer`, fakes in tests): `New(stateDir, hostname, authKey)`
+  persists node state under `stateDir/tsnet` (0700), authKey only
+  needed for the first join; `Listen(ctx)` brings the node up, fails
+  with a clear error if another tailnet node already uses this
+  hostname (Tailscale allows duplicate names, so peer HostNames are
+  checked case-insensitively), then returns a TLS listener on tailnet
+  :443 with a Tailscale-issued cert; `WhoIs` maps
+  `LocalClient().WhoIs(...).UserProfile` to `Identity` and wraps
+  errors so the server can map them to 500. `Dev` returns a fixed
+  `dev@local` identity for `--dev-listen`. API note: v1.102.3 has no
+  `Listen("https", ...)` — the cert listener is
+  `ListenTLS("tcp", ":443")`, which requires MagicDNS + HTTPS enabled
+  in the tailnet admin panel (clear startup error otherwise). 12 tests
+  pass. Next: Phase 4 (internal/server).
+- 16:37 — Phase 4 (internal/server) complete; full suite + `go vet`
+  green. The full HTTP surface from spec §5, plus the `serve` subcommand.
+  `internal/server/server.go`: `Server` + `New(st, resolver, owner, log)`
+  (embeds `web/dist` via `fs.Sub`, panics if missing) and `Handler()`
+  returning the root mux. Middleware chain, outermost→innermost:
+  `recoverMW` (panic→500) → `loggingMW` (method, path, status,
+  duration_ms, caller login; query string deliberately omitted per spec
+  §9) → then, on `/api/*` only: `authMW` (`resolver.WhoIs(RemoteAddr)`;
+  whois error→500, non-owner→403 "forbidden", else identity into ctx) and
+  `guardMW` (POST/PUT/DELETE must be `application/json` else 415;
+  `MaxBytesReader` 10 MiB→413). The embedded SPA is served without auth so
+  the shell loads for any tailnet peer; every data endpoint still requires
+  the configured owner (pass `owner=""` to disable, dev mode).
+  `handlers.go`: `apiMux` with all 15 endpoints — `me`; snippet
+  list/create/get/replace/delete/raw; folder list/create/update/delete;
+  tags; sync; export; import. `snippetReq`/`folderReq`/`folderUpdateReq`
+  use pointer fields so an omitted field means "no change". `statusCode()`
+  maps store errors per spec §8: `ErrNotFound`→404,
+  `ErrFolderNotEmpty`/`ErrNameTaken`→409, `ErrFolderCycle`/
+  `ErrInvalidTag`/`ErrInvalid`/`ErrFTS`/`ErrImport`→400, else 500; 5xx
+  details are logged, never returned. `handleBodyErr`: `*http.MaxBytesError`
+  →413, else 400. `static.go`: `staticHandler` serves the embedded SPA;
+  unknown extensionless paths fall back to `index.html` (client-side
+  routes), unknown paths with an extension 404.
+  `cmd/snp/main.go`: `serve` subcommand wired (was `notImplemented`).
+  `runServe` flags: `--config`, `--hostname`, `--owner`, `--state-dir`,
+  `--log-level`, `--dev-listen` (plain HTTP, no tsnet, no auth). Flow:
+  `config.Load` → `signal.NotifyContext` (SIGINT/SIGTERM) → `MkdirAll`
+  state dir 0700 → open+migrate DB → load/create key → tsnet join or dev
+  listener → start purge job → serve → graceful drain + shutdown.
+  `server_test.go`: httptest-based tests with a fake `IdentityResolver`
+  and a temp-file store, covering me, snippet CRUD, folder CRUD (incl. 409
+  sibling-name collision, 400 move-cycle), tags, sync tombstones,
+  export/import, error mapping (404/409/400/415/413), static SPA fallback,
+  and auth (403 non-owner, 500 whois failure). Test gotcha fixed: reusing
+  one `syncResp` across two `json.Unmarshal` calls made `encoding/json`
+  merge into the existing slice-element map, leaving a stale `title` key on
+  the tombstone — unmarshal into a fresh variable instead. Next: Phase 5
+  (CLI subcommands).
+
+### 2026-09-03
+
+- 00:40 — Phase 5 (CLI subcommands) complete; full suite + `go vet`
+  green. (Session resumed mid-phase at 18:07 on 09-02;
+  `cmd/snp/main.go` was found in a partially reconstructed state and
+  was rewritten to match the Phase 4 log entry and spec §1.)
+  `internal/store/backup.go`: `Store.Backup(dest, fullCheck)` —
+  `VACUUM INTO` (dest is a quoted string literal, `'` doubled; VACUUM
+  INTO takes no bound parameters); destination must not exist (error
+  otherwise); parent dirs created 0700; partial file removed on
+  failure; then the copy is opened read-only and verified with
+  `PRAGMA quick_check` (or `integrity_check` if fullCheck) — anything
+  other than "ok" is an error. The result is a standalone database
+  file, no WAL sidecar.
+  `cmd/snp/main.go`: all subcommands implemented (were
+  `notImplemented`). `backup <dest>` (`-full-check` flag): quiet on
+  success, errors to stderr; refuses to run when no database exists
+  yet — `store.Open` would create an empty one, and a cron job
+  silently "backing up" an empty database after a state-dir typo is a
+  footgun. `export [-o file]`: full JSON export via `Store.Export`
+  (plaintext bodies, sensitive decrypted), pretty-printed.
+  `import <file>` (`-mode merge|replace`): reads the JSON document,
+  applies via `Store.Import`, prints created/updated counts.
+  `key show-path`: prints the key file path for backup scripts. All
+  subcommands load config the same way as `serve` (flags > env > file
+  > default) and never touch tsnet. `runServe` rebuilt to match the
+  Phase 4 log: `config.Load` → `signal.NotifyContext` (SIGINT/SIGTERM)
+  → `MkdirAll` state dir 0700 → open+migrate DB → load/create key →
+  tsnet join (`TS_AUTHKEY` env) or `--dev-listen` plain HTTP with
+  `tsauth.Dev` and no auth → `StartPurger` → serve → graceful drain
+  (`http.Server.Shutdown`, 10s) on signal.
+  `cmd/snp/main_test.go`: tests for the testable cores
+  (`backupCmd`, `exportCmd`, `importCmd`): backup produces a
+  consistent, readable copy (reopened, exported, sensitive body
+  decrypted) and refuses when no database exists; export is
+  pretty-printed with plaintext bodies including the sensitive one;
+  import is idempotent on re-import (created 2/updated 0, then 0/2),
+  resolves `folder_path` to the document's folder, re-encrypts
+  sensitive bodies, and rejects malformed JSON and bad modes.
+  `TestExportImportRoundTrip` satisfies the plan's "export→import
+  round trip preserves data" done-when: seed → export → map
+  `ExportDoc` to `ImportDoc` → import into a fresh state dir (fresh
+  key, so sensitive bodies are re-encrypted under the new key with
+  the same ids) → export → field-by-field compare (title, body,
+  language, notes, folder, sensitive flag, timestamps).
+  Smoke-tested the built binary: `key show-path`, `export` on a fresh
+  state dir, `backup`, `import` round trip, and the error paths.
+  Note: Go's `flag` stops parsing at the first non-flag argument, so
+  flags must precede positional args (`snp backup [flags] <dest>`).
+  Next: Phase 6 (frontend, online flows).
+
+### 2026-09-03
+
+- 12:46 — Phase 6 (frontend, online flows) complete; `make test`
+  green (go test + 108 Vitest + svelte-check 0 errors/warnings).
+  `web/` is now Vite + Svelte 5 (runes) + TypeScript strict, Vitest
+  under jsdom, tests colocated with each module. `lib/`:
+  `types.ts` (API types), `api.ts` (typed fetch, throws `ApiError`
+  with status; /me, snippets CRUD + list with q/lang/folder_id/
+  limit/offset, folders CRUD, /sync), `query.ts` (spec §5
+  `tag:`/`lang:` filters + FTS remainder, shared by online and
+  offline search), `templates.ts` (`{{var}}` /
+  `{{var|default}}`), `db.ts` (IndexedDB via `idb`; sensitive
+  bodies never persisted), `sync.ts` (pull + idempotent merge —
+  upsert, tombstones, `server_time` boundary — and push),
+  `search.ts` (MiniSearch, incremental updates on merge),
+  `online.ts` (navigator.onLine + fetch-failure tracking).
+  Components: `FolderTree` (create/rename/delete, expand/collapse),
+  `SnippetList` (debounced search, pagination, sensitive
+  masking), `SnippetDetail` (reveal via GET, tags, edit/delete),
+  `SnippetForm` (create/edit, template expansion, sensitive
+  toggle, inline errors that keep editor state, Cmd/Ctrl+Enter
+  save). `App.svelte`: three-pane layout with offline banner
+  (offline = read-only) and online/offline state wiring.
+  Gotchas: (1) `vite.config.ts` needs
+  `resolve.conditions: ['browser']` or `svelte` resolves to its
+  server entry under jsdom and component tests lose `mount`.
+  (2) Svelte 5: no `key` prop on components — use a `{#key}`
+  block to force remount; `$:` legacy reactive statements are out
+  (runes); `state_referenced_locally` warnings come from
+  referencing rune state in legacy contexts — use derived values.
+  Smoke-tested the built binary (fresh mktemp state dir,
+  `--dev-listen 127.0.0.1:8091`): SPA shell + hashed JS/CSS +
+  favicon served; `/api/me` → `dev@local`; snippet create → list
+  round trip; 404 on unknown API path; 415 on non-JSON POST (the
+  CSRF invariant). Gotcha: the first smoke attempt on `:8080`
+  actually hit a stale dev server from a different checkout
+  of this repo (running since 08:11) — our server
+  failed to bind and exited with an empty log, and the test rows
+  went into that checkout's `.dev-state` DB. Deleted the two test
+  rows via its API (204) and verified the DB was back to its
+  original state. Side observation: that old binary answers
+  `GET /api/snippets` with a `{"snippets":[…]}` envelope; the
+  current API returns a bare array, which is what `api.ts`
+  expects — the envelope was the stale shape, not a bug.
+  Interactive browser smoke (search UX, keyboard shortcuts,
+  template copy, sensitive reveal in the UI) is left to manual
+  verification; the headless API smoke + component tests cover
+  the logic.
+  Next: Phase 7 (PWA + offline).
+
+- 15:35 — Phase 7 (PWA + offline) implementation complete; `make test`
+  green (go test + 114 Vitest + svelte-check 0 errors).
+  `vite.config.ts`: `vite-plugin-pwa` in `generateSW` mode —
+  `registerType: autoUpdate`, precache of the built app shell (10
+  entries, ~88 KiB), `navigateFallback: /index.html`, runtime cache
+  `NetworkOnly` for `/api/*` (API responses are never cached), manifest:
+  name/short_name `snp`, `display: standalone`, `start_url: /`,
+  theme/background `#0f172a`, 192 + 512 icons (`any` + `maskable`,
+  `web/public/pwa-*.png`, plus a 180 for the favicon). `lib/sync.ts`:
+  sync triggers — on mount, on `visibilitychange`/`focus`, every 5
+  minutes while open (spec §6: the timer alone is not enough on
+  mobile), and one sync on reconnect; "Full resync" action (settings
+  menu) clears the IndexedDB cache and re-syncs from scratch. Offline
+  UX: list/search read from IndexedDB via the MiniSearch index;
+  create/edit/delete disabled with the OfflineBanner; sensitive reveal
+  blocked with an "online required" hint; nothing queued. Tests: 6 new
+  Vitest tests (sync triggers, resync, offline gating) — 114 total.
+  Gotchas: (1) the debug-sync test needed a `fake-indexeddb/auto`
+  import for an in-memory IndexedDB under jsdom. (2) the resync test
+  fixture was missing the `s1` tombstone — a full sync must include
+  tombstones for soft-deleted rows (`deleted_at`) or the client cache
+  keeps the stale row. (3) tracking the `busy` flag as reactive Svelte
+  state created a sync feedback loop — each sync completion updated
+  state, which re-triggered the reactive effect: 1615 sync calls in
+  ~800 ms. The mutex flag must be non-reactive (a plain module-level
+  boolean) so guarding a concurrent sync doesn't itself trigger a
+  sync.
+  Smoke-tested the built binary (fresh mktemp state dir, `snp serve
+  --dev-listen 127.0.0.1:4789`): `/` 200 text/html, `/sw.js` 200
+  text/javascript, `/manifest.webmanifest` 200, `/pwa-512x512.png` 200
+  image/png, `/api/sync` 200 (no auth in dev mode); index.html links
+  the manifest and loads `registerSW.js`. Gotcha: the flags live on the
+  `serve` subcommand (`snp serve --dev-listen …`), not the root —
+  `snp --dev-listen` fails with "unknown command".
+  Remaining per the plan's done-when: the manual PWA checklist —
+  install on macOS (Chrome/Safari), Android, and iOS; airplane-mode the
+  device → browse + search work, writes blocked, sensitive reveal
+  blocked; reconnect → changes from elsewhere appear.
+  Next: Phase 8 (Deployment + ops).
+
+- 16:15 — Phase 8 (Deployment + ops) implementation complete.
+  `deploy/snp.service`: user `snp`, `HOME=/var/lib/snp`,
+  `StateDirectory=snp`, `WorkingDirectory=/var/lib/snp`,
+  `ProtectSystem=strict` + `ProtectHome` + `PrivateTmp` +
+  `NoNewPrivileges`, `Restart=on-failure`, and
+  `EnvironmentFile=-/var/lib/snp/.config/snp/authkey` (the `-` makes it
+  optional; the file is kept, not deleted, so a state wipe can re-join
+  without re-issuing steps). Two small additions to the plan's unit:
+  `Wants=network-online.target` (pair with `After=` so the target is
+  actually pulled in) and `RestartSec=5` (avoid hot restart loops when
+  the control plane is flaky).
+  `deploy/install.sh`: root-only one-command install — creates the `snp`
+  user (home /var/lib/snp, `/bin/false` shell), installs the binary to
+  /usr/local/bin/snp (runs `snp help` first to catch a cross-build for
+  the wrong architecture), writes the starter config to
+  /var/lib/snp/.config/snp/config.toml (never overwrites an existing
+  one), writes the authkey file when TS_AUTHKEY is set in the
+  environment, installs + enables the unit, and installs
+  `deploy/backup.sh` as /usr/local/sbin/snp-backup plus a daily cron
+  entry (/etc/cron.d/snp-backup, 03:17) into /var/lib/snp/backups.
+  `deploy/backup.sh DEST_DIR [retention_days]`: `snp backup` →
+  `snp-YYYYmmdd-HHMMSS.db` (VACUUM INTO + integrity check inside the
+  binary), key via `snp key show-path` → `snp.key` (0600), prunes
+  `snp-*.db` older than the retention days (default 7; arg or
+  RETENTION_DAYS override). Quiet on success, errors to stderr with
+  exit 1.
+  `README.md`: build (incl. cross-compile), one-command install, first
+  run, access URL (DNS name, not 100.x), PWA install on macOS / iOS /
+  Android, config table, backup/restore procedure, and plain-language
+  warnings (key required to read sensitive snippets from a backup;
+  export = db+key sensitivity; don't delete state_dir/tsnet;
+  --dev-listen is unauthenticated).
+  Verified locally: `bash -n` + `shellcheck` clean on both scripts;
+  end-to-end backup.sh on macOS — dev server, snippet created, backup
+  (db + 0600 key), then restore drill: copy db+key to a fresh state
+  dir and `snp export` reads the snippet back in plaintext; retention
+  validation (exit 2 on non-integer) and the no-database error path
+  (exit 1) both correct.
+  Gotcha: `snp backup` and `snp key show-path` load the full config, so
+  they require `owner` in non-dev mode — always true under the systemd
+  deployment (config.toml is written by install.sh; cron sets HOME to
+  the user's home, so the config resolves).
+  Also: `.gitignore` now ignores `.dev-state/` (local dev state dir
+  from repo-root dev runs).
+  Pending (host acceptance): `sudo TS_AUTHKEY=... 
+  ./deploy/install.sh -o <login>` on the host (verify the owner login against
+  a live `tailscale whois`), PWA install + airplane-mode checklist,
+  cron backup + restore on the host.
+  Next: host acceptance, then v1 follow-ons (CLI client, SnippetsLab
+  converter).
+
+### 2026-09-04
+
+- 14:08 — Post-phase hardening: per-snippet `uses_variables` template
+  flag, end to end. `make test` green (go test + 132 Vitest +
+  svelte-check 0 errors/warnings).
+  Backend: `migrations/0002_uses_variables.sql` adds
+  `snippets.uses_variables INTEGER NOT NULL DEFAULT 0` (existing rows
+  backfill to 0). `store.SnippetInput`/`SnippetOut` carry the flag;
+  create, replace, get, list, sync, and export all read and write it;
+  `ImportSnippet` decodes `uses_variables` — older export docs without
+  the field decode as false, so imports stay backward compatible. The
+  server treats the body as opaque text; the flag only drives frontend
+  behavior, per spec §4.
+  Frontend: `types.ts` adds `uses_variables` to `Snippet`/`SnippetInput`.
+  `templates.ts` gains `previewTemplate` — like `renderTemplate`, but a
+  variable with no value and no default stays as its literal `{{name}}`
+  placeholder, so unfilled variables remain visible in the live preview
+  instead of silently blanking out. `SnippetForm` seeds the flag from the
+  initial snippet, shows a "Template" checkbox, and keeps it in sync with
+  the body via a `$effect` on `hasTemplateVars(body)` — a manual toggle
+  holds until the next body edit, so the flag can't drift from the
+  content. `SnippetDetail` shows a variables panel when
+  `uses_variables` is set: one input per variable (its default as the
+  placeholder), a live preview via `previewTemplate`, and Copy sends the
+  rendered text up to `App`, which writes it to the clipboard; the panel
+  is hidden otherwise. `App.svelte` wraps `SnippetDetail` in
+  `{#key selectedSnippet.id}` so the panel's inputs remount per snippet.
+  Tests: `templates.test.ts` — 10 new `previewTemplate` cases (values,
+  default fallback on blank/missing, unfilled stays literal, mixed,
+  invalid and unclosed placeholders, no-op). `SnippetDetail.test.ts` — 7
+  new cases (panel shown/hidden by the flag, default as placeholder,
+  live preview updates on input, unfilled variables stay visible, copy
+  sends the rendered text with default fallback and entered values,
+  blanks for vars without a default). `SnippetForm.test.ts` — 2 new
+  cases (the flag auto-checks when the body gains placeholders and
+  unchecks when they're removed; the flag is in the submitted payload).
+  Fixture updates across `sync.test.ts`, `App.test.ts`, `db.test.ts`,
+  `search.test.ts`, `api.test.ts`, `SnippetList.test.ts` to carry the
+  new required field. Rebuilt `web/dist` (vite build + PWA). Spec
+  §4/§5/§6/§9 updated to document the flag.
+  Next: host acceptance, then v1 follow-ons (CLI client, SnippetsLab
+  converter).
+
+- 15:52 — Two fixes from the post-deploy review. (1) The variables panel
+  in `SnippetDetail` had no CSS — `.vars`, `.var`, and `.preview` were
+  unstyled, so the labels fell back to inline display and the whole
+  panel rendered on one line. `web/src/app.css` gains a "detail:
+  variables panel" section: `.detail .vars` is a stacked column (gap 8,
+  top border) with an uppercase heading; `.detail .var` stacks the
+  name over the input (matching the form convention) with a bordered
+  input; `.detail .preview` is a monospace block on `--code-bg` with
+  pre-wrap so long renders stay readable. (2) PWA staleness: the
+  static handler set no `Cache-Control` headers, so the browser
+  heuristically cached `sw.js`/`index.html` and delayed the
+  service-worker update check after a rebuild. `static.go` now sets
+  `Cache-Control` per path via `cacheControlFor`: `index.html`,
+  `sw.js`, and `*.webmanifest` → `no-cache` (always revalidate, so a
+  new build is picked up on the next page load); `assets/*`
+  (content-hashed) → `public, max-age=31536000, immutable`; everything
+  else → `public, max-age=300`. The handler was restructured to
+  resolve the effective path first (the SPA fallback rewrites to `/` →
+  `index.html`) and set the header before delegating to
+  `http.FileServer`. `TestStaticFallback` extended with `sw.js` in the
+  fake FS and Cache-Control assertions on root, the SPA fallback,
+  `sw.js`, and assets. Rebuilt `web/dist` + `bin/snp`; `make test`
+  green (go test + 132 Vitest + svelte-check 0 errors/warnings).
+  Next: host acceptance, then v1 follow-ons (CLI client, SnippetsLab
+  converter).
+
+- 16:34 — v1 follow-on (post-plan): persisted per-variable defaults for
+  template snippets — backend half of a two-commit feature (the frontend
+  half, panel pre-fill + Save defaults button + spec §6, lands in the
+  next entry). Agreed design: defaults for sensitive snippets are
+  encrypted at rest with the body (no plaintext leak into backups);
+  saving is an explicit action, client-side; the client prunes keys to
+  the body's current variables on save and the store treats the map as
+  opaque.
+  `migrations/0003_var_defaults.sql`: `snippets.var_defaults TEXT NOT
+  NULL DEFAULT ''` (the JSON `{"name": value}` map for non-sensitive
+  rows, `''` for sensitive rows) + `snippets.var_defaults_enc BLOB`
+  (the same map sealed under the snippet id; NULL when empty). Neither
+  column is FTS-indexed, so the FTS write-ordering discipline is
+  untouched.
+  `store`: `SnippetInput`/`SnippetOut`/`ImportSnippet` carry
+  `VarDefaults map[string]string` (JSON `var_defaults`). New helpers
+  `storeVarDefaults` (JSON text, or sealed map + plain `''` for
+  sensitive rows; `ErrNoKey` when a key is required) and
+  `loadVarDefaults` (decrypts under the id; `''`/NULL decode to an
+  empty map). Create/replace/get/list/sync/export/import all carry the
+  new columns; replace re-serializes both columns from the input map,
+  so toggling `is_sensitive` moves the map between the plain and sealed
+  forms in either direction. Output rule: `var_defaults` is a non-nil
+  `{}` when known and `null` for sensitive snippets in create/list/sync
+  responses (mirroring `body`); `GetSnippet` returns the decrypted map.
+  `handlers.go`: `snippetReq.VarDefaults` (omitted decodes to an empty
+  map; full-replace semantics) — no new endpoints.
+  Spec §4 (schema, mirror-column rule, Encryption, Templates:
+  precedence entered > saved > inline `{{name|default}}` > empty,
+  client prunes on save) and §5 (snippet JSON + the null rule, PUT
+  note, export/import back-compat: docs without the field import as an
+  empty map).
+  Tests: 7 new store tests in `vardefaults_test.go` (CRUD round trip +
+  `{}`-not-null stability; sensitive sealed at rest with the plain
+  column `''` and outputs hidden; the is_sensitive toggle both ways
+  with the ciphertext column managed; `ErrNoKey`; sync carry + JSON
+  null for sensitive; export/import round trip with re-encryption under
+  a fresh key; a legacy doc without the field importing as empty) and
+  1 handler test (`TestSnippetVarDefaults`). Gotchas: `sql.Null[[]byte]`
+  exposes its value as `.V` (not `.Bytes`/`.Val`); in a restricted build
+  environment, `go test` needs `GOCACHE=/tmp/...` because the user-level build cache
+  sits outside the writable tree. `make test` green (go test + 132
+  Vitest + svelte-check 0 errors; web side untouched).
+  Next: frontend half of the var_defaults feature (commit 2), then
+  host acceptance.
+
+- 16:53 — var_defaults feature, frontend half (commit 2 of 2). The
+  variables panel now pre-fills its inputs from the snippet's saved
+  defaults (`snippet.var_defaults`; a saved value beats the inline
+  `{{name|default}}` placeholder; keys for variables no longer in the
+  body and blank values are dropped), and an explicit "Save defaults"
+  button persists the current inputs: a full-replace of the snippet
+  carrying its current fields plus the new `var_defaults` map — a blank
+  input clears that default, keys absent from the body are pruned
+  client-side (the server treats the map opaquely, spec §4/§5). The
+  button is disabled offline like every other write; pre-fill still
+  works because the map rides in the local cache (non-sensitive
+  snippets; sensitive ones have `var_defaults: null` locally, like the
+  body). `SnippetForm` carries `var_defaults` forward on a normal save,
+  pruned to the body's current variables, so an edit never wipes the
+  defaults; a body with no variables saves an empty map.
+  Types: `Snippet.var_defaults` (null for sensitive in list/sync) and
+  `SnippetInput.var_defaults` (optional; omitted = empty map). The
+  IndexedDB cache, MiniSearch index, and sync merge need no changes —
+  the field rides the snippet document, and defaults are never
+  searched, matching the server (spec §4: neither column FTS-indexed).
+  Spec §6: the Copy bullet (pre-fill + precedence + Save defaults
+  semantics), the Edit bullet (carry-forward), and the offline bullet
+  (saving is a server write; pre-fill still available).
+  Smoke test against a fresh dev server (fresh state dir, `--dev-listen
+  :8080`) surfaced a pre-existing gap: `CreateSnippet`/`ReplaceSnippet`
+  built their `SnippetOut` from the input fields without
+  `UsesVariables`, so the POST/PUT responses always reported
+  `uses_variables: false` even though the row stored the flag — the
+  client cache (seeded from the response) lost the flag until the next
+  sync, so a freshly created template showed no variables panel. Fixed
+  both out literals (regression test `TestUsesVariablesInOut`); the
+  create/replace/smoke flows now agree with the row.
+  Tests: +10 Vitest — panel (pre-fill; copy precedence saved > inline;
+  stale keys not pre-filled and pruned on save; a cleared input clears
+  that default; typed values persist; offline disables the button),
+  form (carry-forward pruned to the body; all pruned when the body
+  stops using variables), App (select + type + Save defaults issues
+  the correct PUT payload and the inputs pre-fill from the synced map)
+  → 142 green. Rebuilt `web/dist` (new service-worker precache list in
+  the tracked index.html). `make test` green (go test + 142 Vitest +
+  svelte-check 0 errors/warnings).
+  Feature complete across d66ac37 (backend) and this commit.
+  Next: host acceptance, then the remaining v1 follow-ons (CLI client,
+  SnippetsLab converter).
+### 2026-09-06
+
+- 12:45 — Independent code review of the whole repo (docs + Go + web +
+  deploy) found and fixed the top five issues, one commit each on branch
+  `fix/review-1-5`:
+  1. `4a4815f` — web: UI delete 415 + sensitive-edit data loss. `api.ts`
+     only set `Content-Type: application/json` when a body was present, so
+     every body-less `DELETE` from the SPA hit the server's CSRF guard
+     (415). And editing a sensitive snippet seeded the form from the
+     cached row's `null` body, so saving full-replaced the row with `''`
+     (irrecoverable). The header is now sent for all POST/PUT/DELETE;
+     `startEdit` fetches the decrypted body first and refuses to open the
+     editor when the fetch fails. Tests: DELETE header assertions +
+     App-level edit-a-sensitive-snippet test.
+  2. `c9fe04e` — store: sync same-second hole. `server_time` and stored
+     timestamps are whole seconds, so a row written in the same wall-clock
+     second as a sync snapshot had `updated_at == server_time` and the
+     strict `>` filter skipped it on every later sync. Live rows,
+     tombstones, and folder deltas now filter `>=` (idempotent merge makes
+     the bounded duplicate harmless). Regression test pins the frozen-clock
+     boundary.
+  3. `b05cedd` — store/server: folder moves required a live destination and
+     a unique sibling name. `UpdateFolder` silently accepted a missing or
+     soft-deleted parent (500 via unmapped FK, or a live folder orphaned
+     under a tombstone that then failed the daily purge with an FK error
+     forever — reproduced in a scratch test); destination is now validated
+     live up front and a broken ancestor chain refuses the move. Moves that
+     change the parent now enforce sibling-name uniqueness (was rename-only).
+  4. `1fc2ee7` — docs/web: spec §6 reconciled with the implemented v1
+     frontend (CodeMirror/Markdown/API-search/keyboard/tags-pane/responsive
+     never built — amended the spec with a revision note instead of
+     implementing); removed the dead `@codemirror/*`, `codemirror`,
+     `marked`, `dompurify` dependencies.
+  5. `73dab73` — cmd/deploy/store/make: `--dev-listen` loopback-only
+     (`:8080` used to bind every interface, unauthenticated); http.Server
+     ReadHeader/Idle timeouts; `StartPurger` takes the configured logger
+     and returns a done channel joined before store close; systemd
+     `TimeoutStartSec=600`; `make test` now runs `go vet` and installs web
+     deps when `node_modules` is missing.
+  Gotchas: `go vet`/`go test` in a restricted build environment need `GOCACHE=/tmp/...`
+  (the user-level cache sits outside the writable tree); a frozen-clock
+  sync test must advance the clock *and* use the new sync's `server_time`
+  to prove duplicates stop. `make test` green at the end (go test + vet +
+  143 Vitest + svelte-check 0). Not in scope here (left for later passes):
+  offline search OR-vs-FTS5-AND parity, API-backed online search, folder
+  move-to-root expressibility, delete confirmation UX.
+  Next: host acceptance, then the remaining v1 follow-ons.
+
+### 2026-09-08
+
+- 08:30 — Wails desktop app landed on branch `feature/wails-desktop`
+  (spec §12). User decision: a **local desktop instance** — same store
+  and same SPA in a native window, no tailnet, no HTTP port — reusing
+  the CLI state dir, macOS first. `snp serve`/PWA/tailnet deployment
+  untouched. Three commits + work log:
+  1. Go core: `cmd/snp-desktop` (darwin-tagged Wails binary; production
+     build tag) + `internal/desktop` (in-process API bridge:
+     `App.CallAPI(method, path, body)` runs each request against the
+     same handler the serve subcommand builds, via httptest; applies
+     the spec §3 JSON content-type rule itself; no wails import, so it
+     is platform-neutral and unit-tested with a real temp-file store) +
+     `config.LoadDesktop` (Load minus the owner-required rule) + tests
+     (bridge CRUD/guards/sensitive round trip; LoadDesktop).
+  2. Web: `lib/desktop.ts` detects the shell (`window.__SNP_DESKTOP__`
+     stamped into index.html by the wails asset-server middleware) and
+     `api.ts` routes every call through `window.go.desktop.App.CallAPI`
+     when present, sharing one parse/error path with fetch; 12 new
+     Vitest cases (155 total).
+  3. Docs/make: spec §12, README "Desktop app (macOS, Wails)", CLAUDE
+     (layout + "desktop rule": cmd/snp must never import wails, or the
+     server's Linux cross-builds break), Makefile `desktop`/`run-desktop`.
+  Verified here: `make test` green; desktop binary built with
+  `-tags production` and **launched**: window up, store created
+  (`snp.db` + `key`) in the state dir; `cmd/snp` still cross-compiles
+  statically for Linux (no wails in the server path).
+  Gotchas: wails v2 needs the `production` build tag or its stub
+  refuses to start; its darwin code references `UTType` without linking
+  UniformTypeIdentifiers, so the build needs
+  `CGO_LDFLAGS="-framework UniformTypeIdentifiers"` against the
+  macOS 26 SDK (both pinned in the Makefile). Sandbox noise: WebKit
+  per-app dirs under ~/Library/WebKit are denied here — cosmetic on a
+  real machine. Follow-ons: signed .app bundle (icon, codesign,
+  notarization), Windows/Linux, option to point the window at a remote
+  snp server.
+
+### 2026-09-08
+
+- 08:45 — Desktop hotfix on main (`c2e827f`, branch `fix/folder-dialog`):
+  "New Folder does not work" in the window. Root cause: folder creation
+  and full-resync confirmation used `window.prompt`/`window.confirm`,
+  which WKWebView (the wails webview) does not implement — the prompt
+  returned null and nothing happened, silently. Replaced both with an
+  in-app dialog in `App.svelte` (backdrop + `role="dialog"`, Enter
+  confirms, Esc cancels, auto-focused name input, Create disabled while
+  empty) so browsers and the desktop window behave identically.
+  Gotcha: `<svelte:window>` must sit at component top level, not inside
+  `{#if}`; a11y warnings drove `tabindex="-1"` on the dialog and no
+  click-to-dismiss on the backdrop (Escape/Cancel only). Tests: new
+  App-level folder-create test (root + subfolder via the dialog, POST
+  payloads asserted); resync tests click the dialog buttons instead of
+  stubbing `confirm`. 156 Vitest, svelte-check 0. Rebuilt web/dist +
+  `bin/snp-desktop`; window smoke-launched OK. The work-log reminder to
+  test the desktop UI flows (dialogs, delete, rename) stands — prompt/
+  confirm were the only JS dialogs left.
+
+### 2026-09-08
+
+- 09:05 — Appearance settings on branch `feature/themes-settings`
+  (requested: "themes with a selection include solarized light/dark,
+  kimbie dark, tokyo night, etc. And a slider for interface text size,
+  under the same settings button"). Two commits:
+  1. `32fbf5d` — `app.css` gains one `:root[data-theme=…]` palette block
+     per theme (auto/light/dark, Solarized Light/Dark, Kimbie Dark,
+     Tokyo Night) remapping the existing palette variables — the blocks
+     sit after the prefers-color-scheme media query with higher
+     specificity, so explicit themes win; "auto" is no attribute.
+     Every font-size declaration now multiplies by a `--text-scale`
+     custom property (default 1), so the slider scales text without
+     touching layout. New `lib/settings.ts` (theme list, persistence in
+     localStorage `snp.theme`/`snp.textScale`, clamp + apply helpers);
+     `main.ts` applies saved settings before first paint.
+  2. `1ec947a` — the ⚙ dropdown is now a settings panel: Theme select +
+     Interface text size slider (75–150%, live % readout) + full resync
+     below a divider. Changes apply immediately and persist; no native
+     dialogs, so the wails window behaves identically.
+  Gotcha: `Number(localStorage.getItem(...))` is 0 for a missing key,
+  and `clampTextScale(0)` → 75, so loadSettings must null-check before
+  parsing. Tests: 9 new (settings unit suite + 2 App-level:
+  data-theme persistence incl. auto-clears-attribute; --text-scale
+  persistence). 165 Vitest, svelte-check 0. Rebuilt web/dist.
+  Theme palette values are hand-picked approximations of the named
+  schemes; fine-tuning the hex values is a one-line-per-var edit in
+  app.css.
+
+
+### 2026-09-08
+
+- 10:10 — AI snippet generation on branch `feature/ai-generate`
+  (spec §13). Design agreed with the user: OpenAI-compatible endpoint,
+  one shot with no chat history, output is a templatized snippet ready
+  to save; **generate into the snippet form for review** (never saved
+  un-reviewed); normal config keys; full vertical slice.
+  Three commits:
+  1. Backend — config gains `ai_endpoint` (default
+     https://api.openai.com/v1), `ai_model` (default gpt-4o-mini),
+     `ai_key` (feature enabled when set) via flag/env/file;
+     `internal/ai` client: one system+user message pair, temperature 0,
+     JSON-envelope system prompt teaching `{{name}}` /
+     `{{name|default}}`, tolerant parsing (fences/prose), typed
+     UpstreamError/OutputError, fields exported for httptest-based
+     tests; server `NewWithAI` + `GET /api/ai/status` (enabled+model,
+     never the key) + `POST /api/ai/generate` (400 empty prompt, 502
+     provider/parse failures — detail logged only, 503 unconfigured);
+     wired into `snp serve` and the desktop `NewHandler` (the desktop
+     window gets AI through the in-process bridge like every other
+     route).
+  2. Web — `api.ts` aiStatus/generateSnippet (fetch + desktop bridge);
+     SnippetForm "Ask AI…" details control: queries status on mount
+     (hidden when unconfigured), fills title/language/body for review,
+     inline errors; uses_variables syncs from the body as usual.
+  3. Docs — design §13, README (config table rows, AI section incl.
+     self-hosted endpoint example, privacy warning), CLAUDE (layout +
+     "AI rule": one-shot, no history, never log prompts/responses/key).
+  Gotchas: the first ai tests parsed the whole chat `choices` envelope
+  as the snippet JSON (green locally, red on the envelope) — decode the
+  chat response first, then parse `choices[0].message.content`;
+  `Number(null)` → 0 would have made the unset text-scale default 75
+  (fixed in settings.ts earlier). Tests: ai client suite (request
+  shape incl. exactly 2 messages, tolerant parse, upstream/output
+  errors, endpoint joining), config AI precedence/defaults, server AI
+  handlers (status enabled/disabled, generate happy + 400 + 503 +
+  502), SnippetForm Ask-AI (fills form, error path), api client calls.
+  169 Vitest, svelte-check 0. Verify-by-hand step (not run here — no
+  live provider available here): point ai_endpoint/ai_key at a real
+  endpoint and run one Ask-AI round trip.
+
+### 2026-09-08
+
+- 12:15 — AI refinement on `feature/ai-generate` (`6e341e6`): Ask-AI now
+  also returns a `notes` field — bare command in Body, plain-text
+  explanation in Notes, so a generated snippet documents itself. System
+  prompt extended (title/language/body/notes; notes short, plain, no
+  fences); a missing notes key parses as empty for tolerance. Tests
+  updated end to end. 169 Vitest; Go suites + svelte-check green.
+
+
+- 12:55 — Left-pane tag filter on branch `feature/tags-pane` (spec §6;
+  the tags pane was designed at the outset and documented as "not
+  built" — now implemented). User-confirmed semantics: clicking a tag
+  FILTERS the list, several selected tags combine with AND (all must be
+  present, like `tag:a tag:b`), and active tags AND with the folder
+  selection and the search box; clicking an active tag clears it.
+  `TagList.svelte` renders tags with live counts (most-used first),
+  derived from the local cache so filtering works offline; no server
+  change needed. `visibleSnippets` applies folder → tags → (no-query)
+  time sort / (query) relevance order preserved. aria-pressed chips
+  with a one-line "Showing snippets with …" hint.
+  Gotcha: `getByText` THROWS when the element is absent (only
+  `queryByText` is null-safe) — the first version of the App test used
+  getByText for "Alpha is hidden" and failed on the positive path.
+  Tests: TagList unit (render order/counts, pressed state, toggle
+  calls, empty hint) + an App-level test covering multi-tag AND,
+  clearing, and folder+tag combination with a bespoke sync payload.
+  173 Vitest; Go suites + svelte-check green. Rebuilt web/dist.
+- 14:05 — macOS .app bundle + codesigning on branch
+  `feature/mac-app-bundle` (user: "We don't build a Mac snp.app bundle,
+  do we?" → add it, signed with Developer ID
+  a Developer ID). `deploy/make-app.sh`
+  packages `bin/snp-desktop` into `build/snp.app`: Info.plist
+  (com.jstevewhite.snp), AppIcon.icns derived from the PWA icon,
+  hardened-runtime codesign with the network-client entitlement (Ask-AI
+  makes outbound calls in-process), then `codesign --verify --deep
+  --strict`. Makefile: `app` (default SIGN_IDENTITY = the Developer
+  ID; `-` = ad-hoc) and `run-app` (`open`). Gitignored build/.
+  Verified: identity present in keychain; bundle signed (runtime flag,
+  TeamIdentifier <your-team-id>, entitlement embedded), Info.plist lints,
+  icon + binary in place.
+  Gotchas: iconutil refuses to write INTO the repo path in a restricted
+  environment (cp works) — render the icns to a temp dir, then copy it in;
+  `for spec in …` with numeric strings is fine (xtrace display is
+  misleading). The AppIcon is an upscaled PWA icon — a real 1024px
+  marketing icon and notarization for out-of-account distribution are
+  follow-ons.
+
+### 2026-09-08
+
+- 16:15 — Desktop startup diagnosis (feature/desktop-debug `889b8e2`,
+  `a508911`). User's `--debug` run showed `store ready elapsed_ms=40964`
+  on a 77KB DB (a copy opens in 0ms) — lock contention with a STALE
+  snp-desktop instance (pid 83763, a blank window left running) that
+  still held the state dir. Fixes: busy_timeout is now set before
+  journal_mode(WAL) in the DSN pragma order (the WAL switch needs an
+  exclusive lock; without a busy handler first, a contended open could
+  stall ~40s instead of erroring after 5s); page errors/unhandled
+  rejections now forward to the wails runtime log so `--debug` shows
+  frontend failures instead of a silent blank window. Killed the stale
+  instance; two-instance contention now opens in ~1ms. Advice:
+  don't leave blank instances running; kill by exact
+  process name (`pkill -x snp-desktop` — NOT `-f`, which matches any
+  command line containing the substring) before relaunching.
+
+
+### 2026-09-09
+
+- 09:35 — Read-view syntax highlighting (spec §6). highlight.js core plus
+  a curated, lazily code-split grammar set (`web/src/lib/highlight.ts`:
+  static loader map so Vite splits each language; alias map for the
+  free-text `language` field; DOMPurify second boundary over the escaped
+  hljs output). `SnippetDetail` renders `<pre class="body hljs">` when a
+  grammar resolves, falling back to the plain `<pre>` for empty/unknown
+  languages. Token colors are theme variables (`--syn-*`) defined per
+  palette, so all seven themes highlight consistently. Editing stays a
+  plain textarea. Tests: highlight unit suite (known language, aliases,
+  fallback, HTML escaping) + detail view (highlights `go`, plain for an
+  unknown language). 185 Vitest, svelte-check 0.
+
+
+### 2026-09-10
+
+- 10:10 — `make app` now notarizes and staples, using the `snp-notary`
+  keychain profile (`NOTARY_PROFILE`, Makefile default). make-app.sh
+  signs with a secure timestamp (`--timestamp`) — notarization requires
+  one — then zips the bundle with `ditto`, submits via
+  `notarytool submit --wait`, verifies `status: Accepted`, staples and
+  validates the ticket, re-zips the stapled bundle to `build/snp.zip`,
+  and best-effort runs `spctl --assess` (warning only). Skipped for an
+  ad-hoc signature or an empty profile (`make app NOTARY_PROFILE=`).
+  Verified end to end on this machine: signature carries the timestamp,
+  notarization Accepted, staple validated, `spctl` reports
+  `accepted source=Notarized Developer ID`. Note: notarytool's cache
+  writes under ~/Library/Caches fail in a restricted environment (noise);
+  harmless on a normal terminal.
+
+- 10:40 — Ask-AI body must be one command. The generate system prompt now
+  requires `body` to be exactly one executable command on a single line
+  (pipes/redirections/&& are fine; no `#` comments, no blank lines, no
+  second or alternative command, no prose) and directs alternatives,
+  flags, gotchas, and caveats to `notes`. Prompted by a real reply that
+  returned a commented multi-command block (ditto/codesign/spctl) for a
+  one-command request. Test pins the instruction; design §13 updated.
+
+- 11:28 — Design-doc accuracy audit (doc vs. code), then reconciled
+  `docs/snp-design.md` to the implementation. Fixes: §5 sync filters are
+  `>=` on `updated_at`/`deleted_at`, not `>` (whole-second timestamps;
+  strict `>` skips a same-second row forever —
+  `TestSyncSameSecondBoundary` pins it), and the boundary paragraph now
+  says so; §3 states that only `/api/*` is authenticated while the SPA
+  shell is served unauthenticated (matches `server.go` and AGENTS.md,
+  previously "every request"); the stale §6 revision note no longer
+  claims notes are escaped-plain / the left pane is folder-only /
+  `marked`+`dompurify` were removed (they are dependencies again, and
+  highlight.js is implemented); §9 store tests are temp-file
+  (`t.TempDir` via `newTestStore`), not in-memory; §2 adds `$SNP_CONFIG`
+  to the config search order; §4 tag grammar carries the `{0,63}` length
+  cap; §10 adds `internal/ai/` and the `deploy/` extras. Gotcha left in
+  code: the `handleAIExplain` doc comment (`internal/server/handlers.go`)
+  still says "capped at 500 tokens server-side" though there is no
+  `max_tokens` — the design §13 text (prompt asks for <500, no hard cap)
+  is correct; fix the comment next time that file is touched.
+
+### 2026-09-11
+
+- 00:30 — Ask-AI output **kind**: command / script / function (spec §13
+  revised). The generate control gained an "Output" selector — Command
+  (default), Script, Function — and `POST /api/ai/generate` accepts
+  `"kind"` (case-insensitive, whitespace-trimmed; unknown → 400, never a
+  silent command). The single-line rule was only ever a *prompt* rule, so
+  nothing downstream needed changing: `parseSnippet` already keeps
+  newlines and the form's Body is a textarea, so this was prompt + request
+  plumbing. `internal/ai` now composes the system prompt from a per-kind
+  body rule (`commandRule`/`scriptRule`/`functionRule`) plus a shared half
+  holding the template-placeholder grammar and JSON envelope
+  (`bodyRule`/`systemPromptFor`); `Generate` takes a `GenerateParams`
+  struct instead of positional args. Frontend: `AIKind` type + optional
+  `kind` on `AIGenerateInput`, `aiKind` state in `SnippetForm`. Tests:
+  `TestParseKind`, `TestGenerateKindPrompts`,
+  `TestGenerateScriptMultiLineBody`, `TestAIGenerateKind` (a new
+  `newTestServerWithAIUpstream` helper wires a caller-owned httptest
+  upstream into a Server so the handler test can assert which system
+  prompt the provider received), plus Vitest cases in `api.test.ts` and
+  `SnippetForm.test.ts`. `make test` green (203 Vitest, svelte-check 0).
+- Also verified while touching `internal/server/handlers.go`: the stale
+  `handleAIExplain` "capped at 500 tokens server-side" comment the last
+  entry flagged is already gone (the comment now states there is no
+  `max_tokens` cap), so that gotcha is closed.
+- Gotcha for next time: the `internal/ai` prompts are composed at call
+  time now, so a test pinning prompt wording must assert on the composed
+  system message (as `TestGenerateKindPrompts` does), not on a constant —
+  and adding a kind means adding its marker to that table.
+- 00:40 — Read-view long-body collapse. A body of more than ten lines now
+  renders in a ~10-line box with an inner scroll plus a Show all / Show
+  less toggle (`SnippetDetail.svelte` `bodyLines`/`bodyLong`/`bodyCapped`
+  + `expanded` state, `.detail .body.clamped` and `.detail .show-all` in
+  `app.css`). Read-view only, per the ask: the form's Body textarea (rows
+  14, already scrolling) and the template Rendered preview are untouched.
+  The cap is CSS (`max-height: calc(10 * 1.45em + 26px)` — 1.45 is the
+  inherited line-height, 26px the box padding+border), so wrapped long
+  lines are capped by height rather than by logical line. Line counting
+  drops one trailing newline so a 10-line body ending in `\n` does not
+  trip the cap. Three Vitest cases (cap+toggle, ten lines/trailing
+  newline, sensitive-unrevealed offers none). Gotcha: the `.body` class
+  is shared by the highlighted and plain `<pre>` branches, so
+  `class:clamped` had to be added to both.
+- 00:45 — Same collapse for the template **Rendered** preview, at the
+  user's request. State is independent of the body box (`renderedExpanded`
+  / `renderedLong` / `renderedCapped` off `preview`), because a short
+  template can render long when a variable holds many lines, and expanding
+  one box must not force the other open. The line-count regex moved into a
+  shared `lineCount()` helper; the CSS cap is now
+  `.detail .body.clamped, .detail .preview.clamped` (both boxes share
+  font-size/padding, so one calc covers them). Test note: with both boxes
+  long there are two "Show all" buttons, so the new Vitest case scopes with
+  `within(...)` rather than `screen.getByText` — a future test that adds a
+  long body *and* `uses_variables` must do the same.
+- 01:15 — **Linux desktop build** (spec §12). `cmd/snp-desktop/main.go` is
+  now tagged `darwin || linux` and stays platform-neutral; the per-OS
+  wails options moved into `platform_darwin.go` (a deliberate no-op — the
+  macOS defaults are right) and `platform_linux.go`. The Linux file sets
+  three options whose defaults are wrong there, all verified against the
+  vendored wails source rather than guessed:
+  `WebviewGpuPolicy: OnDemand` (wails forces `Never` — software rendering
+  — when `options.Linux` is nil), `ProgramName: "snp"` (GTK
+  `g_set_prgname`; the `.desktop` entry's `StartupWMClass` must match or
+  the running window is a second unnamed taskbar entry) and `Icon` (GTK
+  window icon, embedded from `web/public/pwa-512x512.png` as
+  `webembed.IconPNG` — `go:embed` cannot reach a parent directory from
+  `cmd/snp-desktop`, and `web/embed.go` already owns the embed).
+  The Makefile `desktop` target is OS-aware and still emits the *identical*
+  darwin command (`CGO_LDFLAGS="-framework UniformTypeIdentifiers"`,
+  `-tags "production"`); on Linux it drops that flag (invalid there) and
+  adds wails' `webkit2_41` tag when pkg-config finds webkit2gtk-4.1
+  (`WEBKIT2=` forces 4.0). New: `deploy/snp.desktop`,
+  `deploy/install-desktop.sh` (per-user: binary to `<prefix>/bin`, entry
+  to `<prefix>/share/applications`, 192/512 icons into the hicolor theme;
+  `$HOME/.local` default, no root) and `make desktop-install`.
+  Docs updated: spec §12 (platform split, Linux packaging, the
+  no-cross-compile rule), §10 layout, AGENTS.md + CLAUDE.md desktop rule,
+  README.
+  **Verified today:** gofmt clean; `make -n desktop` prints the unchanged
+  darwin line; the darwin desktop build succeeds (45 MB
+  `bin/snp-desktop`); `make test` green (207 Vitest, svelte-check 0).
+  **Not verified:** the Linux compile itself — wails links against
+  GTK3/WebKit headers, so it cannot be built from macOS. That is the next
+  session's container build: `libgtk-3-dev` + `libwebkit2gtk-4.1-dev` +
+  Go, `make web` then the Linux desktop build, and a dry-run of
+  `install-desktop.sh` against a scratch `PREFIX=`. The script is
+  `bash -n` clean but has never run on Linux.
+  Gotcha for whoever touches this next: keep OS conditionals out of
+  `main.go`. The platform files exist precisely so the darwin build stays
+  byte-identical and Linux has somewhere to add options without a `uname`
+  branch in shared code.
+- 09:00 — Bundled **starter pack** (spec §5), asked for as "some
+  pre-packaged snippets (specifically a config file)". `internal/starter`
+  embeds `pack.json` — an ordinary import document (version 1) — so
+  seeding is the existing, tested import path: no second format and no new
+  store code. Four snippets land in a `Starter` folder via `folder_path`
+  (which import creates): snp's own annotated `config.toml` (the requested
+  config file), a `{{var}}`/`{{var|default}}` template example, a
+  loopback static file server, and `lsof` for a listening port. The ids
+  are pinned ULIDs, so applying the pack twice updates those rows rather
+  than duplicating them.
+  **Explicit only** — `snp seed`, `POST /api/seed`, and a settings-panel
+  button ("Add starter snippets") that seeds and then re-syncs so the rows
+  arrive in the local cache. That is a deliberate consequence of reading
+  `internal/store/import.go` before writing anything: merge mode sets
+  `deleted_at = NULL`, so *any* automatic apply would resurrect snippets
+  the user had deleted — hence no first-run hook, no `meta` table
+  migration, and no `.seeded` sentinel. The answer to both
+  design questions (content vs. mechanism; explicit vs. auto) picked this.
+  Docs: spec §5 (feature table, CLI list, API table row, and a new
+  "Starter pack" subsection), §10 layout, README, AGENTS.md + CLAUDE.md
+  layout lines.
+  Tests: `internal/starter` (well-formed pack, config snippet pinned,
+  applies idempotently against a real temp store), `cmd/snp` (`seedCmd`
+  twice), server (`POST /api/seed` creates the pack, folder present,
+  second call updates), Vitest (`api.seedStarter`, and the settings button
+  seeding + re-syncing). `make test` green (209 Vitest, svelte-check 0).
+- Gotcha for whoever edits `pack.json` next: keeping a pinned id means a
+  re-seed **overwrites** any user edits to that snippet, because merge
+  upserts by id. Adding snippets is always safe; changing one that already
+  shipped is a deliberate overwrite — use a new id if that is not what you
+  want.

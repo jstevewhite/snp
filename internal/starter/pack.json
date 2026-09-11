@@ -1,0 +1,46 @@
+{
+  "version": 1,
+  "folders": [],
+  "snippets": [
+    {
+      "id": "01M28AMMCPY2169347QBHP872G",
+      "title": "snp config.toml",
+      "language": "toml",
+      "folder_path": "Starter",
+      "tags": ["snp", "config"],
+      "notes": "snp's own config file. Every key is optional — each one also has a command-line flag and an `SNP_*` environment variable, and precedence is flag > env > file > default. The file lives at `$XDG_CONFIG_HOME/snp/config.toml`, or `~/.config/snp/config.toml` when that is unset; point somewhere else with `--config` or `SNP_CONFIG`. `snp key show-path` prints where the encryption key lives.",
+      "body": "hostname = \"snp\"\nowner = \"you@example.com\"\nstate_dir = \"~/.local/share/snp\"\nlog_level = \"info\"\n\n# AI snippet generation: set ai_key to enable it. Any\n# OpenAI-compatible endpoint works (ollama, llama.cpp, ...).\n# ai_endpoint = \"https://api.openai.com/v1\"\n# ai_model = \"gpt-4o-mini\"\n# ai_key = \"\"\n"
+    },
+    {
+      "id": "01M28AMMCP4YC4W6EYA9044QY8",
+      "title": "Copy a file into a directory",
+      "language": "bash",
+      "folder_path": "Starter",
+      "tags": ["file"],
+      "uses_variables": true,
+      "var_defaults": { "dest": "." },
+      "notes": "`{{source}}` and `{{dest}}` are template variables (spec §4). Fill them in the Variables panel before copying, or save defaults there; `dest` defaults to the current directory.",
+      "body": "cp -rf {{source}} {{dest|.}}"
+    },
+    {
+      "id": "01M28AMMCPM3TX4JX87TSXKKRA",
+      "title": "Serve the current directory over HTTP",
+      "language": "bash",
+      "folder_path": "Starter",
+      "tags": ["http"],
+      "uses_variables": true,
+      "notes": "Python's built-in static file server. It binds every interface unless you say otherwise, so this one is pinned to loopback — drop `--bind 127.0.0.1` only if you mean to expose the directory to your network.",
+      "body": "python3 -m http.server {{port|8000}} --bind 127.0.0.1"
+    },
+    {
+      "id": "01M28AMMCPHVQENMZH0Z1767ZB",
+      "title": "What is listening on a port",
+      "language": "bash",
+      "folder_path": "Starter",
+      "tags": ["network"],
+      "uses_variables": true,
+      "notes": "Lists the process holding a TCP port. `-n` and `-P` stop lsof from resolving host and port names, which keeps it fast and the output exact. Needs root (or `sudo`) to see processes owned by other users.",
+      "body": "lsof -nP -iTCP:{{port}} -sTCP:LISTEN"
+    }
+  ]
+}

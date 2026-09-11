@@ -1,0 +1,474 @@
+# snp — Implementation Plan
+
+Date: 2026-09-02
+Status: ready to execute
+Spec: `docs/snp-design.md` (this plan implements that document; section refs
+like "spec §4" point there)
+
+## 0. Conventions
+
+- **Module**: `github.com/jstevewhite/snp` (adjust if the repo lands elsewhere).
+- **Go**: current stable (≥ 1.24). Routing uses the stdlib `http.ServeMux`
+  method+pattern support (Go 1.22+); no router dependency.
+- **Third-party Go deps** (all of them):
+  - `github.com/pelletier/go-toml/v2` — config
+  - `modernc.org/sqlite` — SQLite driver (bundles FTS5; no cgo)
+  - `tailscale.com` — `tsnet`, `WhoIs`
+  - `github.com/oklog/ulid` — ids
+- **Frontend deps**: Svelte 5, Vite, TypeScript, `marked`, `dompurify`,
+  `minisearch`, `idb`, `@codemirror/*` (state, view, commands, language,
+  lang-*), `vite-plugin-pwa`, Vitest.
+- **Time**: every stored and serialized timestamp is RFC3339 UTC, second
+  precision, no fractions, always `Z` (spec §4). One helper,
+  `store.Now() time.Time` → `.Truncate(time.Second)`, formatted
+  `"2006-01-02T15:04:05Z"`. The store takes a `Clock` interface so tests can
+  control time (needed for the sync-boundary and purge tests).
+- **Errors**: the store returns typed errors — `ErrNotFound`,
+  `ErrFolderNotEmpty`, `ErrFolderCycle`, `ErrNameTaken`, `ErrImport` — and
+  the server maps them to status codes (spec §8). No error text leaks
+  storage details.
+- **Logging**: `log/slog` to stdout; request-logging middleware includes
+  method, path, status, duration, tailnet login.
+- **Commits**: one commit per task below; `make test` green on every commit.
+
+## Phase 0 — Scaffold
+
+Goal: the repo builds and tests from a clean checkout.
+
+- `go mod init github.com/jstevewhite/snp`
+- Create the layout from spec §10: `cmd/snp/`, `internal/config/`,
+  `internal/store/` (+ `migrations/`), `internal/server/`, `internal/tsauth/`,
+  `web/`, `deploy/`, `docs/`.
+- `web/embed.go` (package `webembed`): `//go:embed all:dist` exporting
+  `FS embed.FS`. A stub `web/dist/index.html` is checked in so a bare
+  `go build` works before the web build has ever run (spec §1 build note).
+- `Makefile`:
+
+  ```make
+  web:
+  	cd web && npm ci && npm run build
+  build: web
+  	go build -o bin/snp ./cmd/snp
+  test:
+  	go test ./...
+  	cd web && npm test && npm run check
+  dev: build
+  	./bin/snp serve --dev-listen :8080
+  ```
+
+- `cmd/snp/main.go`: subcommand dispatch skeleton (`serve`, `backup`,
+  `export`, `import`, `key`) printing "not implemented".
+
+**Done when**: `make build` and `make test` succeed on a fresh clone.
+
+## Phase 1 — Config (`internal/config`)
+
+Goal: spec §2 resolution, fully tested.
+
+- `Config{ Hostname, Owner, StateDir, LogLevel string }` plus
+  `DevListen string` (empty = production mode).
+- Resolution order, per key: flag > `SNP_*` env > TOML file > default
+  (spec §2). Env names: `SNP_HOSTNAME`, `SNP_OWNER`, `SNP_STATE_DIR`,
+  `SNP_LOG_LEVEL`, `SNP_CONFIG` (file path only).
+- File discovery: `--config` → `$XDG_CONFIG_HOME/snp/config.toml` →
+  `~/.config/snp/config.toml`. A missing file is not an error; malformed
+  TOML is.
+- Expand `~` in `state_dir`; after expansion it must be absolute.
+- Defaults: `hostname=snp`, `log_level=info`,
+  `state_dir=~/.local/share/snp`. `owner` is required unless dev mode.
+- `Load(flags)` returns the resolved config plus which source each value
+  came from (useful for a future `snp config show`).
+
+**Tests** (`config_test.go`): precedence matrix for every key (flag beats
+env, env beats file, file beats default); `~` expansion; missing vs
+malformed TOML; owner required in prod; dev mode without owner.
+
+**Done when**: table-driven tests green.
+
+## Phase 2 — Store (`internal/store`)
+
+The largest phase. Files and responsibilities:
+
+| File | Responsibility |
+|---|---|
+| `store.go` | `Store` type, `Open(path)` (DSN pragmas), `Close`, `Clock` injection |
+| `migrate.go` | embedded `migrations/*.sql`, `schema_version` table, apply in a tx |
+| `snippets.go` | CRUD, soft delete, raw body, FTS rewrite on every write |
+| `folders.go` | CRUD, move, cycle check, sibling-uniqueness check |
+| `tags.go` | normalize + upsert, snippet↔tag joins, tag listing with counts |
+| `search.go` | query parsing, SQL building, FTS fallback, pagination |
+| `sync.go` | `SyncSince(since string)` (empty = full), `server_time` capture |
+| `purge.go` | 30-day hard purge, tag pruning, `StartPurger(ctx)` (startup + 24h ticker) |
+| `crypto.go` | key load/create (0600), AES-256-GCM seal/open, AAD = snippet id |
+| `export.go` | export document (live rows, bodies decrypted) |
+| `import.go` | merge/replace import, `folder_path` creation |
+| `migrations/0001_init.sql` | full schema from spec §4 |
+
+Key implementation points:
+
+- **Open pragmas**: `journal_mode=WAL`, `busy_timeout=5000`,
+  `foreign_keys=ON`, `synchronous=NORMAL` (spec §4).
+- **Schema**: exactly spec §4 — `snippets` carries the `rowid INTEGER
+  PRIMARY KEY` surrogate and `id TEXT NOT NULL UNIQUE`; `snippets_fts` is
+  external content: `content='snippets', content_rowid='rowid'`.
+- **FTS write helpers** (`snippets.go`): `insertFTSTx(tx, rowid, title,
+  notes, bodyForIndex, tagsJoined)` and `deleteFTSTx(tx, rowid)`.
+  `bodyForIndex` is `""` when `is_sensitive`; `tagsJoined` is space-joined
+  (safe: tag names match `[a-z0-9][a-z0-9-]*`, rejected otherwise with
+  400 at the API layer). New rows get insert only — a DELETE for a rowid
+  never indexed corrupts the FTS5 index. Replace deletes the old FTS row
+  **before** the content update, then inserts. On snippet removal the FTS
+  row is deleted **before** the main row, same transaction (spec §4).
+- **Search** (`search.go`):
+  - Parse `q`: split on whitespace; `tag:x` / `lang:x` tokens become
+    filters (repeatable, ANDed); the remainder is rejoined as the FTS
+    expression. `tag:`/`lang:` tokens AND with the separate
+    `tag=`/`lang=` params.
+  - SQL: base `snippets` with `deleted_at IS NULL`; folder filter on
+    `folder_id`; lang filter on `language`; tag filter via
+    `EXISTS (… snippet_tags JOIN tags …)`; FTS via
+    `JOIN snippets_fts ON snippets_fts.rowid = snippets.rowid AND
+    snippets_fts MATCH ?`.
+  - Ordering: with FTS → `bm25(snippets_fts, 10.0, 1.0, 1.0, 1.0)`;
+    without → `updated_at DESC, id DESC`.
+  - Pagination: default `limit` 50, max 200, `offset` ≥ 0.
+  - Fallback: if the first `MATCH` errors, retry the whole expression as a
+    quoted phrase (double any embedded `"`); second failure →
+    `ErrFTS` → 400.
+  - Empty remainder after filter extraction → no `MATCH` clause at all.
+- **Sync** (`sync.go`): capture `serverTime := Now()` **before** the read;
+  return live rows with `updated_at > since` plus tombstones with
+  `deleted_at > since` (folders and snippets), sensitive bodies as `null`,
+  and `server_time` = the captured value. Empty `since` → full sync
+  (spec §5).
+- **Purge** (`purge.go`): hard-delete snippets with
+  `deleted_at < now - 30d` (snippet_tags, then FTS row, then main row, one
+  tx per row-batch); same for folders; then delete tags with no live
+  `snippet_tags` rows. Runs at startup and on a 24h ticker.
+- **Crypto** (`crypto.go`): key = 32 bytes `crypto/rand` at
+  `state_dir/key` (create 0600 if absent, refuse to run if the file has
+  the wrong size). `Seal(id, plaintext) → nonce(12) || GCM(id, nonce, pt)`
+  with AAD = `id`; `Open` is the inverse; AAD mismatch surfaces as a
+  distinct error. Toggling `is_sensitive` re-encrypts/decrypts and rewrites
+  the FTS row.
+- **Folders** (`folders.go`): create/rename enforce unique name per parent
+  (`ErrNameTaken`); move walks the `parent_id` chain from the destination
+  up — if it reaches the folder being moved, `ErrFolderCycle`; delete
+  refuses live children or live snippets (`ErrFolderNotEmpty`).
+- **Import** (`import.go`): document type mirrors the export JSON
+  (spec §5). `merge`: upsert by id — existing ids keep `created_at`,
+  missing ids get a ULID + `created_at = now`. `replace`: upsert everything
+  in the document, then soft-delete live snippets/folders not in it, one
+  transaction, snippets before folders. Duplicate ids inside one document
+  → `ErrImport`. `folder_path` ("shell/deploy"): walk segments from root,
+  reuse an existing live child with that name, create otherwise. Imported
+  bodies are plaintext; if `is_sensitive` is set, re-encrypt under the
+  final (possibly new) id so the AAD matches.
+- **Export** (`export.go`): `{version: 1, exported_at, folders, snippets}`
+  with all bodies decrypted (requires the key).
+
+**Tests** (in-memory DB, `Clock` faked where time matters) — the full list
+from spec §9:
+
+- CRUD round trip; tag normalization (case/trim, charset rejection);
+- FTS rowid mapping across create/update/delete, including external-content
+  delete ordering;
+- FTS matching, the quoted-phrase fallback, and the 400 path;
+- `tag:`/`lang:`/`folder:` filters, mixed with FTS terms, AND semantics;
+- sensitive bodies excluded from FTS (search cannot match them;
+  title/notes/tags still can);
+- encrypt/decrypt round trip + AAD-mismatch error;
+- sync: since boundary with the fake clock (a row written just after the
+  snapshot is not lost; duplicates harmless), full sync with empty since,
+  tombstone shape;
+- purge: 30-day hard delete, tag pruning, folder purge;
+- folder delete refusal, move cycle refusal, sibling name collision;
+- import merge and replace, `folder_path` creation, duplicate-id rejection,
+  timestamp preservation, sensitive re-encryption on import.
+
+**Done when**: all store tests green; `go vet` clean.
+
+## Phase 3 — tsauth (`internal/tsauth`)
+
+Goal: one interface the server can use in prod, dev, and tests.
+
+- `Identity{ Login, DisplayName string }`
+- `IdentityResolver` interface: `WhoIs(ctx, remoteAddr string) (Identity,
+  error)`
+- `tsauth.Tailscale`: wraps `tsnet.Node`.
+  - `New(stateDir, hostname, authKey)`: `tsnet.NewNode` with state persisted
+    under `stateDir/tsnet`; `authKey` from `TS_AUTHKEY` (first join only —
+    afterwards the state file suffices).
+  - `Listen(ctx)` → `node.Listen("https://:443")` (Tailscale cert, spec §1).
+  - `WhoIs` delegates to `node.WhoIs`.
+  - Node name collision (another `snp` in the tailnet) → clear startup
+    error.
+- `tsauth.Dev`: fixed `Identity{Login: "dev@local"}`; no tsnet.
+- WhoIs failures (transient control-plane issues) return an error the
+  server maps to 500, logged with detail.
+
+**Tests**: `Dev` behavior; `Tailscale.WhoIs` error mapping (fake node).
+Real tailnet behavior is covered by the Phase 4 smoke.
+
+**Done when**: `snp serve` can start a tsnet node and serve `/` on the
+tailnet (verified by hand — see Phase 4 smoke).
+
+## Phase 4 — Server + API (`internal/server`)
+
+Goal: the full HTTP surface from spec §5, tested with `httptest`.
+
+- **Router**: stdlib `ServeMux` patterns, one handler per endpoint:
+  `GET /api/me`, `GET/POST /api/snippets`, `GET/PUT/DELETE
+  /api/snippets/{id}`, `GET /api/snippets/{id}/raw`, `GET/POST
+  /api/folders`, `PUT/DELETE /api/folders/{id}`, `GET /api/tags`,
+  `GET /api/sync`, `GET /api/export`, `POST /api/import`.
+- **Middleware chain** (in order): recover → request logging → auth
+  (`WhoIs` on `r.RemoteAddr`, compare to `owner`, 403 JSON on mismatch,
+  identity into context) → content-type check (state-changing methods
+  require `application/json`, else 415 — spec §3 CSRF rule) →
+  `http.MaxBytesReader` 10 MiB (413).
+- **Handlers** map 1:1 to store methods; error mapping:
+  `ErrNotFound`→404, `ErrFolderNotEmpty`→409, `ErrNameTaken`→409,
+  `ErrFolderCycle`→400, tag-charset/FTS/other validation→400,
+  store/crypto failures→500 (detail logged only).
+- `/raw`: `Content-Type: text/plain; charset=utf-8`, decrypted body
+  verbatim (no added newline), 404 when deleted.
+- `/api/import`: `?mode=merge|replace` (default merge).
+- **Static**: `webembed.FS` served for everything non-`/api`; SPA fallback
+  to `index.html` for unknown paths without a file extension.
+- **`serve` wiring** (`cmd/snp`): load config → open store (migrate) →
+  load/create key → tsnet listen (or dev listener on
+  `127.0.0.1:8080` default) → start purger → `http.Serve` → graceful
+  shutdown on SIGINT/SIGTERM (close listener, stop purger, close node and
+  DB).
+
+**Tests** (`httptest`, fake `IdentityResolver`, real in-memory store):
+
+- Auth: accept owner, reject other login (403 JSON), whois-error → 500.
+- 415 on `POST/PUT/DELETE` without JSON content type; 413 over 10 MiB.
+- Every endpoint's happy path and validation errors (spec §9 list),
+  including: snippet list filters + pagination defaults, FTS fallback 400,
+  folder create/rename collision 409, folder move cycle 400, folder delete
+  non-empty 409, sync shape + `server_time`, import merge/replace,
+  export shape, `/raw` plaintext.
+
+**Smoke (manual, `make dev`)**: `curl` the full endpoint set against
+`--dev-listen`; then a real `snp serve` on the tailnet: `curl
+https://snp.<tailnet>.ts.net/api/me` from a second tailnet machine.
+
+**Done when**: handler tests green + both smoke passes.
+
+## Phase 5 — CLI subcommands
+
+Goal: spec §1 subcommands complete and usable from cron.
+
+- `snp backup <dest>`: `VACUUM INTO '<dest>'`, then open the destination
+  and run `PRAGMA quick_check`; non-zero exit on failure. (Full
+  `integrity_check` available via a `--full-check` flag.)
+- `snp export [-o file]`: default stdout; pretty-printed JSON.
+- `snp import <file>`: reads the JSON document, applies with
+  `--mode=merge|replace` (default merge).
+- `snp key show-path`: prints the key file path.
+- All subcommands load config the same way as `serve`; none of them touch
+  tsnet.
+
+**Done when**: backup→restore drill passes (restore the backup into a dev
+DB, diff against the original); export→import round trip preserves data.
+
+## Phase 6 — Frontend, online flows (`web/`)
+
+Goal: the three-pane app, fully functional while online (spec §6).
+
+- **Scaffold**: `npm create vite web -- --template svelte-ts`; Svelte 5
+  (runes), TypeScript strict; Vitest + `jsdom`; `svelte-check` in the
+  `check` script.
+- **Structure**:
+
+  ```
+  web/src/
+    lib/
+      types.ts       API types (snippet, folder, tag, sync, export)
+      api.ts         fetch wrapper; typed; throws on !ok
+      query.ts       parse/serialize the spec §5 query syntax
+      templates.ts   {{var}} / {{var|default}} parse + render
+      db.ts          IndexedDB (idb): folders, snippets, meta{server_time}
+      sync.ts        sync + idempotent merge (upsert, tombstones, server_time)
+      search.ts      MiniSearch index, incremental updates on merge
+      online.ts      navigator.onLine + fetch-failure tracking
+    components/
+      FolderTree.svelte  TagList.svelte  SearchBox.svelte
+      ResultList.svelte  SnippetView.svelte  SnippetEditor.svelte
+      TemplateDialog.svelte  OfflineBanner.svelte
+    App.svelte       three-pane layout; breakpoint → stacked panes
+  ```
+
+- **Behaviors** (spec §6):
+  - Search: 250 ms debounce; online → `/api/snippets?q=…`; offline →
+    local index; same query syntax both ways.
+  - View: title, language badge, tags, folder path, notes rendered with
+    `marked` + `DOMPurify`, body in read-only CodeMirror with highlighting;
+    language packs lazy-loaded via a `Record<string, () =>
+    Promise<LanguageSupport>>` map.
+  - Edit: CodeMirror body, textarea notes, language select, folder picker,
+    tag input with suggestions from `/api/tags`; save = `PUT` (create =
+    `POST`), `Cmd/Ctrl+Enter`; inline error keeps editor state on failure.
+  - Copy: `c` or button; template variables → dialog listing each with its
+    default; blank no-default variable → empty string; rendered text to
+    clipboard.
+  - Sensitive: masked body; reveal fetches `GET /api/snippets/{id}` and
+    holds the body only in that view's state.
+  - Keyboard: `/` focus search, `n` new, `Cmd/Ctrl+Enter` save, `Esc`
+    cancel, `c` copy — all suppressed while typing in an input, textarea,
+    or CodeMirror (`closest('.cm-editor')` / `isContentEditable` check).
+
+- **Unit tests** (Vitest): `query.ts` parsing (filters, FTS remainder,
+  empty-after-filters), `templates.ts` parse/render (defaults, blank,
+  invalid names ignored), `sync.ts` merge (idempotent upsert, tombstones,
+  `server_time` storage, sensitive bodies stay null), `search.ts` offline
+  search against a fixture cache.
+
+**Done when**: `make dev` smoke — create, search (FTS + filters), edit,
+copy with templates, view sensitive reveal, keyboard shortcuts — all work;
+unit tests green.
+
+## Phase 7 — PWA + offline
+
+Goal: installable, offline read, honest write-disabled state (spec §6).
+
+- `vite-plugin-pwa`: manifest (name/short_name `snp`, 192 + 512 icons,
+  maskable, `display: standalone`, `start_url: /`), `registerType:
+  autoUpdate`, precache the built app shell, `navigateFallback:
+  /index.html`, runtime caching: `/api/*` → `NetworkOnly` (never cached).
+- Sync triggers: on mount, on `visibilitychange`/`focus`, and every 5
+  minutes while open (spec §6 — the timer alone is not enough on mobile).
+- Offline: list/search read from IndexedDB via the MiniSearch index;
+  create/edit/delete disabled with `OfflineBanner`; nothing queued;
+  sensitive reveal disabled with an "online required" hint.
+- "Full resync" action (settings menu): clear IndexedDB cache and re-sync
+  from scratch (spec §6 recovery path).
+- After reconnect: one sync, then the UI refreshes from the local store.
+
+**Manual verification**: install on macOS (Chrome/Safari), Android, and
+iOS; airplane-mode the device → browse + search work, writes blocked,
+sensitive reveal blocked; reconnect → changes from elsewhere appear.
+
+**Done when**: all three platforms pass the manual checklist.
+
+## Phase 8 — Deployment + ops
+
+Goal: one-command install on a host, cron backup, honest README (spec §7).
+
+- `deploy/snp.service`:
+
+  ```ini
+  [Unit]
+  Description=snp snippet manager
+  After=network-online.target
+
+  [Service]
+  User=snp
+  Group=snp
+  Environment=HOME=/var/lib/snp
+  StateDirectory=snp
+  WorkingDirectory=/var/lib/snp
+  ExecStart=/usr/local/bin/snp serve
+  Restart=on-failure
+  ProtectSystem=strict
+  ProtectHome=true
+  PrivateTmp=true
+  NoNewPrivileges=true
+
+  [Install]
+  WantedBy=multi-user.target
+  ```
+
+  `TS_AUTHKEY` via `EnvironmentFile=-/var/lib/snp/.config/snp/authkey`
+  (the `-` makes it optional after first join; the file is kept, not
+  deleted, so a state wipe can re-join without re-issuing steps).
+- `deploy/install.sh`: create the `snp` user (home `/var/lib/snp`), copy
+  the binary to `/usr/local/bin/snp`, write the starter config (hostname,
+  owner, log level) to `/var/lib/snp/.config/snp/config.toml`, install and
+  enable the unit.
+- `deploy/backup.sh DEST_DIR` (cron-able, runs as `snp`):
+
+  ```bash
+  ts=$(date +%Y%m%d-%H%M%S)
+  snp backup "$DEST_DIR/snp-$ts.db"     # VACUUM INTO + quick_check inside
+  cp /var/lib/snp/.local/share/snp/key "$DEST_DIR/snp.key"
+  find "$DEST_DIR" -name 'snp-*.db' -mtime +"$RETENTION_DAYS" -delete
+  ```
+
+  `RETENTION_DAYS` defaults to 7 (spec leaves it configurable).
+- `README.md`: install, first run (authkey), the access URL
+  (`https://snp.<tailnet>.ts.net` — DNS name, not 100.x IP), PWA install,
+  backup/restore, and the plain-language warnings: the key file is
+  required to read sensitive snippets from a backup; export files are as
+  sensitive as db+key; deleting `state_dir/tsnet` requires the authkey
+  again; `--dev-listen` is unauthenticated and local-only.
+
+**Acceptance**: fresh install on the host via `install.sh`; reachable from a
+second tailnet machine; cron backup runs and a backup restores cleanly;
+README claims match observed behavior.
+
+## Phase 9 — Hardening + release
+
+- Walk the spec §8 error table endpoint by endpoint; confirm each status
+  code and that 500s never leak detail.
+- Log audit: no secrets, no bodies, no full query strings containing
+  sensitive content.
+- Full smoke pass of the Phase 4/6/7 checklists on the deployed instance.
+- Tag `v0.1.0`.
+
+## Test plan (summary)
+
+| Layer | Where | Coverage |
+|---|---|---|
+| Store (in-memory SQLite, fake clock) | `internal/store/*_test.go` | spec §9 store list, incl. FTS rowid mapping, sync boundary, purge, folder invariants, import modes |
+| Handlers (`httptest`, fake resolver) | `internal/server/*_test.go` | auth accept/reject, 415/413, every endpoint happy + validation paths |
+| Frontend (Vitest) | `web/src/lib/*` | query parsing, template parse/render, sync merge, offline search |
+| Manual | `make dev` + tailnet + 3 platforms | Phase 4 smoke, Phase 7 PWA checklist, Phase 8 acceptance |
+
+No browser end-to-end tests in v1 (spec §9).
+
+## Milestones
+
+| M | Phases | Acceptance |
+|---|---|---|
+| M0 | 0 | `make build` + `make test` green on fresh clone |
+| M1 | 1 | config precedence tests green |
+| M2 | 2 | full store test list green |
+| M3 | 3–5 | tailnet smoke + dev smoke pass; CLI backup/export/import round trip verified |
+| M4 | 6 | online flows smoke pass in dev |
+| M5 | 7 | PWA installed on macOS/Android/iOS; offline checklist passes |
+| M6 | 8 | deployed on a host; second-machine access; cron backup + restore drill |
+| M7 | 9 | error table verified; `v0.1.0` tagged |
+
+## Risks and mitigations
+
+- **tsnet cert/DNS surprises** (cert only valid for tailnet DNS names,
+  node-name collisions, authkey semantics) — spike this *first* in Phase 3
+  with a hello handler before building on top; README documents the DNS
+  name requirement.
+- **modernc.org/sqlite FTS5 quirks** (external-content delete ordering,
+  rebuild) — covered by dedicated store tests; `rebuild` statement
+  documented as the recovery path.
+- **Sync boundary regressions** — the fake-clock store test pins the
+  `server_time`-before-read rule; any refactor that moves the capture
+  fails the test.
+- **Bundle size from CodeMirror language packs** — lazy per-language
+  dynamic imports; only the active language is loaded.
+- **iOS PWA limitations** (no background sync, app suspension) —
+  visibility/focus-triggered sync; documented in the README.
+- **Single-machine SPOF** (host down = no snippets) — out of scope by
+  design; mitigated by cron backups + offsite copy (operator's job,
+  README).
+
+## Open items (resolve during execution)
+
+- Confirm the exact module path / repo location for
+  `github.com/jstevewhite/snp`.
+- Verify the `owner` login string against a live `tailscale whois` on
+  first run (spec example: `jstevewhite@github`).
+- PWA icon set: ship a generated placeholder at M5, real icons as a
+  follow-up.
+- Default backup retention: 7 days assumed; confirm with the operator.

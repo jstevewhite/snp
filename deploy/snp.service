@@ -1,0 +1,37 @@
+# snp — systemd unit (spec §7).
+#
+# Runs `snp serve` as the dedicated `snp` user. All state lives under
+# /var/lib/snp (StateDirectory): config in .config/snp, database and key
+# in .local/share/snp, tailscale node state in .local/share/snp/tsnet.
+#
+# TS_AUTHKEY is supplied via the optional EnvironmentFile below. The `-`
+# makes the file optional: it is only needed for the first join, and it is
+# kept (not deleted) afterwards so a state wipe can re-join the tailnet
+# without re-issuing an auth key.
+[Unit]
+Description=snp snippet manager
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+User=snp
+Group=snp
+Environment=HOME=/var/lib/snp
+EnvironmentFile=-/var/lib/snp/.config/snp/authkey
+StateDirectory=snp
+WorkingDirectory=/var/lib/snp
+ExecStart=/usr/local/bin/snp serve
+Restart=on-failure
+RestartSec=5
+# The first start joins the tailnet inside ts.Listen, which blocks until
+# the auth key is consumed or the printed auth URL is approved. That can
+# take minutes of wall time, so the default 90s start timeout would kill
+# it and the restart loop would re-issue the URL every ~95s.
+TimeoutStartSec=600
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

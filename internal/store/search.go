@@ -1,0 +1,163 @@
+package store
+
+import (
+	"context"
+	"database/sql"
+	"fmt"
+	"regexp"
+	"strings"
+)
+
+// ListFilter drives ListSnippets. Q uses the spec §5 query syntax
+// (tag:x / lang:x tokens mixed with FTS terms).
+type ListFilter struct {
+	Q      string
+	Tags   []string
+	Langs  []string
+	Folder *string
+	Limit  int
+	Offset int
+}
+
+var (
+	tagFilterRe  = regexp.MustCompile(`^tag:(.+)$`)
+	langFilterRe = regexp.MustCompile(`^lang:(.+)$`)
+)
+
+// ParseQuery splits q into FTS terms, tag filters, and language
+// filters (spec §5).
+func ParseQuery(q string) (fts string, tags, langs []string) {
+	for _, tok := range strings.Fields(q) {
+		if m := tagFilterRe.FindStringSubmatch(tok); m != nil {
+			tags = append(tags, m[1])
+			continue
+		}
+		if m := langFilterRe.FindStringSubmatch(tok); m != nil {
+			langs = append(langs, m[1])
+			continue
+		}
+		if fts == "" {
+			fts = tok
+		} else {
+			fts += " " + tok
+		}
+	}
+	return fts, tags, langs
+}
+
+// ListSnippets searches/lists live snippets (spec §5). Sensitive
+// bodies are never returned in this context.
+func (s *Store) ListSnippets(f ListFilter) ([]SnippetOut, error) {
+	ctx := context.Background()
+	pqFts, pqTags, pqLangs := ParseQuery(f.Q)
+	tags := dedupe(append(append([]string{}, f.Tags...), pqTags...))
+	langs := dedupe(append(append([]string{}, f.Langs...), pqLangs...))
+	limit := f.Limit
+	if limit <= 0 {
+		limit = 50
+	}
+	if limit > 200 {
+		limit = 200
+	}
+	offset := f.Offset
+	if offset < 0 {
+		offset = 0
+	}
+
+	run := func(ftsExpr string) ([]SnippetOut, error) {
+		var b strings.Builder
+		b.WriteString(`SELECT s.id, s.title, s.body, s.language, s.notes, s.folder_id,
+			s.is_sensitive, s.uses_variables, s.var_defaults, s.var_defaults_enc,
+			s.created_at, s.updated_at
+			FROM snippets s`)
+		var args []any
+		if ftsExpr != "" {
+			b.WriteString(` JOIN snippets_fts ON snippets_fts.rowid = s.rowid AND snippets_fts MATCH ?`)
+			args = append(args, ftsExpr)
+		}
+		b.WriteString(` WHERE s.deleted_at IS NULL`)
+		if f.Folder != nil {
+			b.WriteString(` AND s.folder_id = ?`)
+			args = append(args, *f.Folder)
+		}
+		if len(langs) > 0 {
+			b.WriteString(` AND s.language IN (` + placeholders(len(langs)) + `)`)
+			for _, l := range langs {
+				args = append(args, l)
+			}
+		}
+		for _, t := range tags {
+			b.WriteString(` AND EXISTS (SELECT 1 FROM snippet_tags st
+				JOIN tags tg ON tg.id = st.tag_id
+				WHERE st.snippet_id = s.id AND tg.name = ?)`)
+			args = append(args, t)
+		}
+		if ftsExpr != "" {
+			b.WriteString(` ORDER BY bm25(snippets_fts, 10.0, 1.0, 1.0, 1.0)`)
+		} else {
+			b.WriteString(` ORDER BY s.updated_at DESC, s.id DESC`)
+		}
+		b.WriteString(` LIMIT ? OFFSET ?`)
+		args = append(args, limit, offset)
+
+		rows, err := s.db.QueryContext(ctx, b.String(), args...)
+		if err != nil {
+			return nil, err
+		}
+		defer rows.Close()
+
+		out := []SnippetOut{}
+		var ids []string
+		for rows.Next() {
+			var sn SnippetOut
+			var body []byte
+			var folder sql.NullString
+			var sens, uvars int
+			var vdPlain string
+			var vdEnc sql.Null[[]byte]
+			if err := rows.Scan(&sn.ID, &sn.Title, &body, &sn.Language, &sn.Notes,
+				&folder, &sens, &uvars, &vdPlain, &vdEnc, &sn.CreatedAt, &sn.UpdatedAt); err != nil {
+				return nil, err
+			}
+			if folder.Valid {
+				sn.FolderID = &folder.String
+			}
+			sn.IsSensitive = sens != 0
+			sn.UsesVariables = uvars != 0
+			if !sn.IsSensitive {
+				b := string(body)
+				sn.Body = &b
+				vd, err := s.loadVarDefaults(sn.ID, vdPlain, nil, false)
+				if err != nil {
+					return nil, err
+				}
+				sn.VarDefaults = vd
+			}
+			out = append(out, sn)
+			ids = append(ids, sn.ID)
+		}
+		if err := rows.Err(); err != nil {
+			return nil, err
+		}
+		tagMap, err := s.tagsFor(ctx, ids)
+		if err != nil {
+			return nil, err
+		}
+		for i := range out {
+			out[i].Tags = tagMap[out[i].ID]
+		}
+		return out, nil
+	}
+
+	out, err := run(pqFts)
+	if err != nil && pqFts != "" {
+		// Spec §5: retry the whole expression as a quoted phrase; if
+		// that also fails, it is a 400 at the API layer.
+		quoted := `"` + strings.ReplaceAll(pqFts, `"`, `""`) + `"`
+		out, err = run(quoted)
+		if err != nil {
+			return nil, fmt.Errorf("%w: %v", ErrFTS, err)
+		}
+	}
+	return out, err
+}

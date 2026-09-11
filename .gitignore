@@ -1,0 +1,36 @@
+# Binaries (Makefile: `make build` → bin/snp)
+bin/
+
+# Packaged .app bundle (Makefile: `make app` → build/snp.app)
+build/
+
+# Serena MCP project state
+.serena/
+
+# Test binaries and coverage output (go test -c / -coverprofile)
+*.test
+*.out
+coverage.*
+
+# SQLite state files — live in the state dir, not the repo
+*.db
+*.db-wal
+*.db-shm
+
+# Web (SvelteKit) — dependencies, build cache, and build output.
+# The stub web/dist/index.html is checked in so go:embed works
+# before phase 6 (see Makefile).
+web/node_modules/
+web/.svelte-kit/
+web/dist/*
+!web/dist/index.html
+
+# Local dev state dir (snp serve --dev-listen run from the repo root)
+.dev-state/
+
+# Git bundles used to carry commits to another machine (a bundle holds
+# only committed refs, so these are transport, not source)
+*.bundle
+
+# macOS
+.DS_Store
