@@ -873,3 +873,27 @@ Spec: `docs/snp-design.md` · Plan: `docs/snp-implementation-plan.md`
   upserts by id. Adding snippets is always safe; changing one that already
   shipped is a deliberate overwrite — use a new id if that is not what you
   want.
+- 2026-09-11 — README review against the current Makefile, dependency
+  manifests, configuration, installer, AI handlers/frontend, and design.
+  Feedback only; existing README edits preserved. Findings: cross-build
+  example leaves the shell in web/; documented Go/Node minimums lag the
+  manifests; AI privacy wording omits Explain/Suggest tags sending the
+  current body (including sensitive bodies) and tag vocabulary; desktop
+  network and shared-state wording needs qualification; macOS Safari uses
+  Add to Dock; make app does not notarize by default. Spec §13 repeats the
+  unsupported sensitive-content guarantee and needs reconciliation too.
+  Suggested leading with the product overview and moving model provenance
+  later. Validation was source inspection plus Apple documentation for the
+  Safari menu; no builds/tests run for this feedback-only review.
+- 2026-09-11 — Applied the requested README review fixes. Led with the
+  product overview and moved the existing model-provenance story to the
+  end; split server/desktop requirements and quick starts; corrected Go
+  and Node requirements, cross-build working directory, Safari install,
+  desktop networking/state sharing, and default macOS notarization claims.
+  Added search/template examples and explicit AI payload/sensitive-body
+  behavior. Moved platform build and signing detail to docs/desktop.md.
+  Validation: markdownlint-cli2 clean for both documents; local links and
+  anchors resolve; all shell examples pass bash -n; git diff --check clean.
+  No application builds/tests needed for these documentation changes.
+  Gotcha remains: spec §13's sensitive-content guarantee disagrees with
+  the implementation; this session updates the requested README and guide.

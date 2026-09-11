@@ -1,17 +1,12 @@
 # snp
 
-## Notes on AI
+A personal snippet manager with a Go backend and an embedded Svelte 5 UI.
+Run one server on your tailnet and use it through a browser or installed
+PWA, or run a local desktop app on macOS/Linux.
 
-This began as a project to compare various models and their ability to produce useful code. I've been a user of Snippetlab, but they dropped out of SetApp, so I needed a new snippet manager, and decided it was a good test. So I gave the task to Opus 5, chat gpt Sol, qwen3.8-27b (initially). Opus made the best out of the gate, but I was blown away by what qwen3.8-27b produced, running locally, using the deepseek-harness and /goal. Sol's was prettiest but had weird commentary all over the front page (every option had an aphorism attached, like *saving your most valuable work*). It was also enormous. 
-
-This program is the one I'm using, and it was initially created by qwen3.8-27b running on my GX10 (DGX Spark clone), and then polished by qwen3.8-flash-next (same box) and then deepseek-v4-flash-vision-exp, which is insanely fast and at this level, incredibly functional. CLAUDE was used to review code. The AGENTS file has a commit flag - to append harness and model of all commits.
-
-## SNP in Detail
-
-A personal snippet manager. One Go binary on your tailnet; every machine on
-the tailnet reaches it through a browser or an installed PWA. Fast full-text
-search over everything from a one-liner to a whole script, nested folders,
-tags, Markdown notes, `{{template}}` variables, and offline read via PWA.
+Store anything from a one-liner to a whole script, with full-text search,
+nested folders, tags, Markdown notes, `{{template}}` variables, and offline
+read via PWA.
 
 - Design: [docs/snp-design.md](docs/snp-design.md)
 - Implementation plan: [docs/snp-implementation-plan.md](docs/snp-implementation-plan.md)
@@ -30,7 +25,7 @@ the rendered command.*
 
 ## How it works
 
-One binary, `snp`:
+The server is one binary, `snp`:
 
 - `snp serve` — joins your tailnet as its own node (embedded tsnet; no
   Tailscale daemon needed on the host), gets an HTTPS certificate from
@@ -47,6 +42,10 @@ One binary, `snp`:
   settings panel.
 - `snp key show-path` — prints the encryption key path, for backup scripts.
 
+`cmd/snp-desktop` is a second binary: the same store and UI in a native
+macOS/Linux window, local-only — see
+[Desktop app](#desktop-app-macos--linux-wails).
+
 Storage is SQLite with FTS5 under `state_dir` (default
 `~/.local/share/snp`): `snp.db` (the database), `key` (AES-256-GCM key for
 sensitive snippets), `tsnet/` (tailscale node state). Sensitive snippets are
@@ -55,20 +54,68 @@ local cache.
 
 ## Requirements
 
+### Building from source
+
+- Go **1.26.6 or newer**, as declared in `go.mod`.
+- Node.js **24.x** for the web build and tests. The locked test tools also
+  support Node 22.12+ within 22.x, or 26+; Node 20 does not satisfy the
+  full test toolchain.
+- npm and make. Build commands below run from the repository root.
+
+### Server requirements
+
 - A Tailscale tailnet with **MagicDNS** and **HTTPS certificates** enabled
   (admin panel). The Tailscale certificate only validates for the tailnet
   DNS name, so the app must be reached by `https://snp.<your-tailnet>.ts.net`
   — never by a `100.x` IP.
-- A systemd Linux host on the tailnet — an always-on machine that stays
-  up (this is the design's deployment target).
-- To build: Go ≥ 1.24 and Node ≥ 20. Or build once anywhere and ship the
-  binary (see below).
+- An always-on systemd Linux host with cron running for the installed
+  daily backup. The binary joins the tailnet itself via tsnet.
+- Client devices connected to the tailnet under the configured owner's
+  identity. The host does not need a separate Tailscale daemon.
+
+The server can be built elsewhere and shipped as a single binary; its
+runtime needs neither Go nor Node.js.
+
+### Desktop requirements
+
+- macOS or Linux; no tailnet or configured owner is required.
+- To build on macOS: Xcode Command Line Tools for CGO.
+- To build on Linux: a C compiler, pkg-config, GTK3 and WebKitGTK development
+  packages. The matching GTK/WebKit shared libraries are needed at runtime.
+  See the [desktop build guide](docs/desktop.md) for package names and
+  platform details.
+
+## Quick start
+
+### Tailnet server
+
+From a checkout on the target Linux host, with the requirements above met:
+
+```sh
+make build
+sudo TS_AUTHKEY=tskey-... ./deploy/install.sh -o your-tailnet-login
+```
+
+Replace the auth key and login with your own values, then open
+`https://snp.<your-tailnet>.ts.net` from an owner device on your tailnet.
+See [Installing](#installing-one-command) for configuration and verification.
+
+### Local desktop
+
+From a checkout on the Mac or Linux machine where the app will run:
+
+```sh
+make run-desktop
+```
+
+This builds the web app and desktop binary, then opens the local window.
+See [Desktop app](#desktop-app-macos--linux-wails) for packaging and installation.
 
 ## Building
 
 ```sh
 make build      # builds web/dist (Svelte + Vite), then bin/snp
-make test       # go test + Vitest + svelte-check
+make test       # go vet + Go tests + Vitest + svelte-check/TypeScript
 ```
 
 The web app is embedded into the binary with `go:embed`, so `web/dist` must
@@ -77,13 +124,14 @@ one machine and deploy on another (e.g. an x86_64 server), build the web app
 anywhere, then cross-compile:
 
 ```sh
-cd web && npm ci && npm run build
+(cd web && npm ci && npm run build)
 GOOS=linux GOARCH=amd64 go build -o bin/snp ./cmd/snp
 ```
 
 ## Installing (one command)
 
-On the target host, from a checkout of this repo:
+On the target host, from a checkout with `bin/snp` already built for that
+host (see [Building](#building)):
 
 ```sh
 sudo TS_AUTHKEY=tskey-... ./deploy/install.sh -o your-tailnet-login
@@ -122,12 +170,40 @@ curl https://snp.<your-tailnet>.ts.net/api/me
 
 Open `https://snp.<your-tailnet>.ts.net` in a browser.
 
+## Everyday use
+
+Create a snippet with a title and body, then add a language, folder, tags,
+and Markdown notes as useful. Search combines text with filters:
+
+| Search | Finds |
+|---|---|
+| `git bundle` | Snippets matching the search terms |
+| `tag:ops` | Snippets tagged `ops` |
+| `lang:bash` | Snippets with language `bash` |
+| `backup tag:ops lang:bash` | Matches for `backup` with both filters applied |
+
+For a template, put placeholders in the body:
+
+```text
+printf '%s\n' "Hello, {{name|world}}"
+```
+
+The form detects the template. After saving, fill in `name` in the
+variables panel and use the Rendered preview to check the result before
+copying. `{{name|world}}` defaults to `world`; `{{name}}` has no default.
+A blank variable without a default is copied as an empty string.
+
+**Settings → Add starter snippets** adds a sample config, a template, and
+some everyday commands. Applying the starter pack again overwrites edits
+to its bundled snippets and restores any you deleted.
+
 ## Using the PWA
 
 Install it so it works offline:
 
-- **macOS (Chrome/Edge):** toolbar / menu → “Install snp” (or “Add to
-  Dock”). Safari: Share → “Add to Home Screen”.
+- **macOS (Chrome/Edge):** toolbar / menu → “Install snp”.
+- **macOS (Safari):** File or Share → “Add to Dock” (macOS Sonoma or
+  later; [Apple instructions](https://support.apple.com/en-us/104996)).
 - **iOS:** Safari → Share → “Add to Home Screen”.
 - **Android:** Chrome → menu → “Install app”.
 
@@ -139,67 +215,53 @@ automatically. If the server was ever restored from an older backup, use
 
 ## Desktop app (macOS & Linux, Wails)
 
-snp also runs as a native desktop app (design §12): the same store and
-the same UI in a Wails window, local-only — no tailnet, no HTTP server.
-It shares the state dir with the CLI and server variants, so your
-snippets, `snp export`, and `snp backup` all see the same data.
+snp also runs as a native desktop app (design §12): `snp-desktop` is a
+*local instance* — the same store and the same UI in a Wails window, with
+no tailnet, no HTTP listener, and no owner.
+
+Desktop and CLI/server instances share data only when they use the same
+local `state_dir` with appropriate filesystem access. Your desktop defaults
+to `~/.local/share/snp` under your own account; the installed systemd
+service defaults to `/var/lib/snp/.local/share/snp` under the `snp` account.
+The desktop app does not sync with a remote tailnet server.
+
+- **No server, no port.** The SPA's `/api` calls run in-process through a
+  bridge (`internal/desktop`) against the same handler `snp serve` uses,
+  so core snippet features work offline. AI actions require access to the
+  configured provider, which the desktop process calls directly.
+- **No PWA machinery.** Nothing to install and nothing to cache: the
+  service worker and offline banner are inert in the window, and
+  **Settings → Full resync** is never needed.
+- **Configuration matches the CLI** (`--config`, `--state-dir`,
+  `--ai-key`, `SNP_*`, …), except that no `owner` is required;
+  `--hostname` and `--owner` are accepted and ignored.
+- **A plain native window.** 1150×760 by default (minimum 900×560),
+  themed before the first paint, with in-app dialogs where the webview
+  has no `prompt`/`confirm`.
+
+Build and launch it:
 
 ```sh
 make run-desktop          # builds web + binary, opens the window
-make app                  # macOS: builds + signs + notarizes build/snp.app
-make run-app              # macOS: opens build/snp.app from Finder/Launchpad
+make desktop             # builds web + bin/snp-desktop without launching
+```
+
+Install it:
+
+```sh
+make app                  # macOS: builds build/snp.app; ad-hoc signed by default
+make run-app              # macOS: builds the bundle, then opens it
 make desktop-install      # Linux: installs to ~/.local (override PREFIX=)
 ```
 
-- **macOS** needs a CGO toolchain (Xcode CLT) and the web app built
-  (`make desktop` does both). The raw binary is `bin/snp-desktop`.
-- **Linux** needs the GTK/WebKit dev packages —
-  `build-essential pkg-config libgtk-3-dev` plus `libwebkit2gtk-4.1-dev`
-  (Ubuntu 24.04+, Debian 13, Fedora 40+) or `libwebkit2gtk-4.0-dev`
-  (Debian 12, Ubuntu 22.04). `make desktop` picks the matching wails
-  build tag from pkg-config; force it with `make desktop WEBKIT2=` (4.0)
-  or `WEBKIT2=webkit2_41` (4.1). `make desktop-install` then puts the
-  binary in `~/.local/bin`, the launcher in
-  `~/.local/share/applications`, and icons in the hicolor theme — no
-  root, and `~/.local/bin` must be on your `PATH`. At runtime the binary
-  needs the same GTK/WebKit shared libraries.
-- The desktop binary must be built on the OS it runs on: wails links
-  against the platform's WebKit/GTK, so it does not cross-compile from
-  macOS.
-- `make app` (spec §12) packages that binary into `build/snp.app` with
-  an Info.plist, your app icon (deploy/appicon.png, falling back to the
-  PWA icon), and hardened-runtime codesigning (secure timestamp +
-  network-client entitlement, so Ask-AI works and Apple accepts it).
-  It can then **notarize and staple** the bundle using a notarytool
-  keychain profile (`NOTARY_PROFILE`) and write a distribution-ready
-  `build/snp.zip`. Both `SIGN_IDENTITY` and `NOTARY_PROFILE` default to
-  empty, so `make app` produces an ad-hoc, un-notarized bundle that runs
-  locally with no Apple credentials. To ship it to other machines, create
-  the profile once:
+`make app` produces an ad-hoc, un-notarized bundle by default; it needs no
+Apple signing credentials for local use. Distribution signing and
+notarization require your own `SIGN_IDENTITY` and `NOTARY_PROFILE`.
 
-  ```sh
-  xcrun notarytool store-credentials snp-notary \
-    --apple-id <your-apple-id> --team-id <your-team-id> \
-    --password <app-specific-password>
-  ```
-
-  then build with your own Developer ID:
-
-  ```sh
-  make app SIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)" \
-           NOTARY_PROFILE=snp-notary
-  ```
-
-  Use `SIGN_IDENTITY=-` for an explicit ad-hoc bundle when iterating.
-- Config resolution matches the CLI (`--state-dir`, `SNP_STATE_DIR`,
-  `--config`, …) except that no `owner` is needed.
-- The SPA's API calls run in-process through a bridge
-  (`internal/desktop`), so nothing listens on a port.
-- On Linux the app is the binary plus a `.desktop` entry — there is no
-  bundle to sign. Building the desktop app does not
-  affect the server binary — wails stays out of `cmd/snp`, so the
-  headless server still cross-compiles for Linux. A Windows port is the
-  remaining follow-on.
+The desktop binary must be built on its target OS. See the
+[desktop build and packaging guide](docs/desktop.md) for Linux packages,
+WebKit selection, macOS linking, signing, and notarization. Windows support
+is a follow-on.
 
 ## Configuration
 
@@ -211,17 +273,21 @@ beats file:
 | Key | Flag | Env | Default |
 |---|---|---|---|
 | `hostname` | `--hostname` | `SNP_HOSTNAME` | `snp` |
-| `owner` | `--owner` | `SNP_OWNER` | (required unless dev mode) |
+| `owner` | `--owner` | `SNP_OWNER` | (required for server) |
 | `state_dir` | `--state-dir` | `SNP_STATE_DIR` | `~/.local/share/snp` |
 | `log_level` | `--log-level` | `SNP_LOG_LEVEL` | `info` |
-| `ai_endpoint` | `--ai-endpoint` | `SNP_AI_ENDPOINT` | `https://api.openai.com/v1` |
+| `ai_endpoint` | `--ai-endpoint` | `SNP_AI_ENDPOINT` | [OpenAI][ai-default] |
 | `ai_model` | `--ai-model` | `SNP_AI_MODEL` | `gpt-4o-mini` |
 | `ai_key` | `--ai-key` | `SNP_AI_KEY` | (AI disabled until set) |
+
+[ai-default]: https://api.openai.com/v1
+
+`owner` is optional for the desktop app and dev mode.
 
 For the systemd service, `HOME=/var/lib/snp`, so the defaults resolve to
 `/var/lib/snp/.config/snp/config.toml` and `/var/lib/snp/.local/share/snp`.
 
-## AI snippet generation (optional)
+## AI features (optional)
 
 With `ai_key` set (design §13), a **one-shot** "Ask AI…" control appears
 in the snippet form: type something like *"give me a command to copy a
@@ -238,6 +304,24 @@ notes), or **Function** (one named function definition, with its
 parameters and a call example in Notes). The reply lands in the same
 fields either way.
 
+Two additional controls work on the current form contents:
+
+- **Suggest tags** sends the body, optional title and language, and the
+  collection's existing tag vocabulary to the provider. Suggested tags
+  merge into the Tags field.
+- **Explain** sends the body to the provider and appends a Markdown
+  explanation to Notes.
+
+**Ask AI** sends your prompt, optional language, and the selected output
+kind's instructions; it does not include the existing body. Each action
+is a single request without chat history. Prompts and bodies are not
+logged by snp, and form changes are stored only when you save.
+
+The **Sensitive** flag protects bodies at rest and excludes them from
+search indexing and offline caching. It does **not** block Explain or
+Suggest tags from sending the current body to the provider, or redact
+sensitive text you type into an Ask AI prompt.
+
 ![the Ask AI panel in the snippet form](docs/images/snippet-creation-form-ask-ai-go-caddy-ops.png)
 
 *Ask AI… opens at the top of the new-snippet form: describe what you want,
@@ -252,7 +336,7 @@ ai_model    = "llama3.2"
 ai_key      = "ollama"                       # any non-empty value
 ```
 
-When unconfigured the control is hidden; `GET /api/ai/status` reports
+When unconfigured the AI controls are hidden; `GET /api/ai/status` reports
 whether it is on, and the model name — never the endpoint key.
 
 ## Backups
@@ -307,12 +391,12 @@ should use **Settings → Full resync**.
   is not derived from a passphrase; that is the accepted threat model.
   Protect `/var/lib/snp/.local/share/snp` (0700, owned by `snp`) and the
   backups.
-- **AI requests leave your machine.** Every "Ask AI…" prompt is sent to
-  the configured provider (`ai_endpoint`, keyed by `ai_key`). Only the
-  prompt you type goes out — no existing snippets, nothing sensitive,
-  no history — but pick a provider you trust, or run a self-hosted
-  OpenAI-compatible endpoint, and review generated snippets before
-  running them.
+- **AI actions send content to the configured provider.** Ask AI sends
+  your prompt; Explain and Suggest tags send the current snippet body,
+  including sensitive bodies. Tag suggestions also send the title,
+  language, and collection's tag vocabulary. Use a provider you trust or a
+  local OpenAI-compatible endpoint, and review generated snippets before
+  running them. See [AI features](#ai-features-optional) for details.
 
 ## Logs
 
@@ -339,15 +423,38 @@ for `curl | sh`-style use.
 
 ## Repository layout
 
-```
+```text
 cmd/snp/                 main, subcommand wiring
+cmd/snp-desktop/         native wails window (macOS/Linux)
 internal/config/         toml + flags + env resolution
 internal/store/          sqlite open/migrate, queries, fts, crypto
 internal/store/migrations/*.sql
 internal/server/         router, middleware, handlers, embedded static
 internal/tsauth/         tsnet listener and whois identity
+internal/desktop/        in-process API bridge (no wails import)
+internal/ai/             one-shot snippet generator
+internal/starter/        bundled starter snippet pack
 web/                     svelte app; web/dist is embedded
 deploy/                  snp.service, install.sh, backup.sh
 docs/                    design, plan, work log, screenshots
 Makefile                 build web, build binary, test
 ```
+
+## Notes on AI
+
+This began as a project to compare various models and their ability to
+produce useful code. I've been a user of Snippetlab, but they dropped out of
+SetApp, so I needed a new snippet manager, and decided it was a good test.
+So I gave the task to Opus 5, chat gpt Sol, qwen3.8-27b (initially). Opus
+made the best out of the gate, but I was blown away by what qwen3.8-27b
+produced, running locally, using the deepseek-harness and /goal. Sol's was
+prettiest but had weird commentary all over the front page (every option had
+an aphorism attached, like *saving your most valuable work*). It was also
+enormous.
+
+This program is the one I'm using, and it was initially created by
+qwen3.8-27b running on my GX10 (DGX Spark clone), and then polished by
+qwen3.8-flash-next (same box) and then deepseek-v4-flash-vision-exp, which
+is insanely fast and at this level, incredibly functional. CLAUDE was used
+to review code. The AGENTS file has a commit flag - to append harness and
+model of all commits.
