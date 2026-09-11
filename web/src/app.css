@@ -365,6 +365,71 @@ button.danger {
   color: var(--text);
 }
 
+/* ---- favorites (pinned snippets above the folder tree) ---- */
+
+.favorites {
+  padding: 6px;
+  border-bottom: 1px solid var(--border);
+}
+
+.favorites h3 {
+  margin: 0 0 6px;
+  font-size: calc(11px * var(--text-scale, 1));
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text);
+}
+
+.favorites ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.favorites li {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.favorites .name {
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+  border: 1px solid transparent;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.favorites .name.selected {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  border-color: var(--accent);
+}
+
+/* Keep the unpin control quiet until hovered; it sits on every row. */
+.favorites .unpin {
+  flex: none;
+  padding: 2px 6px;
+  border-color: transparent;
+  background: none;
+  color: var(--text);
+}
+
+.favorites .unpin:hover:not(:disabled) {
+  color: var(--danger);
+  border-color: var(--border);
+}
+
+.favorites .hint {
+  margin: 0;
+  color: var(--text);
+  font-size: calc(12px * var(--text-scale, 1));
+}
+
 /* ---- folder tree ---- */
 
 .folder-tree {
@@ -611,7 +676,33 @@ button.danger {
   background: var(--code-bg);
 }
 
-.detail .trash .icon {
+/* Pin: same icon-only treatment as delete, but the active state is the
+   accent used by a selected row, so a pinned snippet reads as pinned. */
+.detail .pin {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: var(--text);
+}
+
+.detail .pin:hover:not(:disabled) {
+  color: var(--accent);
+  border-color: var(--border);
+  background: var(--code-bg);
+}
+
+.detail .pin.pinned {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.detail .trash .icon,
+.detail .pin .icon {
   width: calc(16px * var(--text-scale, 1));
   height: calc(16px * var(--text-scale, 1));
   fill: none;

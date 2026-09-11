@@ -84,6 +84,7 @@ describe('SnippetForm', () => {
       tags: ['ops', 'caddy'],
       is_sensitive: false,
       uses_variables: false,
+      pinned: false,
       var_defaults: {},
     })
   })
@@ -146,8 +147,24 @@ describe('SnippetForm', () => {
       tags: ['a'],
       is_sensitive: false,
       uses_variables: false,
+      pinned: false,
       var_defaults: {},
     } satisfies SnippetInput)
+  })
+
+  it('carries the pinned flag through an edit', async () => {
+    const onsave = vi.fn()
+    render(SnippetForm, {
+      initial: snippet({ pinned: true }),
+      folders: [],
+      defaultFolderId: null,
+      onsave,
+      oncancel: () => {},
+    })
+    await fireEvent.click(screen.getByText('Save'))
+    // A PUT is a full replace, so a save that dropped the flag would
+    // silently unpin the snippet.
+    expect(onsave.mock.calls[0][0].pinned).toBe(true)
   })
 
   it('carries saved defaults forward when the body keeps the variable', async () => {

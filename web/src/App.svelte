@@ -50,6 +50,7 @@
   import { onWake } from './lib/wake'
   import type { Folder, Snippet, SnippetInput } from './lib/types'
   import FolderTree from './lib/FolderTree.svelte'
+  import Favorites from './lib/Favorites.svelte'
   import OfflineBanner from './lib/OfflineBanner.svelte'
   import SnippetDetail from './lib/SnippetDetail.svelte'
   import SnippetForm from './lib/SnippetForm.svelte'
@@ -267,6 +268,16 @@
       .map(([name, count]) => ({ name, count }))
       .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name))
   })
+
+  /**
+   * Pinned snippets for the Favorites list (spec §4), newest first — the
+   * same order the list pane uses. Built from the local cache, so the list
+   * works offline; filter() returns a fresh array, so this never reorders
+   * `snippets` itself.
+   */
+  const favoriteSnippets = $derived(
+    snippets.filter((s) => s.pinned === true).sort(byUpdatedThenIdDesc),
+  )
 
   const selectedSnippet = $derived(
     selectedSnippetId === null
@@ -583,19 +594,31 @@
   }
 
   /**
-   * Persist per-variable defaults (spec §6): a full-replace of the
-   * currently selected snippet carrying its current fields plus the new
-   * defaults map. The panel only shows when the body is available locally
-   * (cached, or revealed and held in memory), so the body text is never
-   * blanked.
+   * Write a snippet through the API's full-replace endpoint, rebuilding the
+   * complete payload from the cached row and merging `patch` over it.
+   *
+   * The PUT replaces every field, so a caller that changes one thing must
+   * still send the rest. Rebuilding the payload here once is what keeps a
+   * pin toggle from dropping var_defaults, and a defaults save from
+   * clearing the pin. Sensitive rows are fetched first: list/sync responses
+   * carry neither their body nor their defaults (spec §5), so a payload
+   * built from one would blank both.
    */
-  async function saveDefaults(
+  async function replaceSnippet(
     id: string,
-    defaults: Record<string, string>,
+    patch: Partial<SnippetInput>,
   ): Promise<boolean> {
     if (!db || !online) return false
-    const s = snippets.find((x) => x.id === id)
+    let s = snippets.find((x) => x.id === id)
     if (s === undefined) return false
+    if (s.body === null) {
+      try {
+        s = await api.getSnippet(id)
+      } catch (e) {
+        fail(e)
+        return false
+      }
+    }
     try {
       const updated = await api.updateSnippet(id, {
         title: s.title,
@@ -606,7 +629,9 @@
         tags: s.tags,
         is_sensitive: s.is_sensitive,
         uses_variables: s.uses_variables,
-        var_defaults: defaults,
+        pinned: s.pinned ?? false,
+        var_defaults: s.var_defaults ?? {},
+        ...patch,
       })
       await putSnippet(db, updated)
       index.upsert(updated)
@@ -616,6 +641,19 @@
       fail(e)
       return false
     }
+  }
+
+  /**
+   * Persist per-variable defaults (spec §4/§6). The panel only shows when
+   * the body is available locally, so this never blanks the body.
+   */
+  function saveDefaults(id: string, defaults: Record<string, string>): Promise<boolean> {
+    return replaceSnippet(id, { var_defaults: defaults })
+  }
+
+  /** Pin or unpin a snippet (spec §4) — the Favorites list reads the flag. */
+  function setPinned(id: string, pinned: boolean): Promise<boolean> {
+    return replaceSnippet(id, { pinned })
   }
 
   async function deleteSnippet(id: string): Promise<void> {
@@ -928,7 +966,15 @@
       <div class="pane-head">
         <h2>Folders</h2>
         <button onclick={() => promptFolder(null)} disabled={!online}>New folder</button>
-      </div>      <FolderTree
+      </div>
+      <Favorites
+        snippets={favoriteSnippets}
+        selectedId={selectedSnippetId}
+        offline={!online}
+        onselect={selectSnippet}
+        onunpin={(id) => void setPinned(id, false)}
+      />
+      <FolderTree
         {folders}
         selectedId={selectedFolderId}
         offline={!online}
@@ -994,6 +1040,7 @@
           onreveal={() => void reveal(selectedSnippet.id)}
           onsavedefaults={(defaults) => saveDefaults(selectedSnippet.id, defaults)}
           oncopytext={(id, text) => (detailCopy = { id, text })}
+          onpin={() => void setPinned(selectedSnippet.id, selectedSnippet.pinned !== true)}
         />
         {/key}
       {:else}

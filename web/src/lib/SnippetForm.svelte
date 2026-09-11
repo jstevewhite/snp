@@ -33,6 +33,10 @@
     sensitive: initial?.is_sensitive ?? false,
     usesVariables: initial?.uses_variables ?? false,
     varDefaults: initial?.var_defaults ?? {},
+    // Pinning is toggled from the read view, not the form, but a PUT is a
+    // full replace — so editing a snippet has to carry the flag through or
+    // the save would silently unpin it.
+    pinned: initial?.pinned ?? false,
   }
 
   let title = $state(seed.title)
@@ -212,6 +216,7 @@
         .filter((t) => t !== ''),
       is_sensitive: isSensitive,
       uses_variables: usesVariables,
+      pinned: seed.pinned,
       var_defaults: defaults,
     })
   }

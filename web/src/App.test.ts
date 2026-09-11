@@ -385,7 +385,8 @@ describe('App', () => {
     await waitFor(() => expect(putBody).not.toBeNull())
     expect(putUrl).toContain('/api/snippets/s3')
     // The replace carries the snippet's current fields plus the new map,
-    // pruned to the body's variables (spec §4/§5).
+    // pruned to the body's variables (spec §4/§5). pinned rides along
+    // because the PUT replaces every field.
     expect(putBody).toEqual({
       title: 'Deploy',
       body: 'kubectl -n {{ns}} get pods',
@@ -395,6 +396,7 @@ describe('App', () => {
       tags: ['ops'],
       is_sensitive: false,
       uses_variables: true,
+      pinned: false,
       var_defaults: { ns: 'staging' },
     })
     unmount()
@@ -844,6 +846,88 @@ describe('App', () => {
 
     await fireEvent.keyDown(window, { key: 'Escape' })
     expect(document.activeElement).not.toBe(search)
+    unmount()
+  })
+
+  it('pins from the detail pane and unpins from the Favorites list', async () => {
+    const puts: Record<string, unknown>[] = []
+    const payload = syncPayload()
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      const json = { 'Content-Type': 'application/json' }
+      if (url.includes('/api/sync')) {
+        return new Response(JSON.stringify(payload), { status: 200, headers: json })
+      }
+      if (url.includes('/api/snippets/') && init?.method === 'PUT') {
+        const body = JSON.parse(String(init.body)) as Record<string, unknown>
+        puts.push(body)
+        const id = url.split('/').pop()
+        const base = payload.snippets.find((s) => s.id === id) as Record<string, unknown>
+        return new Response(JSON.stringify({ ...base, ...body }), { status: 200, headers: json })
+      }
+      return new Response('null', { status: 200, headers: json })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const { unmount } = render(App)
+    await waitFor(() => expect(screen.getByText('Deploy')).toBeDefined())
+
+    // Empty, the section says where pins come from rather than vanishing.
+    expect(screen.getByText('Pin a snippet from its page to keep it here.')).toBeDefined()
+
+    await fireEvent.click(screen.getAllByText('Deploy')[0])
+    await waitFor(() => expect(screen.getByLabelText('Add to favorites')).toBeDefined())
+    await fireEvent.click(screen.getByLabelText('Add to favorites'))
+
+    await waitFor(() => expect(puts).toHaveLength(1))
+    expect(puts[0].pinned).toBe(true)
+    // The Favorites list reads the flag straight off the updated cache.
+    await waitFor(() =>
+      expect(document.querySelector('.favorites .name')?.textContent).toBe('Deploy'),
+    )
+    expect(screen.getByLabelText('Remove from favorites')).toBeDefined()
+
+    await fireEvent.click(screen.getByLabelText('Remove Deploy from favorites'))
+    await waitFor(() => expect(puts).toHaveLength(2))
+    expect(puts[1].pinned).toBe(false)
+    await waitFor(() =>
+      expect(screen.getByText('Pin a snippet from its page to keep it here.')).toBeDefined(),
+    )
+    unmount()
+  })
+
+  it('keeps a pinned snippet pinned when its defaults are saved', async () => {
+    let putBody: Record<string, unknown> | null = null
+    const payload = syncPayload()
+    const s3 = payload.snippets[2] as Record<string, unknown>
+    s3.pinned = true
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      const json = { 'Content-Type': 'application/json' }
+      if (url.includes('/api/sync')) {
+        return new Response(JSON.stringify(payload), { status: 200, headers: json })
+      }
+      if (url.includes('/api/snippets/s3') && init?.method === 'PUT') {
+        const body = JSON.parse(String(init.body)) as Record<string, unknown>
+        putBody = body
+        return new Response(JSON.stringify({ ...s3, ...body }), { status: 200, headers: json })
+      }
+      return new Response('null', { status: 200, headers: json })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const { unmount } = render(App)
+    // Pinned in the payload, so the title appears in Favorites as well as
+    // the list pane — open it from the list.
+    await waitFor(() =>
+      expect(document.querySelector('.snippet-list .title')?.textContent).toBe('Deploy'),
+    )
+    await fireEvent.click(document.querySelector('.snippet-list .title') as HTMLElement)
+    await waitFor(() => expect(screen.getByText('Variables')).toBeDefined())
+    await fireEvent.input(screen.getByLabelText('ns'), { target: { value: 'staging' } })
+    await fireEvent.click(screen.getByText('Save defaults'))
+    await waitFor(() => expect(putBody).not.toBeNull())
+    // The full replace rebuilt the payload, so a save that only meant to
+    // change the defaults did not drop the pin.
+    expect(putBody).toMatchObject({ pinned: true, var_defaults: { ns: 'staging' } })
     unmount()
   })
 

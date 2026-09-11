@@ -32,6 +32,7 @@ function renderDetail(
     oncopy?: (text: string) => void
     onsavedefaults?: (defaults: Record<string, string>) => Promise<boolean>
     onreveal?: () => void
+    onpin?: () => void
   } = {},
 ) {
   return render(SnippetDetail, {
@@ -43,6 +44,7 @@ function renderDetail(
     onedit: noop,
     onremove: noop,
     onreveal: extra.onreveal ?? noop,
+    onpin: extra.onpin ?? noop,
     onsavedefaults: extra.onsavedefaults ?? (async () => true),
   })
 }
@@ -148,6 +150,7 @@ describe('SnippetDetail', () => {
       onedit,
       onremove,
       onreveal: noop,
+      onpin: noop,
       onsavedefaults: async () => true,
     })
     await fireEvent.click(screen.getByText('Copy'))
@@ -233,6 +236,25 @@ describe('SnippetDetail', () => {
     renderDetail({ body: 'echo hi', uses_variables: false })
     expect(screen.queryByText('Copy template')).toBeNull()
     expect(screen.queryByText('Copy rendered')).toBeNull()
+  })
+
+  it('shows a pin control reflecting the pinned state', async () => {
+    const onpin = vi.fn()
+    const { container } = renderDetail({ pinned: true }, { onpin })
+    const pin = container.querySelector('.detail .pin') as HTMLButtonElement
+    expect(pin.getAttribute('aria-pressed')).toBe('true')
+    expect(pin.classList.contains('pinned')).toBe(true)
+    expect(pin.getAttribute('aria-label')).toBe('Remove from favorites')
+    await fireEvent.click(pin)
+    expect(onpin).toHaveBeenCalled()
+  })
+
+  it('offers to pin an unpinned snippet, disabled offline', () => {
+    const { container } = renderDetail({}, { offline: true })
+    const pin = container.querySelector('.detail .pin') as HTMLButtonElement
+    expect(pin.getAttribute('aria-pressed')).toBe('false')
+    expect(pin.getAttribute('aria-label')).toBe('Add to favorites')
+    expect(pin.disabled).toBe(true)
   })
 
   it('shows a decorative icon beside the language and the folder', () => {

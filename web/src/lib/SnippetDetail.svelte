@@ -20,6 +20,7 @@
     onedit,
     onremove,
     onreveal,
+    onpin,
     onsavedefaults,
     oncopytext,
   }: {
@@ -38,6 +39,8 @@
     onedit: () => void
     onremove: () => void
     onreveal: () => void
+    /** Toggles the snippet's pinned (favorite) flag (spec §4). */
+    onpin: () => void
     /**
      * Persists per-variable defaults (spec §6); keys are client-owned.
      * Resolves true only when the server accepted them, so the button
@@ -203,6 +206,26 @@
   <header>
     <div class="title-row">
       <h1>{snippet.title}</h1>
+      <!-- Pin: the Favorites list above the folder tree reads this flag
+           (spec §4). aria-pressed carries the state, so the label stays a
+           description of the action. -->
+      <button
+        class="pin"
+        class:pinned={snippet.pinned === true}
+        type="button"
+        aria-pressed={snippet.pinned === true}
+        aria-label={snippet.pinned === true ? 'Remove from favorites' : 'Add to favorites'}
+        title={snippet.pinned === true ? 'Remove from favorites' : 'Add to favorites'}
+        disabled={offline}
+        onclick={onpin}
+      >
+        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M12 17v5" />
+          <path
+            d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"
+          />
+        </svg>
+      </button>
       <button
         class="trash"
         type="button"
