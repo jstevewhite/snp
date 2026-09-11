@@ -1068,3 +1068,25 @@ Spec: `docs/snp-design.md` · Plan: `docs/snp-implementation-plan.md`
   future change that sets notes by dispatching an input event, or that
   moves the clearing into a `$effect` on `notes`, would silently break Undo
   by clearing the snapshot the instant Explain set it.
+- 2026-09-11 — Feature-set review (suggestions only). Read the design,
+  implementation plan, README, work log, and current UI/store/API paths.
+  Recommended prioritizing keyboard search/copy, recoverable edits and
+  Trash, clearer template copying, responsive mobile navigation, quick
+  capture/CLI, search refinements, and lightweight organization. Desktop
+  remote-server mode is a conditional follow-on for using one library
+  across devices; the current desktop app is an independent local store.
+  Concrete gaps found by source inspection: selecting another snippet
+  abandons editor state; Copy has no success/error UI; unfilled template
+  variables disappear on copy despite remaining visible in preview;
+  Save defaults replaces the whole cached snippet without a revision
+  precondition; sensitive Explain/Suggest Tags send the current body;
+  revealed bodies remain in App-level memory across selections; and an
+  incremental sync after tombstones have been purged cannot remove those
+  stale cached rows. Recommend stale-cursor full refresh and restore-aware
+  cache invalidation. Spec §13's sensitive-content exclusion is a
+  documentation bug relative to the shipped, README-documented AI behavior;
+  its policy should be made explicit before expanding AI features.
+  Checked RFC 9110 If-Match and W3C reflow guidance for the concurrency and
+  narrow-layout recommendations. No application changes or tests/builds;
+  review conclusions are source-based, not reproduced runtime defects.
+  Existing modification to web/dist/index.html preserved.
