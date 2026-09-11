@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/jstevewhite/snp/internal/ai"
+	"github.com/jstevewhite/snp/internal/buildinfo"
 	"github.com/jstevewhite/snp/internal/config"
 	"github.com/jstevewhite/snp/internal/server"
 	"github.com/jstevewhite/snp/internal/starter"
@@ -46,6 +47,8 @@ func main() {
 		runSeed(args)
 	case "key":
 		runKey(args)
+	case "version", "-v", "--version":
+		fmt.Println("snp", buildinfo.String())
 	case "help", "-h", "--help":
 		usage()
 	default:
@@ -67,6 +70,7 @@ commands:
   import      import a JSON export document
   seed        add the bundled starter snippets (nothing seeds by itself)
   key         key management (show-path)
+  version     print the snp version
 
 run "snp <command> -h" for command flags.
 `)

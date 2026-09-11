@@ -118,6 +118,10 @@ make build      # builds web/dist (Svelte + Vite), then bin/snp
 make test       # go vet + Go tests + Vitest + svelte-check/TypeScript
 ```
 
+Both binaries carry a version (`snp version`, `snp-desktop -version`),
+stamped from `git describe` by the Makefile or from the tag by the
+release workflow; a plain `go build` reports `dev`.
+
 The web app is embedded into the binary with `go:embed`, so `web/dist` must
 exist when the Go binary is built; `make build` handles that. To build on
 one machine and deploy on another (e.g. an x86_64 server), build the web app
@@ -127,6 +131,25 @@ anywhere, then cross-compile:
 (cd web && npm ci && npm run build)
 GOOS=linux GOARCH=amd64 go build -o bin/snp ./cmd/snp
 ```
+
+## Releases
+
+Prebuilt binaries are on the [releases page](https://github.com/jstevewhite/snp/releases):
+
+| File | What |
+|---|---|
+| `snp_<ver>_linux_{amd64,arm64}.tar.gz` | Server / CLI plus `deploy/install.sh`, `snp.service`, `backup.sh`. Unpack and run the install command below from the unpacked directory. |
+| `snp_<ver>_darwin_universal.tar.gz` | The same CLI for macOS, Apple silicon + Intel. |
+| `snp-desktop_<ver>_macos_universal.zip` | `snp.app`, Apple silicon + Intel. Signed and notarized when the repo's Apple secrets are set; otherwise ad-hoc signed, and Gatekeeper will ask you to allow it. |
+| `snp-desktop_<ver>_linux_{amd64,arm64}.tar.gz` | Desktop app plus `deploy/install-desktop.sh`. Built against WebKitGTK **4.1**, so it needs Ubuntu 24.04+, Debian 13+, Fedora 40+ or similar at runtime. |
+| `SHA256SUMS` | Checksums. |
+
+Cutting a release: push a `v*` tag (`git tag v0.2.0 && git push origin
+v0.2.0`). `.github/workflows/release.yml` builds every platform in
+parallel and publishes the release only once all of them succeed.
+The `beta` workflow in the Actions tab does the same for a manually
+entered `v*-beta.N` label and marks it a prerelease. See the header of
+`.github/workflows/build-release.yml` for the macOS signing secrets.
 
 ## Installing (one command)
 

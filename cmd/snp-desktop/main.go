@@ -34,6 +34,7 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/options"
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
 
+	"github.com/jstevewhite/snp/internal/buildinfo"
 	"github.com/jstevewhite/snp/internal/config"
 	"github.com/jstevewhite/snp/internal/desktop"
 	webembed "github.com/jstevewhite/snp/web"
@@ -73,6 +74,7 @@ flags:
   -state-dir  state directory (default: ~/.local/share/snp)
   -log-level  debug, info, warn, error (default: info)
   -debug      debug logging + startup phase timing
+  -version    print the snp-desktop version and exit
 `)
 }
 
@@ -88,9 +90,14 @@ func main() {
 	fs.String("ai-model", "", "model name (default: gpt-4o-mini)")
 	fs.String("ai-key", "", "API key; setting it enables the AI feature")
 	debug := fs.Bool("debug", false, "debug logging + startup phase timing")
+	showVersion := fs.Bool("version", false, "print the version and exit")
 	if err := fs.Parse(os.Args[1:]); err != nil {
 		usage()
 		os.Exit(2)
+	}
+	if *showVersion {
+		fmt.Println("snp-desktop", buildinfo.String())
+		return
 	}
 	if fs.NArg() != 0 {
 		usage()

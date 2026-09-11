@@ -13,6 +13,11 @@
 #                    identity the bundle is submitted, stapled, and a
 #                    distribution zip is written to build/snp.zip. Set
 #                    empty to skip notarization.
+#   APP_VERSION      (environment) version written to the bundle's
+#                    CFBundleShortVersionString, e.g. v0.1.0 (the
+#                    leading "v" is dropped). `make app` passes the
+#                    Makefile's VERSION. Unset: Info.plist is copied
+#                    unchanged.
 #
 # Produces build/snp.app: Contents/MacOS/snp-desktop (the binary built
 # by `make desktop`), Contents/Info.plist, Contents/Resources/
@@ -50,6 +55,22 @@ rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN" "$APP/Contents/MacOS/snp-desktop"
 cp "$PLIST" "$APP/Contents/Info.plist"
+
+# Stamp the release version into the bundle. Only a plain semver
+# (optionally with a prerelease suffix) is accepted: `git describe`
+# output like v0.1.0-3-gabcdef0-dirty is a local build and leaves the
+# checked-in placeholder alone.
+APP_VERSION="${APP_VERSION:-}"
+case "$APP_VERSION" in
+  *-dirty|*-[0-9]*-g[0-9a-f]*) ;;   # git describe of an untagged/dirty tree
+  v[0-9]*.[0-9]*.[0-9]*|[0-9]*.[0-9]*.[0-9]*)
+    short="${APP_VERSION#v}"
+    if [[ "$short" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]]; then
+      /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $short" "$APP/Contents/Info.plist"
+      echo "make-app: bundle version $short"
+    fi
+    ;;
+esac
 
 # Icon: generate the AppIcon.icns iconset from ICON_SRC (deploy/
 # appicon.png when present, else the PWA icon). A 1024px source is

@@ -3,6 +3,13 @@
 GO  ?= go
 NPM ?= npm
 
+# Version stamped into both binaries (internal/buildinfo). Defaults to
+# `git describe` (e.g. v0.1.0, v0.1.0-3-gabcdef0, v0.1.0-dirty); the
+# release workflow passes VERSION=<tag>. `snp version` / `snp-desktop
+# -version` print it. Override: make build VERSION=v9.9.9
+VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
+LDFLAGS := -X github.com/jstevewhite/snp/internal/buildinfo.Version=$(VERSION)
+
 .PHONY: web build test dev desktop desktop-install run-desktop app run-app clean web-install
 
 # Install web dependencies when missing (a fresh clone has none, and
@@ -22,7 +29,7 @@ web:
 	fi
 
 build: web
-	$(GO) build -o bin/snp ./cmd/snp
+	$(GO) build -ldflags "$(LDFLAGS)" -o bin/snp ./cmd/snp
 
 # The Wails desktop app (spec §12). Built on macOS and Linux; Windows is
 # a follow-on. The `production` build tag is required on every platform —
@@ -53,7 +60,7 @@ DESKTOP_TAGS        := production $(WEBKIT2)
 endif
 
 desktop: web
-	CGO_LDFLAGS="$(DESKTOP_CGO_LDFLAGS)" $(GO) build -tags "$(DESKTOP_TAGS)" -o bin/snp-desktop ./cmd/snp-desktop
+	CGO_LDFLAGS="$(DESKTOP_CGO_LDFLAGS)" $(GO) build -ldflags "$(LDFLAGS)" -tags "$(DESKTOP_TAGS)" -o bin/snp-desktop ./cmd/snp-desktop
 
 # Install the desktop app for the current user (Linux): binary, .desktop
 # entry, and icons under ~/.local. Override the prefix with
@@ -82,7 +89,7 @@ NOTARY_PROFILE ?=
 # (deploy/make-app.sh → build/snp.app, plus build/snp.zip when
 # notarized). Override with make app SIGN_IDENTITY=… NOTARY_PROFILE=… .
 app: desktop
-	./deploy/make-app.sh "$(SIGN_IDENTITY)" "$(NOTARY_PROFILE)"
+	APP_VERSION="$(VERSION)" ./deploy/make-app.sh "$(SIGN_IDENTITY)" "$(NOTARY_PROFILE)"
 
 # Launch the bundled app from Finder/Launchpad.
 run-app: app

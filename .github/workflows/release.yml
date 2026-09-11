@@ -1,0 +1,30 @@
+# Tag-triggered release.
+#
+# Push a tag like `v0.2.0` to cut a release:
+#
+#   git tag v0.2.0 && git push origin v0.2.0
+#
+# Every platform builds in parallel (see build-release.yml for the asset
+# list); once all succeed the release is created as a draft with every
+# asset attached and then flipped live, so it never appears half-built.
+#
+# macOS signing/notarization is opt-in via the APPLE_* secrets listed in
+# build-release.yml.
+
+name: release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    uses: ./.github/workflows/build-release.yml
+    with:
+      version: ${{ github.ref_name }}
+      prerelease: false
+    secrets: inherit

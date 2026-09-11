@@ -1,0 +1,348 @@
+# Reusable release build. Called by release.yml (tag push) and beta.yml
+# (manual prerelease); not triggered on its own.
+#
+# Produces, for a version tag vX.Y.Z (asset names drop the leading v):
+#
+#   snp_X.Y.Z_linux_amd64.tar.gz           server/CLI + deploy/{install.sh,snp.service,backup.sh}
+#   snp_X.Y.Z_linux_arm64.tar.gz
+#   snp_X.Y.Z_darwin_universal.tar.gz      server/CLI, arm64+x86_64 lipo'd
+#   snp-desktop_X.Y.Z_linux_amd64.tar.gz   Wails app + deploy/{install-desktop.sh,snp.desktop} + icons
+#   snp-desktop_X.Y.Z_linux_arm64.tar.gz   (both need WebKitGTK 4.1 at runtime)
+#   snp-desktop_X.Y.Z_macos_universal.zip  snp.app, arm64+x86_64 lipo'd
+#   SHA256SUMS
+#
+# The server binary is pure Go (modernc sqlite) and cross-compiles from
+# one Linux runner. The desktop binary is CGO + Wails and is built
+# natively per OS/arch; the two macOS slices are merged with lipo and
+# packaged by deploy/make-app.sh.
+#
+# macOS signing & notarization are opt-in via these repo secrets (same
+# names as nebula_chat):
+#   APPLE_CERTIFICATE              base64 of a Developer ID Application .p12
+#   APPLE_CERTIFICATE_PASSWORD     password for the .p12
+#   APPLE_SIGNING_IDENTITY         "Developer ID Application: Name (TEAMID)"
+#   APPLE_ID                       Apple ID email
+#   APPLE_PASSWORD                 app-specific password from appleid.apple.com
+#   APPLE_TEAM_ID                  10-char team id
+#   KEYCHAIN_PASSWORD              any string; only used inside the runner
+# Without them the macOS job still builds an ad-hoc signed, un-notarized
+# bundle (Gatekeeper will warn on other machines).
+
+name: build-release
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: 'Release tag, e.g. v0.1.0 or v0.1.0-beta.1'
+        required: true
+        type: string
+      prerelease:
+        description: 'Publish as a prerelease'
+        required: false
+        type: boolean
+        default: false
+      notes:
+        description: 'Extra text prepended to the release body'
+        required: false
+        type: string
+        default: ''
+      target:
+        description: 'Commitish to tag when the tag does not exist yet (manual runs)'
+        required: false
+        type: string
+        default: ''
+
+permissions:
+  contents: write
+
+env:
+  LDFLAGS: -s -w -X github.com/jstevewhite/snp/internal/buildinfo.Version=${{ inputs.version }}
+
+jobs:
+  # ---------------------------------------------------------------- web
+  web:
+    name: Web app (Svelte)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Build web/dist
+        working-directory: web
+        run: |
+          npm ci
+          npm run build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: web-dist
+          path: web/dist
+          if-no-files-found: error
+
+  # ------------------------------------------------------------- server
+  server-linux:
+    name: snp (linux amd64 + arm64)
+    needs: web
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: web-dist
+          path: web/dist
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Cross-compile and package
+        env:
+          CGO_ENABLED: '0'
+        run: |
+          set -euo pipefail
+          ver="${{ inputs.version }}"; ver="${ver#v}"
+          mkdir -p dist
+          for arch in amd64 arm64; do
+            name="snp_${ver}_linux_${arch}"
+            stage="build/${name}"
+            mkdir -p "${stage}/bin" "${stage}/deploy"
+            GOOS=linux GOARCH="${arch}" go build -trimpath -ldflags "${LDFLAGS}" -o "${stage}/bin/snp" ./cmd/snp
+            cp deploy/install.sh deploy/snp.service deploy/backup.sh "${stage}/deploy/"
+            cp README.md LICENSE "${stage}/"
+            tar -C build -czf "dist/${name}.tar.gz" "${name}"
+          done
+          ls -l dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: server-linux
+          path: dist/*
+          if-no-files-found: error
+
+  # ------------------------------------------------------ desktop linux
+  desktop-linux:
+    name: snp-desktop (linux ${{ matrix.arch }})
+    needs: web
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            arch: amd64
+          - runner: ubuntu-24.04-arm
+            arch: arm64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: web-dist
+          path: web/dist
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Install GTK / WebKitGTK 4.1 dev packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential pkg-config libgtk-3-dev libwebkit2gtk-4.1-dev
+      - name: Build and package
+        run: |
+          set -euo pipefail
+          ver="${{ inputs.version }}"; ver="${ver#v}"
+          name="snp-desktop_${ver}_linux_${{ matrix.arch }}"
+          stage="build/${name}"
+          mkdir -p "${stage}/bin" "${stage}/deploy" "${stage}/web/public" dist
+          go build -trimpath -ldflags "${LDFLAGS}" -tags "production webkit2_41" -o "${stage}/bin/snp-desktop" ./cmd/snp-desktop
+          cp deploy/install-desktop.sh deploy/snp.desktop "${stage}/deploy/"
+          cp web/public/pwa-192x192.png web/public/pwa-512x512.png "${stage}/web/public/"
+          cp README.md LICENSE "${stage}/"
+          "${stage}/bin/snp-desktop" -version
+          tar -C build -czf "dist/${name}.tar.gz" "${name}"
+          ls -l dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: desktop-linux-${{ matrix.arch }}
+          path: dist/*
+          if-no-files-found: error
+
+  # ------------------------------------------------ desktop macOS slices
+  desktop-macos-build:
+    name: snp-desktop (macOS ${{ matrix.arch }} slice)
+    needs: web
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-latest
+            arch: arm64
+          - runner: macos-15-intel
+            arch: x86_64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: web-dist
+          path: web/dist
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Build slice
+        env:
+          CGO_LDFLAGS: -framework UniformTypeIdentifiers
+        run: |
+          set -euo pipefail
+          mkdir -p slice
+          go build -trimpath -ldflags "${LDFLAGS}" -tags production -o "slice/snp-desktop-${{ matrix.arch }}" ./cmd/snp-desktop
+          "slice/snp-desktop-${{ matrix.arch }}" -version
+      - uses: actions/upload-artifact@v4
+        with:
+          name: desktop-macos-${{ matrix.arch }}
+          path: slice/*
+          if-no-files-found: error
+
+  # ---------------------------------------------- macOS package (lipo)
+  macos-package:
+    name: snp + snp.app (macOS universal)
+    needs: [web, desktop-macos-build]
+    runs-on: macos-latest
+    env:
+      # secrets are not readable in a step `if`; job-level env is.
+      HAVE_APPLE_CERT: ${{ secrets.APPLE_CERTIFICATE != '' }}
+      HAVE_APPLE_NOTARY: ${{ secrets.APPLE_ID != '' && secrets.APPLE_PASSWORD != '' && secrets.APPLE_TEAM_ID != '' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: web-dist
+          path: web/dist
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: desktop-macos-*
+          path: slices
+          merge-multiple: true
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Server binary (universal)
+        env:
+          CGO_ENABLED: '0'
+        run: |
+          set -euo pipefail
+          ver="${{ inputs.version }}"; ver="${ver#v}"
+          name="snp_${ver}_darwin_universal"
+          stage="build/${name}"
+          mkdir -p "${stage}/bin" dist
+          GOOS=darwin GOARCH=arm64 go build -trimpath -ldflags "${LDFLAGS}" -o build/snp-arm64 ./cmd/snp
+          GOOS=darwin GOARCH=amd64 go build -trimpath -ldflags "${LDFLAGS}" -o build/snp-amd64 ./cmd/snp
+          lipo -create -output "${stage}/bin/snp" build/snp-arm64 build/snp-amd64
+          lipo -info "${stage}/bin/snp"
+          "${stage}/bin/snp" version
+          cp README.md LICENSE "${stage}/"
+          tar -C build -czf "dist/${name}.tar.gz" "${name}"
+
+      - name: Desktop binary (universal)
+        run: |
+          set -euo pipefail
+          mkdir -p bin
+          chmod +x slices/snp-desktop-*
+          lipo -create -output bin/snp-desktop slices/snp-desktop-arm64 slices/snp-desktop-x86_64
+          lipo -info bin/snp-desktop
+          bin/snp-desktop -version
+
+      # Developer ID certificate → temporary keychain, so codesign in
+      # make-app.sh can find it. Skipped when the secret is absent.
+      - name: Import macOS signing certificate
+        if: env.HAVE_APPLE_CERT == 'true'
+        uses: apple-actions/import-codesign-certs@v3
+        with:
+          p12-file-base64: ${{ secrets.APPLE_CERTIFICATE }}
+          p12-password: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          keychain-password: ${{ secrets.KEYCHAIN_PASSWORD }}
+
+      # make-app.sh notarizes via a notarytool keychain profile; build it
+      # from the Apple ID secrets. Skipped when any is absent.
+      - name: Store notarytool credentials
+        if: env.HAVE_APPLE_NOTARY == 'true'
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          xcrun notarytool store-credentials snp-notary \
+            --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" --password "$APPLE_PASSWORD"
+          echo "NOTARY_PROFILE=snp-notary" >> "$GITHUB_ENV"
+
+      - name: Bundle, sign, notarize (deploy/make-app.sh)
+        env:
+          APP_VERSION: ${{ inputs.version }}
+          SIGN_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+        run: |
+          set -euo pipefail
+          ver="${APP_VERSION#v}"
+          ./deploy/make-app.sh "${SIGN_IDENTITY:--}" "${NOTARY_PROFILE:-}"
+          ditto -c -k --keepParent build/snp.app "dist/snp-desktop_${ver}_macos_universal.zip"
+          ls -l dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos
+          path: dist/*
+          if-no-files-found: error
+
+  # ------------------------------------------------------------ publish
+  publish:
+    name: Publish release
+    needs: [server-linux, desktop-linux, macos-package]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: '{server-linux,desktop-linux-*,macos}'
+          path: dist
+          merge-multiple: true
+      - name: Checksums
+        working-directory: dist
+        run: |
+          sha256sum -- * > SHA256SUMS
+          cat SHA256SUMS
+      - name: Release notes
+        env:
+          VERSION: ${{ inputs.version }}
+          NOTES: ${{ inputs.notes }}
+        run: |
+          {
+            if [ -n "$NOTES" ]; then printf '%s\n\n' "$NOTES"; fi
+            cat <<'MD'
+          ## Assets
+
+          | File | What |
+          |---|---|
+          | `snp_*_linux_{amd64,arm64}.tar.gz` | Tailnet server / CLI. Unpack, then `sudo TS_AUTHKEY=… ./deploy/install.sh -o <login>` from the unpacked directory. |
+          | `snp_*_darwin_universal.tar.gz` | The same CLI for macOS (Apple silicon + Intel), e.g. for `snp export`/`import` against a local store. |
+          | `snp-desktop_*_macos_universal.zip` | `snp.app` desktop app, Apple silicon + Intel. |
+          | `snp-desktop_*_linux_{amd64,arm64}.tar.gz` | Desktop app. Unpack, then `./deploy/install-desktop.sh` from the unpacked directory. Needs GTK3 and **WebKitGTK 4.1** at runtime (Ubuntu 24.04+, Debian 13+, Fedora 40+). |
+          | `SHA256SUMS` | Checksums for the files above. |
+
+          The server needs a tailnet with MagicDNS and HTTPS certificates enabled; see the README.
+          MD
+          } > notes.md
+      - name: Create draft release and upload assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          VERSION: ${{ inputs.version }}
+          TARGET: ${{ inputs.target }}
+        run: |
+          set -euo pipefail
+          args=(--draft --title "snp ${VERSION}" --notes-file notes.md)
+          if [ "${{ inputs.prerelease }}" = "true" ]; then args+=(--prerelease); fi
+          if [ -n "$TARGET" ]; then args+=(--target "$TARGET"); fi
+          gh release create "$VERSION" "${args[@]}" dist/*
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          VERSION: ${{ inputs.version }}
+        run: gh release edit "$VERSION" --draft=false
