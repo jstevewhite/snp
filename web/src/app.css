@@ -523,6 +523,15 @@ button.danger {
   white-space: nowrap;
 }
 
+/* Optional two-line titles (settings panel): the ellipsis then lands at the
+   end of the second line instead of the first. */
+.snippet-list.two-line .title {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  white-space: normal;
+}
+
 .snippet-list .meta {
   display: flex;
   gap: 6px;
@@ -1038,6 +1047,25 @@ button.danger {
   padding: 0;
   accent-color: var(--accent);
   width: 100%;
+}
+
+/* A checkbox field reads across rather than down: the box and its label
+   share one row, and the label is not a section heading. */
+.settings .panel .field.checkbox {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+}
+
+.settings .panel .field.checkbox > span {
+  display: inline;
+  justify-content: flex-start;
+  font-weight: 400;
+}
+
+.settings .panel .field.checkbox input {
+  margin: 0;
+  accent-color: var(--accent);
 }
 
 /* Two actions share the panel now (starter snippets, full resync), so

@@ -1,6 +1,7 @@
 /**
- * Appearance settings (themes + interface text size), shared by the
- * settings panel (App.svelte) and the startup apply step (main.ts).
+ * Appearance settings (themes, interface text size, list title wrapping),
+ * shared by the settings panel (App.svelte) and the startup apply step
+ * (main.ts).
  *
  * Themes are applied by setting `data-theme` on <html>; app.css defines
  * one :root palette block per theme (see the [data-theme=…] rules).
@@ -37,18 +38,30 @@ export const TEXT_SCALE_STEP = 5
 
 export const THEME_STORAGE_KEY = 'snp.theme'
 export const TEXT_SCALE_STORAGE_KEY = 'snp.textScale'
+export const TWO_LINE_TITLES_STORAGE_KEY = 'snp.twoLineTitles'
 
 const DEFAULT_THEME = 'auto'
 const DEFAULT_TEXT_SCALE = 100
+const DEFAULT_TWO_LINE_TITLES = false
 
 export interface AppearanceSettings {
   theme: string
   /** Interface text size as a percentage of the base size (100 = base). */
   textScale: number
+  /**
+   * Show snippet titles on up to two lines in the list. Off by default:
+   * one clamped line keeps rows compact, and the full title is always
+   * available as a tooltip either way.
+   */
+  twoLineTitles: boolean
 }
 
 export function defaultSettings(): AppearanceSettings {
-  return { theme: DEFAULT_THEME, textScale: DEFAULT_TEXT_SCALE }
+  return {
+    theme: DEFAULT_THEME,
+    textScale: DEFAULT_TEXT_SCALE,
+    twoLineTitles: DEFAULT_TWO_LINE_TITLES,
+  }
 }
 
 function storage(): Storage | undefined {
@@ -73,6 +86,8 @@ export function loadSettings(): AppearanceSettings {
       const scale = Number(raw)
       if (Number.isFinite(scale)) out.textScale = clampTextScale(scale)
     }
+    const twoLine = s.getItem(TWO_LINE_TITLES_STORAGE_KEY)
+    if (twoLine !== null) out.twoLineTitles = twoLine === 'true'
   } catch {
     // Ignore malformed values; keep defaults.
   }
@@ -95,6 +110,18 @@ export function saveTextScale(percent: number): void {
   if (!s) return
   try {
     s.setItem(TEXT_SCALE_STORAGE_KEY, String(clampTextScale(percent)))
+  } catch {
+    // Persistence is best-effort.
+  }
+}
+
+/** Persist the list's two-line title preference (off is the absence of the key). */
+export function saveTwoLineTitles(on: boolean): void {
+  const s = storage()
+  if (!s) return
+  try {
+    if (on === DEFAULT_TWO_LINE_TITLES) s.removeItem(TWO_LINE_TITLES_STORAGE_KEY)
+    else s.setItem(TWO_LINE_TITLES_STORAGE_KEY, String(on))
   } catch {
     // Persistence is best-effort.
   }

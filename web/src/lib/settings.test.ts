@@ -3,6 +3,7 @@ import {
   TEXT_SCALE_MAX,
   TEXT_SCALE_MIN,
   THEMES,
+  TWO_LINE_TITLES_STORAGE_KEY,
   applyTextScale,
   applyTheme,
   clampTextScale,
@@ -10,11 +11,12 @@ import {
   loadSettings,
   saveTextScale,
   saveTheme,
+  saveTwoLineTitles,
   TEXT_SCALE_STORAGE_KEY,
   THEME_STORAGE_KEY,
 } from './settings'
 
-const keys = [THEME_STORAGE_KEY, TEXT_SCALE_STORAGE_KEY]
+const keys = [THEME_STORAGE_KEY, TEXT_SCALE_STORAGE_KEY, TWO_LINE_TITLES_STORAGE_KEY]
 
 afterEach(() => {
   for (const k of keys) localStorage.removeItem(k)
@@ -33,23 +35,32 @@ describe('settings', () => {
   })
 
   it('defaults to auto theme at 100% and loads those when storage is empty', () => {
-    expect(defaultSettings()).toEqual({ theme: 'auto', textScale: 100 })
-    expect(loadSettings()).toEqual({ theme: 'auto', textScale: 100 })
+    const d = { theme: 'auto', textScale: 100, twoLineTitles: false }
+    expect(defaultSettings()).toEqual(d)
+    expect(loadSettings()).toEqual(d)
   })
 
   it('round-trips saved values through storage', () => {
     saveTheme('tokyo-night')
     saveTextScale(125)
-    expect(loadSettings()).toEqual({ theme: 'tokyo-night', textScale: 125 })
-    // Auto persists as absence of the key.
+    saveTwoLineTitles(true)
+    expect(loadSettings()).toEqual({
+      theme: 'tokyo-night',
+      textScale: 125,
+      twoLineTitles: true,
+    })
+    // Auto and "off" persist as the absence of their keys.
     saveTheme('auto')
+    saveTwoLineTitles(false)
     expect(localStorage.getItem(THEME_STORAGE_KEY)).toBeNull()
+    expect(localStorage.getItem(TWO_LINE_TITLES_STORAGE_KEY)).toBeNull()
   })
 
   it('ignores unknown stored values and falls back to defaults', () => {
     localStorage.setItem(THEME_STORAGE_KEY, 'not-a-theme')
     localStorage.setItem(TEXT_SCALE_STORAGE_KEY, 'nope')
-    expect(loadSettings()).toEqual({ theme: 'auto', textScale: 100 })
+    localStorage.setItem(TWO_LINE_TITLES_STORAGE_KEY, 'maybe')
+    expect(loadSettings()).toEqual({ theme: 'auto', textScale: 100, twoLineTitles: false })
   })
 
   it('applies a theme via the data-theme attribute and auto removes it', () => {

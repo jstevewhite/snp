@@ -2,6 +2,7 @@ import 'fake-indexeddb/auto'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/svelte'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { PANE_WIDTHS_STORAGE_KEY } from './lib/panes'
+import { TWO_LINE_TITLES_STORAGE_KEY } from './lib/settings'
 import App from './App.svelte'
 
 const T0 = '2026-09-03T00:00:00Z'
@@ -95,6 +96,7 @@ describe('App', () => {
     localStorage.removeItem('snp.textScale')
     localStorage.removeItem('snp.version')
     localStorage.removeItem(PANE_WIDTHS_STORAGE_KEY)
+    localStorage.removeItem(TWO_LINE_TITLES_STORAGE_KEY)
     document.documentElement.removeAttribute('data-theme')
     document.documentElement.style.removeProperty('--text-scale')
   })
@@ -842,6 +844,21 @@ describe('App', () => {
 
     await fireEvent.keyDown(window, { key: 'Escape' })
     expect(document.activeElement).not.toBe(search)
+    unmount()
+  })
+
+  it('toggles two-line list titles from the settings panel', async () => {
+    stubFetch()
+    const { container, unmount } = render(App)
+    await waitFor(() => expect(screen.getByText('Caddyfile')).toBeDefined())
+    const list = (): HTMLElement => container.querySelector('.snippet-list') as HTMLElement
+    expect(list().classList.contains('two-line')).toBe(false)
+
+    await fireEvent.click(screen.getByLabelText('Settings'))
+    await fireEvent.click(screen.getByLabelText('Two-line titles in the list'))
+
+    await waitFor(() => expect(list().classList.contains('two-line')).toBe(true))
+    expect(localStorage.getItem(TWO_LINE_TITLES_STORAGE_KEY)).toBe('true')
     unmount()
   })
 

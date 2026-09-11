@@ -58,6 +58,47 @@ describe('SnippetList', () => {
     expect(when.getAttribute('title')).toContain('2026')
   })
 
+  it('puts the full title in the tooltip for a truncated row', () => {
+    render(SnippetList, {
+      snippets: [snippet('s1', 'A very long operational command title')],
+      selectedId: null,
+      query: '',
+      onselect: () => {},
+      onsearch: () => {},
+      oncreate: () => {},
+    })
+    const title = document.querySelector('.snippet-list .title') as HTMLElement
+    expect(title.textContent).toBe('A very long operational command title')
+    expect(title.getAttribute('title')).toBe('A very long operational command title')
+  })
+
+  it('keeps one-line titles by default', () => {
+    const { container } = render(SnippetList, {
+      snippets: [],
+      selectedId: null,
+      query: '',
+      onselect: () => {},
+      onsearch: () => {},
+      oncreate: () => {},
+    })
+    const list = container.querySelector('.snippet-list') as HTMLElement
+    expect(list.classList.contains('two-line')).toBe(false)
+  })
+
+  it('switches to two-line titles when asked', () => {
+    const { container } = render(SnippetList, {
+      snippets: [],
+      selectedId: null,
+      query: '',
+      twoLine: true,
+      onselect: () => {},
+      onsearch: () => {},
+      oncreate: () => {},
+    })
+    const list = container.querySelector('.snippet-list') as HTMLElement
+    expect(list.classList.contains('two-line')).toBe(true)
+  })
+
   it('emits select on item click', async () => {
     const onselect = vi.fn()
     render(SnippetList, {

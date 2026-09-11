@@ -41,6 +41,7 @@
     loadSettings,
     saveTextScale,
     saveTheme,
+    saveTwoLineTitles,
   } from './lib/settings'
   import { syncLocal } from './lib/sync'
   import { renderTemplate } from './lib/templates'
@@ -111,6 +112,7 @@
   const savedAppearance = loadSettings()
   let theme = $state(savedAppearance.theme)
   let textScale = $state(savedAppearance.textScale)
+  let twoLineTitles = $state(savedAppearance.twoLineTitles)
   $effect(() => {
     applyTheme(theme)
     saveTheme(theme)
@@ -118,6 +120,9 @@
   $effect(() => {
     applyTextScale(textScale)
     saveTextScale(textScale)
+  })
+  $effect(() => {
+    saveTwoLineTitles(twoLineTitles)
   })
 
   // Pane layout (spec §6): the folders and list panes are sized by inline
@@ -853,6 +858,10 @@
                 bind:value={textScale}
               />
             </label>
+            <label class="field checkbox">
+              <input type="checkbox" bind:checked={twoLineTitles} />
+              <span>Two-line titles in the list</span>
+            </label>
             <hr />
             <div class="actions">
               <button onclick={() => void addStarterSnippets()} disabled={!online || seedBusy}>
@@ -945,6 +954,7 @@
         selectedId={selectedSnippetId}
         {query}
         offline={!online}
+        twoLine={twoLineTitles}
         bind:searchEl
         onselect={selectSnippet}
         onsearch={(q) => (query = q)}

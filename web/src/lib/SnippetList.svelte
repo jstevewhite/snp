@@ -8,6 +8,7 @@
     selectedId = null,
     query = '',
     offline = false,
+    twoLine = false,
     searchEl = $bindable<HTMLInputElement | undefined>(undefined),
     onselect,
     onsearch,
@@ -18,6 +19,8 @@
     query?: string
     /** Offline: create is unavailable (spec §6). */
     offline?: boolean
+    /** Wrap titles onto a second line instead of truncating at one. */
+    twoLine?: boolean
     /**
      * The search input itself, exposed so the app can focus it from the
      * global shortcut (spec §6 keyboard discipline).
@@ -41,7 +44,7 @@
   })
 </script>
 
-<div class="snippet-list">
+<div class="snippet-list" class:two-line={twoLine}>
   <div class="toolbar">
     <div class="search-wrap">
       <input
@@ -68,7 +71,10 @@
           data-id={s.id}
           onclick={() => onselect(s.id)}
         >
-          <span class="title">{s.title}</span>
+          <!-- The full title is on hover however it is clamped, since a
+               truncated title is otherwise distinguishable only by opening
+               the snippet. -->
+          <span class="title" title={s.title}>{s.title}</span>
           <span class="meta">
             {#if s.language !== ''}<span class="lang">{s.language}</span>{/if}
             {#each s.tags.slice(0, 3) as t (t)}
