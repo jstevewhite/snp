@@ -42,6 +42,7 @@
     saveTheme,
   } from './lib/settings'
   import { syncLocal } from './lib/sync'
+  import { formatAbsolute, formatRelative } from './lib/time'
   import { loadCachedVersion, resolveVersion } from './lib/version'
   import { onWake } from './lib/wake'
   import type { Folder, Snippet, SnippetInput } from './lib/types'
@@ -68,7 +69,17 @@
   /** Revealed bodies for sensitive snippets (in memory only, never cached). */
   let revealed = $state<Record<string, string>>({})
   let online = $state(true)
-  let lastSync: string | null = $state(null)
+  /**
+   * When this client last completed a sync (epoch ms). Deliberately a
+   * local reading rather than the response's server_time: the label reads
+   * "2 minutes ago", which is only true against the clock that observed
+   * the sync. server_time stays the sync cursor (lib/sync.ts) and is not
+   * a local wall-clock value.
+   */
+  let syncedAt: number | null = $state(null)
+  /** Ticks so the relative "Synced …" label ages without a reload. */
+  const CLOCK_TICK_MS = 30_000
+  let now = $state(Date.now())
   let busy = $state(false)
   let error: string | null = $state(null)
   let ready = $state(false)
@@ -285,7 +296,7 @@
     try {
       const resp = await syncLocal(db, index)
       tracker.fetchSucceeded()
-      lastSync = resp.server_time
+      syncedAt = Date.now()
       error = null
       await loadLocal()
     } catch (e) {
@@ -335,6 +346,15 @@
     void resolveVersion().then((v) => {
       if (v !== null) version = v
     })
+  })
+
+  // Age the relative "Synced …" label. Kept out of the sync effect on
+  // purpose: a reactive read of `now` there would re-run the effect on
+  // every tick and re-trigger a sync (the same hazard the non-reactive
+  // `syncing` mutex exists to avoid).
+  $effect(() => {
+    const timer = setInterval(() => (now = Date.now()), CLOCK_TICK_MS)
+    return () => clearInterval(timer)
   })
 
   // Connectivity, sync interval and wake-up triggers, active once ready.
@@ -623,7 +643,7 @@
     try {
       await clearLocalData(db)
       revealed = {}
-      lastSync = null
+      syncedAt = null
       index = new SnippetIndex()
       await doSync()
     } catch (e) {
@@ -655,7 +675,11 @@
       <span class="conn" class:offline={!online}>{online ? 'online' : 'offline'}</span>
       <span class="spacer"></span>
       {#if error !== null}<span class="error" title={error}>{error}</span>{/if}
-      {#if lastSync !== null}<span class="synced">synced {lastSync}</span>{/if}
+      {#if syncedAt !== null}
+        <span class="synced" title={formatAbsolute(syncedAt)}>
+          Synced {formatRelative(syncedAt, now)}
+        </span>
+      {/if}
       <button onclick={() => tick()} disabled={busy || !online || !ready}>
         Resync
       </button>

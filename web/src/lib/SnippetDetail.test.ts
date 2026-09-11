@@ -239,6 +239,16 @@ describe('SnippetDetail', () => {
     expect(container.querySelector('.folder')?.textContent?.trim()).toBe('dev')
   })
 
+  it('simplifies the updated time and keeps the precise one in a tooltip', () => {
+    const { container } = renderDetail()
+    const when = container.querySelector('.detail .when') as HTMLElement
+    expect(when.textContent).toContain('Updated ')
+    // The raw RFC3339 value is not user-visible...
+    expect(when.textContent).not.toContain('2026-01-02T00:00:00Z')
+    // ...but is recoverable from the tooltip.
+    expect(when.getAttribute('title')).toContain('2026')
+  })
+
   it('separates the tag chips from the language and folder', () => {
     const { container } = renderDetail({ tags: ['ops', 'dev'] }, { folderName: 'dev' })
     const tags = container.querySelector('.tags') as HTMLElement
@@ -276,7 +286,7 @@ describe('SnippetDetail', () => {
     const { container } = renderDetail()
     const when = container.querySelector('.when') as HTMLElement
     const notes = container.querySelector('.notes') as HTMLElement
-    expect(when.textContent).toContain('updated')
+    expect(when.textContent).toContain('Updated')
     expect(
       notes.compareDocumentPosition(when) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy()

@@ -179,14 +179,23 @@ describe('App', () => {
     })
     expect(brand.nextElementSibling).toBe(version)
 
-    // The synced timestamp is the last text in the bar, immediately left
-    // of the Resync button.
-    const synced = container.querySelector('.topbar .synced')
-    expect(synced?.textContent).toContain('synced ')
+    // The synced label is the last text in the bar, immediately left of
+    // the Resync button, and reads as a relative age — the precise time
+    // stays in the tooltip rather than in the bar.
+    const synced = await waitFor(() => {
+      const el = container.querySelector('.topbar .synced')
+      expect(el?.textContent).toMatch(
+        /Synced (?:just now|\d+ (?:minute|minutes|hour|hours) ago)/,
+      )
+      return el!
+    })
+    // The precise time is in the tooltip (a 4-digit year is enough to
+    // prove it is a formatted absolute time, without pinning today's date).
+    expect(synced.getAttribute('title')).toMatch(/\d{4}/)
     const resync = [...container.querySelectorAll('.topbar button')].find(
       (b) => b.textContent?.trim() === 'Resync',
     )!
-    expect(synced!.nextElementSibling).toBe(resync)
+    expect(synced.nextElementSibling).toBe(resync)
     unmount()
   })
 

@@ -2,6 +2,7 @@
   import CopyButton from './CopyButton.svelte'
   import { highlightBody } from './highlight'
   import { renderMarkdown } from './markdown'
+  import { formatAbsolute, formatDate } from './time'
   import type { Snippet } from './types'
   import {
     extractTemplateVars,
@@ -281,5 +282,7 @@
     </section>
   {/if}
 
-  <div class="when">updated {snippet.updated_at}</div>
+  <div class="when" title={formatAbsolute(snippet.updated_at)}>
+    Updated {formatDate(snippet.updated_at)}
+  </div>
 </div>

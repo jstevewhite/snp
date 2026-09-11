@@ -42,6 +42,22 @@ describe('SnippetList', () => {
     expect(screen.getByText('Reset redis')).toBeDefined()
   })
 
+  it('keeps the precise timestamp in the when tooltip', () => {
+    render(SnippetList, {
+      snippets: [snippet('s1', 'Caddyfile')],
+      selectedId: null,
+      query: '',
+      onselect: () => {},
+      onsearch: () => {},
+      oncreate: () => {},
+    })
+    const when = document.querySelector('.snippet-list .when') as HTMLElement
+    // The row shows a short date, not the raw stored value...
+    expect(when.textContent).not.toContain('2026-01-02T00:00:00Z')
+    // ...which stays available on hover.
+    expect(when.getAttribute('title')).toContain('2026')
+  })
+
   it('emits select on item click', async () => {
     const onselect = vi.fn()
     render(SnippetList, {

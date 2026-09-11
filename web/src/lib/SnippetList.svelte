@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { formatAbsolute, formatDate } from './time'
   import type { Snippet } from './types'
 
   let {
@@ -19,13 +20,6 @@
     onsearch: (q: string) => void
     oncreate: () => void
   } = $props()
-
-  function fmtWhen(iso: string): string {
-    return new Date(iso).toLocaleDateString(undefined, {
-      month: 'short',
-      day: 'numeric',
-    })
-  }
 </script>
 
 <div class="snippet-list">
@@ -55,7 +49,9 @@
               <span class="tag">#{t}</span>
             {/each}
             {#if s.is_sensitive}<span class="lock" title="Sensitive">🔒</span>{/if}
-            <span class="when">{fmtWhen(s.updated_at)}</span>
+            <span class="when" title={formatAbsolute(s.updated_at)}
+              >{formatDate(s.updated_at)}</span
+            >
           </span>
         </button>
       </li>
