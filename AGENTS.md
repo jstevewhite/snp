@@ -82,6 +82,17 @@ bare `go build`. A stub `web/dist/index.html` is checked in for that reason.
 `make build` replaces it with the real bundle. `server.New` panics if the
 embedded FS has no `dist` subtree.
 
+**Every web build dirties that stub.** It is the only tracked file under
+`web/dist`; the hashed assets it names are gitignored. `npm run build`
+(hence `make web` and `make build`) rewrites its `index-<hash>.js` and
+`index-<hash>.css` references, so committing it after a build points the
+checked-in stub at bundle files no fresh clone will have — the SPA then
+404s for anyone who runs a bare `go build`. Before committing, stage
+source paths explicitly (`git add <paths>`) instead of reaching for
+`git add -A`, or restore the stub with `git checkout -- web/dist/index.html`
+once the build has done its job. `make test` does not build, so it leaves
+the file alone.
+
 ## Invariants that bite
 
 These have already caused bugs. Preserve them.

@@ -1024,3 +1024,18 @@ Spec: `docs/snp-design.md` · Plan: `docs/snp-implementation-plan.md`
     asserted the wrong scenario and failed against correct code.
   - Still unbuilt and unrelated: responsive pane **stacking** at narrow
     widths (spec §6 revision note). Panes stay side by side at every width.
+- 13:35 — Promoted the `web/dist/index.html` gotcha from this log to a
+  standing rule, at the user's suggestion: "Build coupling: web/dist must
+  exist" in **both** AGENTS.md and CLAUDE.md (they move together) now says
+  that every web build rewrites the tracked stub's two hashed asset
+  references, why committing that breaks a bare `go build` for a fresh
+  clone, and the two remedies (stage source paths explicitly, or
+  `git checkout -- web/dist/index.html` afterwards). Recorded the precision
+  that `make test` does *not* build and so leaves the file alone —
+  verified by running `npm test`, `npm run check`, `go test ./...` and the
+  full `make test` while watching `git status dist`, none of which touch
+  it. Only `npm run build` / `make web` / `make build` do. Since this
+  entry was the first thing it would have caught: `git ls-files web/dist`
+  confirms `index.html` is the only tracked path under `dist`, which is
+  what makes the `.gitignore` negation load-bearing. Docs-only change; no
+  build or test rerun needed beyond the `make test` already green above.
