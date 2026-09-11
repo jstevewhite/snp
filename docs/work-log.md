@@ -14,9 +14,9 @@ Spec: `docs/snp-design.md` · Plan: `docs/snp-implementation-plan.md`
 
 ## Current status
 
-- Updated: 2026-09-11 12:05
-- Phase: review fixes + desktop app (macOS **and Linux** builds) + appearance + AI generation (command/script/function kinds) + tag filter + .app bundle + **bundled starter pack** merged to main; **Markdown notes**, **read-view syntax highlighting**, **notarization in `make app`**, the **Linux desktop build/launcher** and **`snp seed`** landed; the **GitHub release workflows** and the **header version chip** (`GET /api/version`) landed; `make test` green (go test + vet + 214 Vitest + svelte-check 0). The Linux desktop binary **build was verified on an ARM Ubuntu 24 host** (git bundle → `make desktop`), after a first attempt failed because that work was still uncommitted and the bundle therefore carried the old darwin-only tree.
-- Next: **Linux desktop container build + verification** (podman; `libgtk-3-dev` + `libwebkit2gtk-4.1-dev` + Go, `make web` then the desktop build, and exercise `install-desktop.sh` with a scratch `PREFIX=`); then the Windows port, desktop follow-ons (real app icon, startup-error surfacing in the window); then remaining v1 follow-ons (CLI client, SnippetsLab converter)
+- Updated: 2026-09-11 13:08
+- Phase: review fixes + desktop app (macOS **and Linux** builds) + appearance + AI generation (command/script/function kinds) + tag filter + .app bundle + **bundled starter pack** merged to main; **Markdown notes**, **read-view syntax highlighting**, **notarization in `make app`**, the **Linux desktop build/launcher** and **`snp seed`** landed; the **GitHub release workflows** and the **header version chip** (`GET /api/version`) landed; **v0.1.0 shipped** (signed + notarized macOS bundle, 7 assets, verified after publish); `make test` green (go test + vet + 214 Vitest + svelte-check 0). The Linux desktop binary **build was verified on an ARM Ubuntu 24 host** (git bundle → `make desktop`), after a first attempt failed because that work was still uncommitted and the bundle therefore carried the old darwin-only tree.
+- Next: **bump the Node-20 GitHub Actions** (`checkout`, `setup-node`, `setup-go`, `upload-artifact`, `download-artifact` — all still work but are force-run on Node 24 and annotate the run) **to their Node-24 majors** before the next release; then **Linux desktop container build + verification** (podman; `libgtk-3-dev` + `libwebkit2gtk-4.1-dev` + Go, `make web` then the desktop build, and exercise `install-desktop.sh` with a scratch `PREFIX=`); then the Windows port, desktop follow-ons (real app icon, startup-error surfacing in the window); then remaining v1 follow-ons (CLI client, SnippetsLab converter)
 
 ## Log
 
@@ -928,3 +928,43 @@ Spec: `docs/snp-design.md` · Plan: `docs/snp-implementation-plan.md`
   the stamped binary prints `v0.2.0`; and the sandboxed `go build` needs
   `GOCACHE` inside the workspace if `~/Library/Caches/go-build` is not
   writable.
+- 2026-09-11 — Shipped **v0.1.0**. Commit `e9aeec7` (the header/version
+  change) went to `main`, then a lightweight `v0.1.0` tag (matching how
+  `v0.1.0-beta.1` was cut) triggered `release.yml` → run 34626078787,
+  green in ~9 min. Prerequisites were checked *before* pushing, not after:
+  HEAD was exactly on `v0.1.0-beta.1`, no `v0.1.0` release existed, and
+  all six Apple secrets were present, so the macOS path really signed and
+  notarized instead of quietly falling back to ad-hoc.
+  Verified the artifacts, not just the green check: 7 assets, neither
+  draft nor prerelease; `SHA256SUMS` matches for the files downloaded;
+  the shipped `snp_0.1.0_darwin_universal.tar.gz` runs and prints
+  `snp v0.1.0` (so the new header chip reads a real release, not `dev`);
+  and the desktop zip passes `spctl` as "accepted, source=Notarized
+  Developer ID" (TSS Studios, LLC / L8D425K33D) with a valid stapled
+  ticket. That last one was the real unknown on a first notarized
+  release — it also retires the "do the Apple secret names actually
+  resolve" question left open by 135f521.
+- Gotcha: `git describe --dirty` reported `v0.1.0-beta.1-dirty` before
+  the commit. `--dirty` is the Makefile's marker for *modified tracked
+  files* at build time (untracked files do not trip it), and the value is
+  linked into the binary, so a binary built from a dirty tree keeps
+  saying `-dirty` after you commit — rebuild, or `make build
+  VERSION=…`. Separately, `web/dist/index.html` is tracked while its
+  hashed siblings are gitignored, and every `npm run build` rewrites the
+  two hashes in it: stage source files explicitly (`git add <paths>`), or
+  `git checkout -- web/dist/index.html`, rather than reaching for
+  `git add -A`.
+- Follow-up, not done: the release run annotates that
+  `actions/checkout@v4`, `actions/setup-node@v4`,
+  `actions/upload-artifact@v4`, `actions/download-artifact@v4` and
+  `actions/setup-go@v5` target Node 20 and are being force-run on Node
+  24. Bump them to their Node-24 majors before the next release;
+  harmless today.
+- Session aside (harness, not snp): the `botmem` MCP server is up again —
+  loopback `127.0.0.1:8586`, `serverInfo` botmem 0.1.0, 11/11 tools, and
+  a live `get_active_project`/`list` round trip through the harness.
+  Correcting an earlier claim of mine in the same session: its tools were
+  registered in the GUI all along, and only the server was down, so no
+  profile edit or restart was needed. botmem's active project is the
+  shared `dsh` base; snp-specific knowledge stays in this `docs/` tree
+  (per AGENTS.md, this log is the resume point).
