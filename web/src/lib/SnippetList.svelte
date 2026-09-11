@@ -38,7 +38,7 @@
       oninput={(e) => onsearch(e.currentTarget.value)}
       aria-label="Search snippets"
     />
-    <button class="new" disabled={offline} onclick={oncreate}>New</button>
+    <button class="new" disabled={offline} onclick={oncreate}>New snippet</button>
   </div>
   <ul class="items">
     {#each snippets as s (s.id)}

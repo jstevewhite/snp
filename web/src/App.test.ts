@@ -287,9 +287,10 @@ describe('App', () => {
       ).toBeDefined(),
     )
     // Create buttons (folders pane + snippet list) are disabled.
-    const newBtns = screen
-      .getAllByText('New')
-      .map((el) => el.closest('button') as HTMLButtonElement)
+    const newBtns = [
+      ...screen.getAllByText('New folder'),
+      ...screen.getAllByText('New snippet'),
+    ].map((el) => el.closest('button') as HTMLButtonElement)
     for (const b of newBtns) expect(b.disabled).toBe(true)
     // Folder actions are disabled.
     const subfolderBtn = screen
@@ -413,8 +414,8 @@ describe('App', () => {
     const { unmount } = render(App)
     await waitFor(() => expect(screen.getByText('Caddyfile')).toBeDefined())
 
-    // Root folder: the folder pane's New button opens the dialog.
-    await fireEvent.click(screen.getAllByText('New')[0])
+    // Root folder: the folder pane's New folder button opens the dialog.
+    await fireEvent.click(screen.getByText('New folder'))
     await waitFor(() => expect(screen.getByLabelText('Folder name')).toBeDefined())
     await fireEvent.input(screen.getByLabelText('Folder name'), {
       target: { value: 'Ops2' },

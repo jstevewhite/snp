@@ -82,7 +82,7 @@ describe('SnippetList', () => {
       oncreate,
     })
     expect(screen.getByText('No snippets yet')).toBeDefined()
-    await fireEvent.click(screen.getByText('New'))
+    await fireEvent.click(screen.getByText('New snippet'))
     expect(oncreate).toHaveBeenCalled()
   })
 

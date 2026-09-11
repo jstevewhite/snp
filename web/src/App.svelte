@@ -757,7 +757,7 @@
     <aside class="pane folders">
       <div class="pane-head">
         <h2>Folders</h2>
-        <button onclick={() => promptFolder(null)} disabled={!online}>New</button>
+        <button onclick={() => promptFolder(null)} disabled={!online}>New folder</button>
       </div>      <FolderTree
         {folders}
         selectedId={selectedFolderId}
