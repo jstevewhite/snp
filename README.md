@@ -1,5 +1,13 @@
 # snp
 
+## Notes on AI
+
+This began as a project to compare various models and their ability to produce useful code. I've been a user of Snippetlab, but they dropped out of SetApp, so I needed a new snippet manager, and decided it was a good test. So I gave the task to Opus 5, chat gpt Sol, qwen3.8-27b (initially). Opus made the best out of the gate, but I was blown away by what qwen3.8-27b produced, running locally, using the deepseek-harness and /goal. Sol's was prettiest but had weird commentary all over the front page (every option had an aphorism attached, like *saving your most valuable work*). It was also enormous. 
+
+This program is the one I'm using, and it was initially created by qwen3.8-27b running on my GX10 (DGX Spark clone), and then polished by qwen3.8-flash-next (same box) and then deepseek-v4-flash-vision-exp, which is insanely fast and at this level, incredibly functional. CLAUDE was used to review code. The AGENTS file has a commit flag - to append harness and model of all commits.
+
+## SNP in Detail
+
 A personal snippet manager. One Go binary on your tailnet; every machine on
 the tailnet reaches it through a browser or an installed PWA. Fast full-text
 search over everything from a one-liner to a whole script, nested folders,
@@ -8,6 +16,17 @@ tags, Markdown notes, `{{template}}` variables, and offline read via PWA.
 - Design: [docs/snp-design.md](docs/snp-design.md)
 - Implementation plan: [docs/snp-implementation-plan.md](docs/snp-implementation-plan.md)
 - Work log: [docs/work-log.md](docs/work-log.md)
+
+![snp in the browser](docs/images/snp-snippet-manager-git-bundle-all-branches-template.png)
+
+*Folders and tags on the left, full-text search over the list, and the open
+snippet on the right — here a `git bundle` template with its variables and
+the rendered command.*
+
+![a template snippet open](docs/images/template-example.png)
+
+*Templates: each `{{var}}` becomes a field, the Rendered preview fills in
+(and saves) your values, and Notes can carry the gotchas.*
 
 ## How it works
 
@@ -219,6 +238,11 @@ notes), or **Function** (one named function definition, with its
 parameters and a call example in Notes). The reply lands in the same
 fields either way.
 
+![the Ask AI panel in the snippet form](docs/images/snippet-creation-form-ask-ai-go-caddy-ops.png)
+
+*Ask AI… opens at the top of the new-snippet form: describe what you want,
+choose an Output, and the reply lands in the fields below it.*
+
 Any OpenAI-compatible endpoint works — OpenAI, or a self-hosted one
 (ollama, llama.cpp, …) via `ai_endpoint`:
 
@@ -324,6 +348,6 @@ internal/server/         router, middleware, handlers, embedded static
 internal/tsauth/         tsnet listener and whois identity
 web/                     svelte app; web/dist is embedded
 deploy/                  snp.service, install.sh, backup.sh
-docs/                    design, plan, work log
+docs/                    design, plan, work log, screenshots
 Makefile                 build web, build binary, test
 ```
