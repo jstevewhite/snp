@@ -67,7 +67,7 @@ func (s *Store) ListSnippets(f ListFilter) ([]SnippetOut, error) {
 	run := func(ftsExpr string) ([]SnippetOut, error) {
 		var b strings.Builder
 		b.WriteString(`SELECT s.id, s.title, s.body, s.language, s.notes, s.folder_id,
-			s.is_sensitive, s.uses_variables, s.var_defaults, s.var_defaults_enc,
+			s.is_sensitive, s.uses_variables, s.pinned, s.var_defaults, s.var_defaults_enc,
 			s.created_at, s.updated_at
 			FROM snippets s`)
 		var args []any
@@ -112,11 +112,11 @@ func (s *Store) ListSnippets(f ListFilter) ([]SnippetOut, error) {
 			var sn SnippetOut
 			var body []byte
 			var folder sql.NullString
-			var sens, uvars int
+			var sens, uvars, pinned int
 			var vdPlain string
 			var vdEnc sql.Null[[]byte]
 			if err := rows.Scan(&sn.ID, &sn.Title, &body, &sn.Language, &sn.Notes,
-				&folder, &sens, &uvars, &vdPlain, &vdEnc, &sn.CreatedAt, &sn.UpdatedAt); err != nil {
+				&folder, &sens, &uvars, &pinned, &vdPlain, &vdEnc, &sn.CreatedAt, &sn.UpdatedAt); err != nil {
 				return nil, err
 			}
 			if folder.Valid {
@@ -124,6 +124,7 @@ func (s *Store) ListSnippets(f ListFilter) ([]SnippetOut, error) {
 			}
 			sn.IsSensitive = sens != 0
 			sn.UsesVariables = uvars != 0
+			sn.Pinned = pinned != 0
 			if !sn.IsSensitive {
 				b := string(body)
 				sn.Body = &b

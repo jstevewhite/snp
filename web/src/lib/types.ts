@@ -17,6 +17,11 @@ export interface Snippet {
   /** True when the body contains {{var}} / {{var|default}} placeholders. */
   uses_variables: boolean
   /**
+   * Pinned ("favorite") flag (spec §4). Optional because a row cached
+   * before the field existed carries no value; absent reads as not pinned.
+   */
+  pinned?: boolean
+  /**
    * Per-variable default values (spec §4). null for sensitive snippets in
    * list/sync responses, like the body; omitted/absent decodes to no
    * defaults.
@@ -37,6 +42,8 @@ export interface SnippetInput {
   is_sensitive: boolean
   /** True when the body contains {{var}} / {{var|default}} placeholders. */
   uses_variables: boolean
+  /** Pinned ("favorite") flag; omitted means not pinned. */
+  pinned?: boolean
   /** Per-variable default values; omitted means the server stores an empty map. */
   var_defaults?: Record<string, string>
 }

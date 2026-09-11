@@ -33,6 +33,10 @@ type ImportSnippet struct {
 	// UsesVariables marks the body as a template (spec §4); older
 	// export docs without the field decode as false.
 	UsesVariables bool `json:"uses_variables"`
+	// Pinned is the favorite flag (spec §4); older export docs without
+	// the field decode as false, which un-pins on import exactly as an
+	// explicit false would.
+	Pinned bool `json:"pinned"`
 	// VarDefaults holds per-variable default values (spec §4); older
 	// export docs without the field decode as empty.
 	VarDefaults map[string]string `json:"var_defaults"`
@@ -245,19 +249,19 @@ func (s *Store) importSnippetTx(ctx context.Context, tx *sql.Tx, in ImportSnippe
 		}
 		if _, err := tx.ExecContext(ctx,
 			`UPDATE snippets SET title = ?, body = ?, body_text = ?, language = ?, notes = ?, folder_id = ?,
-			 is_sensitive = ?, uses_variables = ?, var_defaults = ?, var_defaults_enc = ?, created_at = ?, updated_at = ?, deleted_at = NULL
+			 is_sensitive = ?, uses_variables = ?, pinned = ?, var_defaults = ?, var_defaults_enc = ?, created_at = ?, updated_at = ?, deleted_at = NULL
 			 WHERE id = ?`,
 			title, body, bodyText, in.Language, in.Notes, folderID, boolInt(in.IsSensitive),
-			boolInt(in.UsesVariables), vdPlain, vdEnc, createdTS, updatedTS, id); err != nil {
+			boolInt(in.UsesVariables), boolInt(in.Pinned), vdPlain, vdEnc, createdTS, updatedTS, id); err != nil {
 			return "", false, err
 		}
 	} else {
 		res, err := tx.ExecContext(ctx,
 			`INSERT INTO snippets (id, title, body, body_text, language, notes, tags, folder_id,
-		 is_sensitive, uses_variables, var_defaults, var_defaults_enc, created_at, updated_at)
-		 VALUES (?, ?, ?, ?, ?, ?, '', ?, ?, ?, ?, ?, ?, ?)`,
+		 is_sensitive, uses_variables, pinned, var_defaults, var_defaults_enc, created_at, updated_at)
+		 VALUES (?, ?, ?, ?, ?, ?, '', ?, ?, ?, ?, ?, ?, ?, ?)`,
 			id, title, body, bodyText, in.Language, in.Notes, folderID, boolInt(in.IsSensitive),
-			boolInt(in.UsesVariables), vdPlain, vdEnc, createdTS, updatedTS)
+			boolInt(in.UsesVariables), boolInt(in.Pinned), vdPlain, vdEnc, createdTS, updatedTS)
 		if err != nil {
 			return "", false, err
 		}

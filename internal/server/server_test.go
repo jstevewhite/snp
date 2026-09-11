@@ -274,6 +274,51 @@ func TestSnippetCRUD(t *testing.T) {
 	}
 }
 
+// TestSnippetPinned: the pinned flag (spec §4/§5) round-trips through the
+// API under its JSON name, which is what the SPA's Favorites list reads.
+func TestSnippetPinned(t *testing.T) {
+	h := newTestServer(t, "", &fakeResolver{id: tsauth.Identity{Login: "dev@local"}}).Handler()
+
+	id := createSnippet(t, h, map[string]any{
+		"title": "deploy", "body": "kubectl apply -f k8s/", "pinned": true,
+	})
+
+	w := doReq(t, h, "GET", "/api/snippets/"+id, nil, "")
+	var got map[string]any
+	if err := json.Unmarshal(w.Body.Bytes(), &got); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	// The key name is the contract with the SPA, so assert on the raw JSON.
+	if got["pinned"] != true {
+		t.Errorf("get pinned = %v, want true", got["pinned"])
+	}
+
+	// The list payload — the one the sync merge caches — carries it too.
+	w = doReq(t, h, "GET", "/api/snippets?q=deploy", nil, "")
+	var listed []store.SnippetOut
+	if err := json.Unmarshal(w.Body.Bytes(), &listed); err != nil {
+		t.Fatalf("unmarshal list: %v", err)
+	}
+	if len(listed) != 1 || !listed[0].Pinned {
+		t.Errorf("list pinned: %+v", listed)
+	}
+
+	// PUT is a full replace, so omitting the field clears it.
+	w = doReq(t, h, "PUT", "/api/snippets/"+id, map[string]any{
+		"title": "deploy", "body": "kubectl apply -f k8s/",
+	}, jsonCT)
+	if w.Code != http.StatusOK {
+		t.Fatalf("replace: got %d, body %s", w.Code, w.Body.String())
+	}
+	var replaced map[string]any
+	if err := json.Unmarshal(w.Body.Bytes(), &replaced); err != nil {
+		t.Fatalf("unmarshal replaced: %v", err)
+	}
+	if replaced["pinned"] != false {
+		t.Errorf("replaced pinned = %v, want false", replaced["pinned"])
+	}
+}
+
 // TestSnippetVarDefaults: the API carries per-variable defaults (spec
 // §4/§5); list responses hide them for sensitive snippets, while a
 // single read returns them decrypted.

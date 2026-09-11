@@ -74,7 +74,7 @@ func (s *Store) SyncSince(since string) (SyncOut, error) {
 	}
 	frows.Close()
 
-	sq := `SELECT id, title, body, language, notes, folder_id, is_sensitive, uses_variables,
+	sq := `SELECT id, title, body, language, notes, folder_id, is_sensitive, uses_variables, pinned,
 		var_defaults, var_defaults_enc, created_at, updated_at FROM snippets`
 	var sargs []any
 	if since != "" {
@@ -94,11 +94,11 @@ func (s *Store) SyncSince(since string) (SyncOut, error) {
 		var sn SnippetOut
 		var body []byte
 		var folder sql.NullString
-		var sens, uvars int
+		var sens, uvars, pinned int
 		var vdPlain string
 		var vdEnc sql.Null[[]byte]
 		if err := srows.Scan(&sn.ID, &sn.Title, &body, &sn.Language, &sn.Notes,
-			&folder, &sens, &uvars, &vdPlain, &vdEnc, &sn.CreatedAt, &sn.UpdatedAt); err != nil {
+			&folder, &sens, &uvars, &pinned, &vdPlain, &vdEnc, &sn.CreatedAt, &sn.UpdatedAt); err != nil {
 			srows.Close()
 			return out, err
 		}
@@ -107,6 +107,7 @@ func (s *Store) SyncSince(since string) (SyncOut, error) {
 		}
 		sn.IsSensitive = sens != 0
 		sn.UsesVariables = uvars != 0
+		sn.Pinned = pinned != 0
 		if !sn.IsSensitive {
 			b := string(body)
 			sn.Body = &b

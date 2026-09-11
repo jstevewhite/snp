@@ -26,6 +26,10 @@ type SnippetInput struct {
 	// UsesVariables marks the body as a template (spec §4). The server
 	// treats the body as opaque text; this only drives frontend behavior.
 	UsesVariables bool
+	// Pinned marks the snippet as a favorite (spec §4), surfaced in the
+	// app's Favorites list. A pin is not sensitive content, so it is stored
+	// plainly for every row and is never FTS-indexed.
+	Pinned bool
 	// VarDefaults holds per-variable default values for the body's
 	// template variables (spec §4). The server carries the map opaquely;
 	// pruning keys to the body's current variables is the client's job.
@@ -46,6 +50,9 @@ type SnippetOut struct {
 	IsSensitive bool     `json:"is_sensitive"`
 	// UsesVariables marks the body as a template (spec §4).
 	UsesVariables bool `json:"uses_variables"`
+	// Pinned marks the snippet as a favorite (spec §4). Always present in
+	// JSON output; an older client simply ignores it.
+	Pinned bool `json:"pinned"`
 	// VarDefaults holds per-variable default values (spec §4). It is nil
 	// (JSON null) for sensitive snippets in list/sync contexts, mirroring
 	// how their body is hidden there (spec §5).
@@ -206,10 +213,10 @@ func (s *Store) CreateSnippet(in SnippetInput) (SnippetOut, error) {
 	bodyText := bodyForIndex(in)
 	res, err := tx.ExecContext(ctx,
 		`INSERT INTO snippets (id, title, body, body_text, language, notes, tags, folder_id,
-		 is_sensitive, uses_variables, var_defaults, var_defaults_enc, created_at, updated_at)
-		 VALUES (?, ?, ?, ?, ?, ?, '', ?, ?, ?, ?, ?, ?, ?)`,
+		 is_sensitive, uses_variables, pinned, var_defaults, var_defaults_enc, created_at, updated_at)
+		 VALUES (?, ?, ?, ?, ?, ?, '', ?, ?, ?, ?, ?, ?, ?, ?)`,
 		id, in.Title, body, bodyText, in.Language, in.Notes, in.FolderID, boolInt(in.IsSensitive),
-		boolInt(in.UsesVariables), vdPlain, vdEnc, now, now)
+		boolInt(in.UsesVariables), boolInt(in.Pinned), vdPlain, vdEnc, now, now)
 	if err != nil {
 		return SnippetOut{}, err
 	}
@@ -238,6 +245,7 @@ func (s *Store) CreateSnippet(in SnippetInput) (SnippetOut, error) {
 		Tags:          tags,
 		IsSensitive:   in.IsSensitive,
 		UsesVariables: in.UsesVariables,
+		Pinned:        in.Pinned,
 		CreatedAt:     now,
 		UpdatedAt:     now,
 	}
@@ -292,9 +300,9 @@ func (s *Store) ReplaceSnippet(id string, in SnippetInput) (SnippetOut, error) {
 	}
 	if _, err := tx.ExecContext(ctx,
 		`UPDATE snippets SET title = ?, body = ?, body_text = ?, language = ?, notes = ?, folder_id = ?,
-		 is_sensitive = ?, uses_variables = ?, var_defaults = ?, var_defaults_enc = ?, updated_at = ? WHERE id = ?`,
+		 is_sensitive = ?, uses_variables = ?, pinned = ?, var_defaults = ?, var_defaults_enc = ?, updated_at = ? WHERE id = ?`,
 		in.Title, body, bodyForIndex(in), in.Language, in.Notes, in.FolderID, boolInt(in.IsSensitive),
-		boolInt(in.UsesVariables), vdPlain, vdEnc, now, id); err != nil {
+		boolInt(in.UsesVariables), boolInt(in.Pinned), vdPlain, vdEnc, now, id); err != nil {
 		return SnippetOut{}, err
 	}
 	tags, err := s.setTagsTx(ctx, tx, id, in.Tags)
@@ -317,6 +325,7 @@ func (s *Store) ReplaceSnippet(id string, in SnippetInput) (SnippetOut, error) {
 		Tags:          tags,
 		IsSensitive:   in.IsSensitive,
 		UsesVariables: in.UsesVariables,
+		Pinned:        in.Pinned,
 		CreatedAt:     created,
 		UpdatedAt:     now,
 	}
@@ -336,14 +345,15 @@ func (s *Store) GetSnippet(id string) (SnippetOut, error) {
 		folder  sql.NullString
 		sens    int
 		uvars   int
+		pinned  int
 		vdPlain string
 		vdEnc   sql.Null[[]byte]
 	)
 	err := s.db.QueryRowContext(ctx,
-		`SELECT id, title, body, language, notes, folder_id, is_sensitive, uses_variables,
+		`SELECT id, title, body, language, notes, folder_id, is_sensitive, uses_variables, pinned,
 		 var_defaults, var_defaults_enc, created_at, updated_at
 		 FROM snippets WHERE id = ? AND deleted_at IS NULL`, id).
-		Scan(&out.ID, &out.Title, &body, &out.Language, &out.Notes, &folder, &sens, &uvars,
+		Scan(&out.ID, &out.Title, &body, &out.Language, &out.Notes, &folder, &sens, &uvars, &pinned,
 			&vdPlain, &vdEnc, &out.CreatedAt, &out.UpdatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return SnippetOut{}, ErrNotFound
@@ -356,6 +366,7 @@ func (s *Store) GetSnippet(id string) (SnippetOut, error) {
 	}
 	out.IsSensitive = sens != 0
 	out.UsesVariables = uvars != 0
+	out.Pinned = pinned != 0
 	if out.IsSensitive {
 		k, err := s.requireKey()
 		if err != nil {

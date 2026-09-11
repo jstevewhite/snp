@@ -48,7 +48,7 @@ func (s *Store) Export() (ExportDoc, error) {
 	frows.Close()
 
 	srows, err := s.db.QueryContext(ctx,
-		`SELECT id, title, body, language, notes, folder_id, is_sensitive, uses_variables,
+		`SELECT id, title, body, language, notes, folder_id, is_sensitive, uses_variables, pinned,
 		 var_defaults, var_defaults_enc, created_at, updated_at
 		 FROM snippets WHERE deleted_at IS NULL ORDER BY updated_at DESC`)
 	if err != nil {
@@ -59,11 +59,11 @@ func (s *Store) Export() (ExportDoc, error) {
 		var sn SnippetOut
 		var body []byte
 		var folder sql.NullString
-		var sens, uvars int
+		var sens, uvars, pinned int
 		var vdPlain string
 		var vdEnc sql.Null[[]byte]
 		if err := srows.Scan(&sn.ID, &sn.Title, &body, &sn.Language, &sn.Notes,
-			&folder, &sens, &uvars, &vdPlain, &vdEnc, &sn.CreatedAt, &sn.UpdatedAt); err != nil {
+			&folder, &sens, &uvars, &pinned, &vdPlain, &vdEnc, &sn.CreatedAt, &sn.UpdatedAt); err != nil {
 			srows.Close()
 			return doc, err
 		}
@@ -72,6 +72,7 @@ func (s *Store) Export() (ExportDoc, error) {
 		}
 		sn.IsSensitive = sens != 0
 		sn.UsesVariables = uvars != 0
+		sn.Pinned = pinned != 0
 		if sn.IsSensitive {
 			k, err := s.requireKey()
 			if err != nil {

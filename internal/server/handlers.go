@@ -76,6 +76,8 @@ type snippetReq struct {
 	Tags          []string `json:"tags"`
 	IsSensitive   bool     `json:"is_sensitive"`
 	UsesVariables bool     `json:"uses_variables"`
+	// Pinned is the favorite flag (spec §4); omitted decodes as false.
+	Pinned bool `json:"pinned"`
 	// VarDefaults carries per-variable default values for template
 	// variables (spec §4); omitted decodes to an empty map.
 	VarDefaults map[string]string `json:"var_defaults"`
@@ -91,6 +93,7 @@ func (q snippetReq) input() store.SnippetInput {
 		Tags:          q.Tags,
 		IsSensitive:   q.IsSensitive,
 		UsesVariables: q.UsesVariables,
+		Pinned:        q.Pinned,
 		VarDefaults:   q.VarDefaults,
 	}
 }
