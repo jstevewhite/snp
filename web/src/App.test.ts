@@ -81,6 +81,13 @@ function stubFetch(): ReturnType<typeof vi.fn> {
   return fetchMock
 }
 
+/** Stubs navigator.clipboard and returns its writeText spy. */
+function stubClipboard(): ReturnType<typeof vi.fn> {
+  const writeText = vi.fn().mockResolvedValue(undefined)
+  Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true })
+  return writeText
+}
+
 describe('App', () => {
   beforeEach(async () => {
     await indexedDB.deleteDatabase('snp')
@@ -94,6 +101,7 @@ describe('App', () => {
 
   afterEach(() => {
     cleanup()
+    Reflect.deleteProperty(navigator, 'clipboard')
     vi.unstubAllGlobals()
   })
 
@@ -754,6 +762,102 @@ describe('App', () => {
     expect(
       fetchMock.mock.calls.filter((c) => String(c[0]).includes('/api/sync')),
     ).toHaveLength(1)
+    unmount()
+  })
+
+  it('focuses the search field on the search shortcut', async () => {
+    stubFetch()
+    const { unmount } = render(App)
+    await waitFor(() => expect(screen.getByText('Caddyfile')).toBeDefined())
+    const search = screen.getByLabelText('Search snippets') as HTMLInputElement
+    expect(document.activeElement).not.toBe(search)
+
+    await fireEvent.keyDown(window, { key: 'k', ctrlKey: true })
+    expect(document.activeElement).toBe(search)
+
+    // The current query is selected too, so typing replaces it.
+    await fireEvent.input(search, { target: { value: 'caddy' } })
+    await waitFor(() => expect(search.value).toBe('caddy'))
+    await fireEvent.keyDown(window, { key: 'k', ctrlKey: true })
+    expect(search.selectionStart).toBe(0)
+    expect(search.selectionEnd).toBe('caddy'.length)
+    unmount()
+  })
+
+  it('walks the list with the arrow keys and copies the selection on Enter', async () => {
+    stubFetch()
+    const writeText = stubClipboard()
+    const { unmount } = render(App)
+    await waitFor(() => expect(screen.getByText('Caddyfile')).toBeDefined())
+    const search = screen.getByLabelText('Search snippets') as HTMLInputElement
+    search.focus()
+
+    // Newest first (updated_at DESC): Deploy, Redis flush, Caddyfile.
+    await fireEvent.keyDown(window, { key: 'ArrowDown' })
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Deploy' })).toBeDefined())
+
+    // Redis flush is sensitive, so its body stays behind the reveal button.
+    await fireEvent.keyDown(window, { key: 'ArrowDown' })
+    await waitFor(() => expect(screen.getByText('Show body')).toBeDefined())
+
+    // Back to the template; Enter copies what its Copy button would write,
+    // with {{ns}} resolved from the saved default.
+    await fireEvent.keyDown(window, { key: 'ArrowUp' })
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Deploy' })).toBeDefined())
+    await fireEvent.keyDown(window, { key: 'Enter' })
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith('kubectl -n prod get pods'))
+    // The keyboard path has no button to flash, so it reports in the topbar.
+    expect(screen.getByText('Copied.')).toBeDefined()
+    unmount()
+  })
+
+  it('wraps the arrow-key selection at both ends', async () => {
+    stubFetch()
+    const { unmount } = render(App)
+    await waitFor(() => expect(screen.getByText('Caddyfile')).toBeDefined())
+    const search = screen.getByLabelText('Search snippets') as HTMLInputElement
+    search.focus()
+
+    // Nothing selected: ArrowUp takes the last (oldest) row.
+    await fireEvent.keyDown(window, { key: 'ArrowUp' })
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Caddyfile' })).toBeDefined())
+
+    // ArrowDown from the last row wraps to the first.
+    await fireEvent.keyDown(window, { key: 'ArrowDown' })
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Deploy' })).toBeDefined())
+    unmount()
+  })
+
+  it('clears the search query on Escape, then leaves the field', async () => {
+    stubFetch()
+    const { unmount } = render(App)
+    await waitFor(() => expect(screen.getByText('Caddyfile')).toBeDefined())
+    const search = screen.getByLabelText('Search snippets') as HTMLInputElement
+    search.focus()
+    await fireEvent.input(search, { target: { value: 'caddy' } })
+    await waitFor(() => expect(search.value).toBe('caddy'))
+
+    await fireEvent.keyDown(window, { key: 'Escape' })
+    await waitFor(() => expect(search.value).toBe(''))
+
+    await fireEvent.keyDown(window, { key: 'Escape' })
+    expect(document.activeElement).not.toBe(search)
+    unmount()
+  })
+
+  it('leaves Enter alone while the snippet editor has focus', async () => {
+    stubFetch()
+    const writeText = stubClipboard()
+    const { unmount } = render(App)
+    await waitFor(() => expect(screen.getByText('Caddyfile')).toBeDefined())
+    await fireEvent.click(screen.getAllByText('Caddyfile')[0])
+    await waitFor(() => expect(screen.getByText('Edit')).toBeDefined())
+    await fireEvent.click(screen.getByText('Edit'))
+
+    const body = (await waitFor(() => screen.getByLabelText('Body'))) as HTMLTextAreaElement
+    body.focus()
+    await fireEvent.keyDown(window, { key: 'Enter' })
+    expect(writeText).not.toHaveBeenCalled()
     unmount()
   })
 })

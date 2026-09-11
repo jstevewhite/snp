@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { searchShortcutLabel } from './keys'
   import { formatAbsolute, formatDate } from './time'
   import type { Snippet } from './types'
 
@@ -7,6 +8,7 @@
     selectedId = null,
     query = '',
     offline = false,
+    searchEl = $bindable<HTMLInputElement | undefined>(undefined),
     onselect,
     onsearch,
     oncreate,
@@ -16,30 +18,54 @@
     query?: string
     /** Offline: create is unavailable (spec §6). */
     offline?: boolean
+    /**
+     * The search input itself, exposed so the app can focus it from the
+     * global shortcut (spec §6 keyboard discipline).
+     */
+    searchEl?: HTMLInputElement | undefined
     onselect: (id: string) => void
     onsearch: (q: string) => void
     oncreate: () => void
   } = $props()
+
+  let listEl = $state<HTMLElement | undefined>()
+
+  // Arrow-key selection happens while focus stays in the search field, so
+  // the selected row can be off-screen. 'nearest' makes this a no-op for a
+  // mouse click on a row that is already visible.
+  $effect(() => {
+    const id = selectedId
+    if (id === null) return
+    const row = listEl?.querySelector(`[data-id="${id}"]`)
+    row?.scrollIntoView?.({ block: 'nearest' })
+  })
 </script>
 
 <div class="snippet-list">
   <div class="toolbar">
-    <input
-      type="search"
-      class="search"
-      placeholder="Search: caddy tag:ops lang:go"
-      value={query}
-      oninput={(e) => onsearch(e.currentTarget.value)}
-      aria-label="Search snippets"
-    />
+    <div class="search-wrap">
+      <input
+        bind:this={searchEl}
+        type="search"
+        class="search"
+        placeholder="Search: caddy tag:ops lang:go"
+        value={query}
+        oninput={(e) => onsearch(e.currentTarget.value)}
+        aria-label="Search snippets"
+      />
+      <!-- Decorative: the field's aria-label is its accessible name, and the
+           hint only repeats what the keydown handler accepts. -->
+      <kbd class="hint" aria-hidden="true">{searchShortcutLabel()}</kbd>
+    </div>
     <button class="new" disabled={offline} onclick={oncreate}>New snippet</button>
   </div>
-  <ul class="items">
+  <ul class="items" bind:this={listEl}>
     {#each snippets as s (s.id)}
       <li>
         <button
           class="item"
           class:selected={s.id === selectedId}
+          data-id={s.id}
           onclick={() => onselect(s.id)}
         >
           <span class="title">{s.title}</span>

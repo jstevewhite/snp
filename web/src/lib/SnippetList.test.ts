@@ -72,6 +72,22 @@ describe('SnippetList', () => {
     expect(onselect).toHaveBeenCalledWith('s1')
   })
 
+  it('shows the search shortcut hint inside the field', () => {
+    render(SnippetList, {
+      snippets: [],
+      selectedId: null,
+      query: '',
+      onselect: () => {},
+      onsearch: () => {},
+      oncreate: () => {},
+    })
+    const hint = document.querySelector('.snippet-list .hint')
+    // The modifier depends on the platform, so either label is correct.
+    expect(hint?.textContent?.trim()).toMatch(/^(Ctrl K|⌘K)$/)
+    // Decorative: the field's aria-label is its accessible name.
+    expect(hint?.getAttribute('aria-hidden')).toBe('true')
+  })
+
   it('emits search as the user types', async () => {
     const onsearch = vi.fn()
     render(SnippetList, {

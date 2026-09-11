@@ -13,6 +13,7 @@
     removeSnippet,
     type SnpDB,
   } from './lib/db'
+  import { isSearchShortcut } from './lib/keys'
   import { OnlineTracker } from './lib/online'
   import {
     FOLDERS_MAX,
@@ -42,6 +43,7 @@
     saveTheme,
   } from './lib/settings'
   import { syncLocal } from './lib/sync'
+  import { renderTemplate } from './lib/templates'
   import { formatAbsolute, formatRelative } from './lib/time'
   import { loadCachedVersion, resolveVersion } from './lib/version'
   import { onWake } from './lib/wake'
@@ -82,6 +84,20 @@
   let now = $state(Date.now())
   let busy = $state(false)
   let error: string | null = $state(null)
+  /** Transient topbar confirmation for an action with no button to flash
+   * (the keyboard copy shortcut); failures reuse `error` instead. */
+  const NOTICE_MS = 1500
+  let notice = $state<string | null>(null)
+  let noticeTimer: ReturnType<typeof setTimeout> | undefined
+  /** The list pane's search input, bound so the shortcut can focus it. */
+  let searchEl = $state<HTMLInputElement | undefined>()
+  /**
+   * The selected snippet's copy text as the detail pane computed it, with
+   * the id it belongs to. Deliberately non-reactive: it is read only from
+   * the keydown handler, and a reactive read would re-render the app on
+   * every keystroke in the variables panel.
+   */
+  let detailCopy: { id: string; text: string } | null = null
   let ready = $state(false)
   let settingsOpen = $state(false)
   /** Release version, shown next to the wordmark (spec §5). Starts from
@@ -633,6 +649,124 @@
   }
 
   /**
+   * Select a snippet from the list, by click or by the arrow keys.
+   * Selecting always leaves edit mode — the list's click handler did this
+   * inline until the keyboard path needed the same behavior.
+   */
+  function selectSnippet(id: string): void {
+    selectedSnippetId = id
+    editing = false
+    editingSnippet = null
+  }
+
+  /** Focus the search field and select its text, so typing replaces it. */
+  function focusSearch(): void {
+    const el = searchEl
+    if (el === undefined) return
+    el.focus()
+    el.select()
+  }
+
+  /**
+   * Move the selection through the visible list (spec §6 keyboard
+   * discipline). The ends wrap; with nothing selected, ArrowDown picks the
+   * first row and ArrowUp the last.
+   */
+  function moveSelection(delta: 1 | -1): void {
+    const items = visibleSnippets
+    if (items.length === 0) return
+    const at = items.findIndex((s) => s.id === selectedSnippetId)
+    const next =
+      at === -1
+        ? delta === 1
+          ? 0
+          : items.length - 1
+        : (at + delta + items.length) % items.length
+    selectSnippet(items[next].id)
+  }
+
+  /**
+   * The copy text for the current selection: what the detail pane last
+   * published, or — while it is not mounted, i.e. while editing — the
+   * cached body rendered with its saved defaults. Null means there is
+   * nothing to copy, which is the case for a sensitive body that has not
+   * been revealed.
+   */
+  function copyTextForSelection(): string | null {
+    const s = selectedSnippet
+    if (s === null) return null
+    if (detailCopy !== null && detailCopy.id === s.id) return detailCopy.text
+    const body = s.body ?? revealed[s.id] ?? null
+    if (body === null) return null
+    return s.uses_variables ? renderTemplate(body, s.var_defaults ?? {}) : body
+  }
+
+  /**
+   * Copy the selected snippet from the keyboard. Failures go to the usual
+   * error report; success flashes a topbar confirmation, because unlike the
+   * copy buttons there is no control under the cursor to change its label.
+   */
+  async function copyCurrentSelection(): Promise<void> {
+    const text = copyTextForSelection()
+    if (text === null) return
+    try {
+      await copySelected(text)
+      flashNotice('Copied.')
+    } catch (e) {
+      fail(e)
+    }
+  }
+
+  /** Show a short topbar confirmation (see `notice`). */
+  function flashNotice(text: string): void {
+    notice = text
+    clearTimeout(noticeTimer)
+    noticeTimer = setTimeout(() => (notice = null), NOTICE_MS)
+  }
+
+  // Drop a pending notice revert if the app unmounts.
+  $effect(() => () => clearTimeout(noticeTimer))
+
+  /**
+   * Global keydown: the dialog shortcuts while a dialog is open, otherwise
+   * the search workflow. Arrows and Enter are handled only while the search
+   * field holds focus, so Enter in the snippet editor is never hijacked
+   * (spec §6 keyboard discipline).
+   */
+  function onGlobalKeydown(e: KeyboardEvent): void {
+    if (dialog !== null) {
+      if (e.key === 'Escape') cancelDialog()
+      else if (e.key === 'Enter' && dialog.kind === 'resync') confirmDialog()
+      return
+    }
+    if (isSearchShortcut(e)) {
+      // Also stops Firefox focusing its own search bar on Ctrl+K.
+      e.preventDefault()
+      focusSearch()
+      return
+    }
+    if (document.activeElement !== searchEl) return
+    if (e.key === 'ArrowDown') {
+      e.preventDefault()
+      moveSelection(1)
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault()
+      moveSelection(-1)
+    } else if (e.key === 'Enter') {
+      e.preventDefault()
+      void copyCurrentSelection()
+    } else if (e.key === 'Escape') {
+      // The first Escape clears the query, a second leaves the field.
+      if (query !== '') {
+        e.preventDefault()
+        query = ''
+      } else {
+        searchEl?.blur()
+      }
+    }
+  }
+
+  /**
    * Full resync (spec §6 recovery path): clear the local cache, then sync
    * from scratch. The stored since is gone, so the next sync is a full
    * sync. Confirmation happens in the in-app dialog (promptResync) — the
@@ -656,16 +790,13 @@
   <title>snp</title>
 </svelte:head>
 
-<!-- Dialog shortcuts (Escape cancels; Enter confirms the resync dialog;
-     the folder input handles its own Enter). No-ops when no dialog is
-     open. -->
-<svelte:window
-  onkeydown={(e) => {
-    if (dialog === null) return
-    if (e.key === 'Escape') cancelDialog()
-    else if (e.key === 'Enter' && dialog.kind === 'resync') confirmDialog()
-  }}
-/>
+<!-- Global keys: the dialog shortcuts while a dialog is open (Escape
+     cancels; Enter confirms the resync dialog — the folder input handles
+     its own Enter), otherwise the search workflow: ⌘/Ctrl+K focuses the
+     field, arrows move the selection, Enter copies, Escape clears. Every
+     handler but the focus shortcut is scoped to the search field so the
+     snippet editor keeps its own keys. -->
+<svelte:window onkeydown={onGlobalKeydown} />
 
 <div class="app">
   <div class="chrome">
@@ -675,6 +806,7 @@
       <span class="conn" class:offline={!online}>{online ? 'online' : 'offline'}</span>
       <span class="spacer"></span>
       {#if error !== null}<span class="error" title={error}>{error}</span>{/if}
+      {#if notice !== null}<span class="notice" role="status">{notice}</span>{/if}
       {#if syncedAt !== null}
         <span class="synced" title={formatAbsolute(syncedAt)}>
           Synced {formatRelative(syncedAt, now)}
@@ -808,11 +940,8 @@
         selectedId={selectedSnippetId}
         {query}
         offline={!online}
-        onselect={(id) => {
-          selectedSnippetId = id
-          editing = false
-          editingSnippet = null
-        }}
+        bind:searchEl
+        onselect={selectSnippet}
         onsearch={(q) => (query = q)}
         oncreate={startCreate}
       />
@@ -849,6 +978,7 @@
           onremove={() => (dialog = { kind: 'snippetDelete', id: selectedSnippet.id })}
           onreveal={() => void reveal(selectedSnippet.id)}
           onsavedefaults={(defaults) => void saveDefaults(selectedSnippet.id, defaults)}
+          oncopytext={(id, text) => (detailCopy = { id, text })}
         />
         {/key}
       {:else}

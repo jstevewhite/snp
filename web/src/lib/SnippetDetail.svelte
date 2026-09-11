@@ -21,6 +21,7 @@
     onremove,
     onreveal,
     onsavedefaults,
+    oncopytext,
   }: {
     snippet: Snippet
     /** Revealed body for sensitive snippets (fetched on demand, never cached). */
@@ -39,6 +40,12 @@
     onreveal: () => void
     /** Persists per-variable defaults (spec §6); keys are client-owned. */
     onsavedefaults: (defaults: Record<string, string>) => void
+    /**
+     * Publishes the text the Copy buttons would write, so the app-level
+     * copy shortcut writes exactly the same thing — variable values typed
+     * into the panel included (spec §4).
+     */
+    oncopytext?: (id: string, text: string) => void
   } = $props()
 
   /** True when the body is not available locally (sensitive, not revealed). */
@@ -111,6 +118,14 @@
    * it keeps unfilled placeholders visible — so the copied text is the
    * filled-in command, never a half-substituted one. */
   const copyText = $derived(showVars ? renderTemplate(shown, values) : shown)
+
+  // Publish what Copy writes, so the app's copy shortcut agrees with the
+  // button instead of re-deriving the text from the cached row. The id
+  // rides along because the app keys this component by snippet: without it
+  // the app could not tell a stale publication from the current one.
+  $effect(() => {
+    oncopytext?.(snippet.id, copyText)
+  })
 
   // The Rendered preview collapses on the same rule, but independently: a
   // short template can render long (a variable holding many lines), and an
