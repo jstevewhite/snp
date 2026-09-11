@@ -14,8 +14,8 @@ Spec: `docs/snp-design.md` · Plan: `docs/snp-implementation-plan.md`
 
 ## Current status
 
-- Updated: 2026-09-11 13:25
-- Phase: review fixes + desktop app (macOS **and Linux** builds) + appearance + AI generation (command/script/function kinds) + tag filter + .app bundle + **bundled starter pack** merged to main; **Markdown notes**, **read-view syntax highlighting**, **notarization in `make app`**, the **Linux desktop build/launcher** and **`snp seed`** landed; the **GitHub release workflows** and the **header version chip** (`GET /api/version`) landed; **v0.1.0 shipped** (signed + notarized macOS bundle, 7 assets, verified after publish); **draggable pane dividers** landed (spec §6, `web/src/lib/panes.ts`); `make test` green (go test + vet + 230 Vitest + svelte-check 0 errors / 0 warnings). The Linux desktop binary **build was verified on an ARM Ubuntu 24 host** (git bundle → `make desktop`), after a first attempt failed because that work was still uncommitted and the bundle therefore carried the old darwin-only tree.
+- Updated: 2026-09-11 13:50
+- Phase: review fixes + desktop app (macOS **and Linux** builds) + appearance + AI generation (command/script/function kinds) + tag filter + .app bundle + **bundled starter pack** merged to main; **Markdown notes**, **read-view syntax highlighting**, **notarization in `make app`**, the **Linux desktop build/launcher** and **`snp seed`** landed; the **GitHub release workflows** and the **header version chip** (`GET /api/version`) landed; **v0.1.0 shipped** (signed + notarized macOS bundle, 7 assets, verified after publish); **draggable pane dividers** landed (spec §6, `web/src/lib/panes.ts`) and **Explain now replaces Notes** with an undo (spec §13); `make test` green (go test + vet + 232 Vitest + svelte-check 0 errors / 0 warnings). The Linux desktop binary **build was verified on an ARM Ubuntu 24 host** (git bundle → `make desktop`), after a first attempt failed because that work was still uncommitted and the bundle therefore carried the old darwin-only tree.
 - Next: **bump the Node-20 GitHub Actions** (`checkout`, `setup-node`, `setup-go`, `upload-artifact`, `download-artifact` — all still work but are force-run on Node 24 and annotate the run) **to their Node-24 majors** before the next release; then **Linux desktop container build + verification** (podman; `libgtk-3-dev` + `libwebkit2gtk-4.1-dev` + Go, `make web` then the desktop build, and exercise `install-desktop.sh` with a scratch `PREFIX=`); then the Windows port, desktop follow-ons (real app icon, startup-error surfacing in the window); then remaining v1 follow-ons (CLI client, SnippetsLab converter)
 
 ## Log
@@ -1039,3 +1039,32 @@ Spec: `docs/snp-design.md` · Plan: `docs/snp-implementation-plan.md`
   confirms `index.html` is the only tracked path under `dist`, which is
   what makes the `.gitignore` negation load-bearing. Docs-only change; no
   build or test rerun needed beyond the `make test` already green above.
+- 13:45 — **Explain replaces Notes instead of appending** (user request;
+  spec §13 revised). With text already in Notes, each Explain run glued the
+  new explanation onto the old one, so re-running meant hand-deleting the
+  previous text first. `explain()` now assigns `notes = res.notes` and keeps
+  the replaced text in `explainUndo`, which surfaces an **Undo** button
+  beside Explain (only while a snapshot exists) that puts the old text back.
+  Two deliberate limits on that undo point: it is snapshotted only after a
+  successful response, so a 502 or an empty explanation leaves both the
+  notes and any earlier snapshot intact (the existing error test now also
+  asserts no Undo appears); and typing in Notes by hand clears it, so Undo
+  can only revert the Explain overwrite and can never silently discard
+  typing that came after it. It is one level, not a stack — Undo consumes
+  the snapshot. The Ask-AI Generate path already *replaced* notes
+  (`notes = res.notes`), so Explain was the odd one out. Generate still
+  clobbers notes with no undo; left alone deliberately, because its whole
+  reply (title, language, body, notes) lands as one reviewed package and
+  undoing only the notes would be half a revert — a form-wide undo would be
+  the real fix if that ever bites.
+  Tests: the append case became an overwrite assertion, plus two new cases
+  (Undo restores the replaced text; hand-editing drops the affordance), 19
+  in `SnippetForm.test.ts`. `make test` green (232 Vitest, svelte-check 0
+  errors / 0 warnings).
+- Gotcha for anyone extending this: the Notes textarea now carries both
+  `bind:value` and an `oninput` that clears `explainUndo`. Programmatic
+  writes (`notes = …` from Explain/Undo) do not fire `input`, which is what
+  makes the snapshot survive the very write it is meant to undo — so a
+  future change that sets notes by dispatching an input event, or that
+  moves the clearing into a `$effect` on `notes`, would silently break Undo
+  by clearing the snapshot the instant Explain set it.

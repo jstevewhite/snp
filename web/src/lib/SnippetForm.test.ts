@@ -386,7 +386,7 @@ describe('SnippetForm', () => {
     await waitFor(() => expect(screen.getByText('AI provider error')).toBeDefined())
   })
 
-  it('Explain appends the model explanation to Notes', async () => {
+  it('Explain replaces Notes with the model explanation', async () => {
     mockedApi.aiStatus.mockResolvedValue({ enabled: true, model: 'm' })
     mockedApi.explainSnippet.mockResolvedValue({
       notes: 'Recursively copies the file and overwrites the destination.',
@@ -401,10 +401,47 @@ describe('SnippetForm', () => {
     await fireEvent.click(screen.getByText('Explain'))
     await waitFor(() =>
       expect((screen.getByLabelText('Notes') as HTMLTextAreaElement).value).toBe(
-        'existing note\n\nRecursively copies the file and overwrites the destination.',
+        'Recursively copies the file and overwrites the destination.',
       ),
     )
     expect(mockedApi.explainSnippet).toHaveBeenCalledWith('cp -rf {{file}} ~/')
+  })
+
+  it('Undo puts back the notes Explain replaced', async () => {
+    mockedApi.aiStatus.mockResolvedValue({ enabled: true, model: 'm' })
+    mockedApi.explainSnippet.mockResolvedValue({ notes: 'replacement' })
+    render(SnippetForm, { initial: null, folders: [], defaultFolderId: null, onsave: vi.fn(), oncancel: () => {} })
+    await waitFor(() => expect(screen.getByText('Explain')).toBeDefined())
+    await fireEvent.input(screen.getByLabelText('Body'), { target: { value: 'x' } })
+    await fireEvent.input(screen.getByLabelText('Notes'), { target: { value: 'mine' } })
+
+    // No overwrite has happened yet, so there is nothing to undo.
+    expect(screen.queryByText('Undo')).toBeNull()
+
+    await fireEvent.click(screen.getByText('Explain'))
+    await waitFor(() => expect((screen.getByLabelText('Notes') as HTMLTextAreaElement).value).toBe('replacement'))
+
+    await fireEvent.click(screen.getByText('Undo'))
+    expect((screen.getByLabelText('Notes') as HTMLTextAreaElement).value).toBe('mine')
+    // Used once, then gone — it is not a general undo stack.
+    expect(screen.queryByText('Undo')).toBeNull()
+  })
+
+  it('typing in Notes after Explain drops the undo affordance', async () => {
+    mockedApi.aiStatus.mockResolvedValue({ enabled: true, model: 'm' })
+    mockedApi.explainSnippet.mockResolvedValue({ notes: 'replacement' })
+    render(SnippetForm, { initial: null, folders: [], defaultFolderId: null, onsave: vi.fn(), oncancel: () => {} })
+    await waitFor(() => expect(screen.getByText('Explain')).toBeDefined())
+    await fireEvent.input(screen.getByLabelText('Body'), { target: { value: 'x' } })
+    await fireEvent.input(screen.getByLabelText('Notes'), { target: { value: 'mine' } })
+    await fireEvent.click(screen.getByText('Explain'))
+    await waitFor(() => expect(screen.getByText('Undo')).toBeDefined())
+
+    // Editing by hand gives up the undo point rather than letting Undo
+    // silently discard what was just typed.
+    await fireEvent.input(screen.getByLabelText('Notes'), { target: { value: 'edited' } })
+    await waitFor(() => expect(screen.queryByText('Undo')).toBeNull())
+    expect((screen.getByLabelText('Notes') as HTMLTextAreaElement).value).toBe('edited')
   })
 
   it('Explain surfaces errors inline and leaves Notes untouched', async () => {
@@ -417,5 +454,8 @@ describe('SnippetForm', () => {
     await fireEvent.click(screen.getByText('Explain'))
     await waitFor(() => expect(screen.getByText('AI provider error')).toBeDefined())
     expect((screen.getByLabelText('Notes') as HTMLTextAreaElement).value).toBe('keep me')
+    // A failed run must not offer an undo point for a write that never
+    // happened.
+    expect(screen.queryByText('Undo')).toBeNull()
   })
 })

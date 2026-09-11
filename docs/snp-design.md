@@ -10,6 +10,7 @@ Revised: 2026-09-09 (§6 read-view syntax highlighting)
 Revised: 2026-09-10 (§3 SPA auth exception; §5 sync `>=` boundary; §2/§4/§9/§10 reconciled with the implementation)
 Revised: 2026-09-11 (§13 Ask-AI output kind; §6 read-view long-body collapse; §12 Linux desktop build; §5 starter pack)
 Revised: 2026-09-11 (§6 draggable pane dividers)
+Revised: 2026-09-11 (§13 Explain replaces Notes instead of appending, with undo)
 Status: approved design, revised after review, implemented
 
 > Revision note (2026-09-06): §6 originally specified a CodeMirror 6
@@ -788,7 +789,11 @@ un-reviewed.
   tags (new ones allowed) and merges them into the field without
   duplicating or clobbering what is already typed. An "Explain" button
   next to Notes asks for a short explanation of the body (gotchas +
-  important info) and appends it to the Notes field.
+  important info) and replaces the Notes field with it. The text Explain
+  replaced is kept behind an "Undo" button beside it, so an unwanted
+  explanation is one click to back out of rather than something to delete
+  by hand; editing Notes by hand drops that undo point, so Undo can never
+  discard typing that came after the overwrite.
 - **Privacy**: requests leave the machine for the configured provider;
   a self-hosted OpenAI-compatible endpoint (e.g. ollama) is supported
   by pointing `ai_endpoint` at it. Treat generated snippets like any

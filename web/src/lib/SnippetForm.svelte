@@ -80,10 +80,17 @@
   let tagsBusy = $state(false)
   let tagsError: string | null = $state(null)
 
-  // Explain (spec §13): one-shot explanation of the body, appended to
-  // the Notes field.
+  // Explain (spec §13): one-shot explanation of the body that *replaces*
+  // the Notes field, rather than appending to it as it first did — with
+  // text already there, appending meant hand-deleting the old explanation
+  // before every re-run. The replaced text is kept so a result the user
+  // does not want can be undone from the button beside Explain; typing in
+  // Notes by hand drops that snapshot, so Undo can never silently discard
+  // something the user wrote after the overwrite.
   let explainBusy = $state(false)
   let explainError: string | null = $state(null)
+  /** Notes as they stood before the last Explain; null = nothing to undo. */
+  let explainUndo = $state<string | null>(null)
 
   $effect(() => {
     let cancelled = false
@@ -163,13 +170,23 @@
     try {
       const res = await api.explainSnippet(body)
       if (res.notes.trim() === '') throw new Error('AI returned an empty explanation')
-      const existing = notes.trim()
-      notes = existing === '' ? res.notes : existing + '\n\n' + res.notes
+      // Replace, keeping what was there so the overwrite is reversible.
+      // The snapshot is taken only on success, so a failed run leaves both
+      // the notes and any earlier undo point intact.
+      explainUndo = notes
+      notes = res.notes
     } catch (e) {
       explainError = e instanceof Error ? e.message : String(e)
     } finally {
       explainBusy = false
     }
+  }
+
+  /** Put back the Notes the last Explain replaced (spec §13). */
+  function undoExplain(): void {
+    if (explainUndo === null) return
+    notes = explainUndo
+    explainUndo = null
   }
 
   function submit(): void {
@@ -264,13 +281,25 @@
   </label>
   <label>
     <span>Notes</span>
-    <textarea rows="3" bind:value={notes}></textarea>
+    <!-- Hand-editing drops the undo snapshot: Undo reverts the Explain
+         overwrite only, never typing that came after it. -->
+    <textarea rows="3" bind:value={notes} oninput={() => (explainUndo = null)}></textarea>
   </label>
   {#if aiKnown && aiEnabled}
     <div class="tags-ai">
       <button type="button" disabled={explainBusy || body.trim() === ''} onclick={() => void explain()}>
         {explainBusy ? 'Explaining…' : 'Explain'}
       </button>
+      {#if explainUndo !== null}
+        <button
+          type="button"
+          disabled={explainBusy}
+          title="Put back the notes Explain replaced"
+          onclick={undoExplain}
+        >
+          Undo
+        </button>
+      {/if}
       {#if explainError}<span class="ai-error">{explainError}</span>{/if}
     </div>
   {/if}
