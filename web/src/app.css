@@ -196,6 +196,18 @@ body {
   font-size: calc(15px * var(--text-scale, 1));
 }
 
+/* Release version, beside the wordmark: secondary to the brand, so it is
+ * smaller and monospaced in a quiet pill. */
+.version {
+  font-family: var(--mono);
+  font-size: calc(11px * var(--text-scale, 1));
+  color: var(--text);
+  padding: 1px 6px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg-alt);
+}
+
 .conn {
   font-size: calc(12px * var(--text-scale, 1));
   padding: 2px 8px;

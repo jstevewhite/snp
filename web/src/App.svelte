@@ -26,6 +26,7 @@
     saveTheme,
   } from './lib/settings'
   import { syncLocal } from './lib/sync'
+  import { loadCachedVersion, resolveVersion } from './lib/version'
   import { onWake } from './lib/wake'
   import type { Folder, Snippet, SnippetInput } from './lib/types'
   import FolderTree from './lib/FolderTree.svelte'
@@ -56,6 +57,9 @@
   let error: string | null = $state(null)
   let ready = $state(false)
   let settingsOpen = $state(false)
+  /** Release version, shown next to the wordmark (spec §5). Starts from
+   * the cached value so the header renders immediately — offline too. */
+  let version: string | null = $state(loadCachedVersion())
 
   // Appearance: theme + interface text size. main.ts applies the saved
   // values before first paint; from here on the component owns them —
@@ -206,6 +210,15 @@
       cancelled = true
       handle?.close()
     }
+  })
+
+  // Release version for the header: refresh from the server once (the
+  // cached value already rendered), and keep the cache for offline loads.
+  // Reads nothing reactive, so it runs once and never re-triggers a sync.
+  $effect(() => {
+    void resolveVersion().then((v) => {
+      if (v !== null) version = v
+    })
   })
 
   // Connectivity, sync interval and wake-up triggers, active once ready.
@@ -520,10 +533,11 @@
   <div class="chrome">
     <header class="topbar">
       <span class="brand">snp</span>
+      {#if version !== null}<span class="version">{version}</span>{/if}
       <span class="conn" class:offline={!online}>{online ? 'online' : 'offline'}</span>
-      {#if lastSync !== null}<span class="synced">synced {lastSync}</span>{/if}
       <span class="spacer"></span>
       {#if error !== null}<span class="error" title={error}>{error}</span>{/if}
+      {#if lastSync !== null}<span class="synced">synced {lastSync}</span>{/if}
       <button onclick={() => tick()} disabled={busy || !online || !ready}>
         Resync
       </button>

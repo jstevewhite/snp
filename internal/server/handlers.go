@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/jstevewhite/snp/internal/ai"
+	"github.com/jstevewhite/snp/internal/buildinfo"
 	"github.com/jstevewhite/snp/internal/starter"
 	"github.com/jstevewhite/snp/internal/store"
 )
@@ -16,6 +17,7 @@ import (
 func (s *Server) apiMux() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/me", s.handleMe)
+	mux.HandleFunc("GET /api/version", s.handleVersion)
 	mux.HandleFunc("GET /api/snippets", s.handleListSnippets)
 	mux.HandleFunc("POST /api/snippets", s.handleCreateSnippet)
 	mux.HandleFunc("GET /api/snippets/{id}", s.handleGetSnippet)
@@ -48,6 +50,19 @@ type meOut struct {
 func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
 	id := identityFrom(r.Context())
 	writeJSON(w, http.StatusOK, meOut{Login: id.Login, DisplayName: id.DisplayName})
+}
+
+// versionOut is the /api/version response. Unlike /api/me it carries no
+// identity: the version is a property of the build, and the SPA shows it
+// in the header for both the browser and the desktop window.
+type versionOut struct {
+	Version string `json:"version"`
+}
+
+// handleVersion reports the release version stamped into this binary
+// (internal/buildinfo), or "dev" for a plain `go build`.
+func (s *Server) handleVersion(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, versionOut{Version: buildinfo.String()})
 }
 
 // snippetReq is the JSON body for POST/PUT /api/snippets. The id and

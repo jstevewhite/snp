@@ -73,6 +73,11 @@ export interface Identity {
   display_name: string
 }
 
+/** GET /api/version: the release version stamped into the running binary. */
+export interface VersionInfo {
+  version: string
+}
+
 export interface SnippetSearchParams {
   /** May contain tag:x / lang:y tokens mixed with FTS terms. */
   q?: string

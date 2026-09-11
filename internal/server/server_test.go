@@ -16,6 +16,7 @@ import (
 	fstest "testing/fstest"
 
 	"github.com/jstevewhite/snp/internal/ai"
+	"github.com/jstevewhite/snp/internal/buildinfo"
 	"github.com/jstevewhite/snp/internal/config"
 	"github.com/jstevewhite/snp/internal/starter"
 	"github.com/jstevewhite/snp/internal/store"
@@ -185,6 +186,37 @@ func TestMe(t *testing.T) {
 	}
 	if m.Login != "dev@local" || m.DisplayName != "Dev" {
 		t.Errorf("got %+v", m)
+	}
+}
+
+// TestVersion covers /api/version: the SPA header shows this string, so
+// it must track the value stamped into the binary (internal/buildinfo).
+func TestVersion(t *testing.T) {
+	h := newTestServer(t, "", &fakeResolver{id: tsauth.Identity{Login: "dev@local"}}).Handler()
+
+	// Unstamped (the test binary) reports "dev".
+	w := doReq(t, h, "GET", "/api/version", nil, "")
+	if w.Code != http.StatusOK {
+		t.Fatalf("got %d", w.Code)
+	}
+	var v versionOut
+	if err := json.Unmarshal(w.Body.Bytes(), &v); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if v.Version != "dev" {
+		t.Errorf("unstamped: got %q, want %q", v.Version, "dev")
+	}
+
+	// Stamped: the handler reads the link-time value at request time, so
+	// handle h (built above) reports it, like a release binary would.
+	buildinfo.Version = "v9.9.9-test"
+	t.Cleanup(func() { buildinfo.Version = "" })
+	w = doReq(t, h, "GET", "/api/version", nil, "")
+	if err := json.Unmarshal(w.Body.Bytes(), &v); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if v.Version != "v9.9.9-test" {
+		t.Errorf("stamped: got %q", v.Version)
 	}
 }
 

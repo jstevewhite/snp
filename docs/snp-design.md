@@ -154,6 +154,11 @@ this:
 
 `GET /api/me` returns `{ "login": ..., "display_name": ... }`.
 
+`GET /api/version` returns `{ "version": ... }` — the build's stamped
+version, or `"dev"` — which the SPA shows in the header beside the
+wordmark. It is the only endpoint that reports build metadata, so a
+client can tell which release it is talking to.
+
 Multi-user later: add an `owner` column on snippets, replace `owner` in
 config with an allowlist, and filter queries by owner. No structural change.
 
@@ -345,6 +350,7 @@ the keys it is given (the client prunes them to the body's variables).
 | Method | Path | Notes |
 |---|---|---|
 | GET | `/api/me` | identity |
+| GET | `/api/version` | `{ "version": ... }` — the release version stamped into the binary (`internal/buildinfo`), or `"dev"` for an unstamped build; the SPA header shows it next to the wordmark |
 | GET | `/api/snippets?q=&tag=&lang=&folder=&limit=&offset=` | search/list; ordering `updated_at DESC, id DESC`; default `limit` 50, max 200; `q` may contain `tag:x lang:y` filters mixed with FTS terms; `tag:`/`lang:` tokens in `q` AND with the separate `tag=`/`lang=` params; if nothing is left after filter extraction, no FTS MATCH is issued and all rows matching the filters are returned |
 | POST | `/api/snippets` | create; server assigns id and timestamps |
 | GET | `/api/snippets/{id}` | full snippet, body decrypted |

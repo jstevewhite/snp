@@ -65,6 +65,12 @@ function stubFetch(): ReturnType<typeof vi.fn> {
         headers: { 'Content-Type': 'application/json' },
       })
     }
+    if (url.includes('/api/version')) {
+      return new Response(JSON.stringify({ version: 'v9.9.9-test' }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      })
+    }
     return new Response('null', {
       status: 200,
       headers: { 'Content-Type': 'application/json' },
@@ -79,6 +85,7 @@ describe('App', () => {
     await indexedDB.deleteDatabase('snp')
     localStorage.removeItem('snp.theme')
     localStorage.removeItem('snp.textScale')
+    localStorage.removeItem('snp.version')
     document.documentElement.removeAttribute('data-theme')
     document.documentElement.style.removeProperty('--text-scale')
   })
@@ -96,6 +103,31 @@ describe('App', () => {
     expect(screen.getByText('Redis flush')).toBeDefined()
     expect(screen.getByText('online')).toBeDefined()
     expect(fetchMock).toHaveBeenCalled()
+    unmount()
+  })
+
+  it('shows the release version after the wordmark, and puts the sync time last', async () => {
+    stubFetch()
+    const { container, unmount } = render(App)
+    await waitFor(() => expect(screen.getByText('Caddyfile')).toBeDefined())
+
+    // The version arrives from GET /api/version and sits right after 'snp'.
+    const brand = container.querySelector('.topbar .brand')!
+    const version = await waitFor(() => {
+      const v = container.querySelector('.topbar .version')
+      expect(v?.textContent).toBe('v9.9.9-test')
+      return v!
+    })
+    expect(brand.nextElementSibling).toBe(version)
+
+    // The synced timestamp is the last text in the bar, immediately left
+    // of the Resync button.
+    const synced = container.querySelector('.topbar .synced')
+    expect(synced?.textContent).toContain('synced ')
+    const resync = [...container.querySelectorAll('.topbar button')].find(
+      (b) => b.textContent?.trim() === 'Resync',
+    )!
+    expect(synced!.nextElementSibling).toBe(resync)
     unmount()
   })
 

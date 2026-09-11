@@ -14,8 +14,8 @@ Spec: `docs/snp-design.md` · Plan: `docs/snp-implementation-plan.md`
 
 ## Current status
 
-- Updated: 2026-09-11 09:00
-- Phase: review fixes + desktop app (macOS **and Linux** builds) + appearance + AI generation (command/script/function kinds) + tag filter + .app bundle + **bundled starter pack** merged to main; **Markdown notes**, **read-view syntax highlighting**, **notarization in `make app`**, the **Linux desktop build/launcher** and **`snp seed`** landed; `make test` green (go test + vet + 209 Vitest + svelte-check 0). The Linux desktop binary **build was verified on an ARM Ubuntu 24 host** (git bundle → `make desktop`), after a first attempt failed because that work was still uncommitted and the bundle therefore carried the old darwin-only tree.
+- Updated: 2026-09-11 12:05
+- Phase: review fixes + desktop app (macOS **and Linux** builds) + appearance + AI generation (command/script/function kinds) + tag filter + .app bundle + **bundled starter pack** merged to main; **Markdown notes**, **read-view syntax highlighting**, **notarization in `make app`**, the **Linux desktop build/launcher** and **`snp seed`** landed; the **GitHub release workflows** and the **header version chip** (`GET /api/version`) landed; `make test` green (go test + vet + 214 Vitest + svelte-check 0). The Linux desktop binary **build was verified on an ARM Ubuntu 24 host** (git bundle → `make desktop`), after a first attempt failed because that work was still uncommitted and the bundle therefore carried the old darwin-only tree.
 - Next: **Linux desktop container build + verification** (podman; `libgtk-3-dev` + `libwebkit2gtk-4.1-dev` + Go, `make web` then the desktop build, and exercise `install-desktop.sh` with a scratch `PREFIX=`); then the Windows port, desktop follow-ons (real app icon, startup-error surfacing in the window); then remaining v1 follow-ons (CLI client, SnippetsLab converter)
 
 ## Log
@@ -897,3 +897,34 @@ Spec: `docs/snp-design.md` · Plan: `docs/snp-implementation-plan.md`
   No application builds/tests needed for these documentation changes.
   Gotcha remains: spec §13's sensitive-content guarantee disagrees with
   the implementation; this session updates the requested README and guide.
+- 2026-09-11 — Header refactor (user request): the top bar is now
+  `snp <version> [online] …… [error] synced <ts> [Resync] [⚙]` — the
+  release version sits immediately after the wordmark and the synced
+  timestamp moved to the far right, immediately left of Resync. The
+  version had no source at all, so this needed plumbing: new
+  `GET /api/version` → `{"version": ...}` (`internal/server/handlers.go`
+  `handleVersion`, `internal/buildinfo.String()`, so an unstamped build
+  reports `dev`), spec §3 prose + §5 endpoint table updated.
+  Chose an additive endpoint over stamping the SPA shell
+  (`window.__SNP_VERSION__`): the endpoint rides the existing desktop
+  bridge unchanged (`internal/desktop.CallAPI`), needs no HTML rewrite in
+  `static.go` or in the wails asset middleware, and the PWA's `/api/*`
+  `NetworkOnly` workbox rule (vite.config.ts) means the service worker can
+  never serve a stale version. Offline cost is covered by caching the
+  value in localStorage (`web/src/lib/version.ts`, key `snp.version`), so
+  the chip renders from cache when the request fails; a failed lookup
+  never surfaces as an app error.
+  Tests: Go `TestVersion` (unstamped → `dev`, then a stamped global →
+  the tag), Vitest `version.test.ts` (cache round-trip, offline fallback,
+  no-cache-and-offline → null, blank value ignored) and an App test that
+  asserts the DOM order explicitly (`brand.nextElementSibling` is
+  `.version`; `.synced.nextElementSibling` is the Resync button).
+  `make test` green: vet + `go test ./...` + 214 Vitest + svelte-check 0.
+- Gotcha for local verification: `bin/snp` and `bin/snp-desktop` in a
+  working tree from before this change are stale — `./bin/snp version`
+  and `./bin/snp-desktop -version` fail with "unknown command" / "flag
+  provided but not defined" until `make build` / `make desktop` reruns.
+  Also: release tarball names drop the leading `v` (`snp_0.2.0_…`) while
+  the stamped binary prints `v0.2.0`; and the sandboxed `go build` needs
+  `GOCACHE` inside the workspace if `~/Library/Caches/go-build` is not
+  writable.

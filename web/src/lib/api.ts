@@ -12,6 +12,7 @@ import {
   type SnippetSearchParams,
   type SyncResponse,
   type TagCount,
+  type VersionInfo,
   ApiError,
 } from './types'
 
@@ -119,6 +120,11 @@ async function request<T>(path: string, opts: RequestOptions = {}): Promise<T> {
 
 export function me(): Promise<Identity> {
   return request<Identity>('/me')
+}
+
+/** GET /api/version: the release version stamped into the running binary. */
+export function version(): Promise<VersionInfo> {
+  return request<VersionInfo>('/version')
 }
 
 export function listSnippets(p: SnippetSearchParams = {}): Promise<Snippet[]> {
