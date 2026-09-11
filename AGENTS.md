@@ -15,7 +15,7 @@ non-trivial work:
 
 - `docs/snp-design.md` — the spec; code comments cite it ("spec §4"). If
   behavior and spec disagree, one of them is a bug; say which.
-- `docs/snp-implementation-plan.md` — phases 0–9, each with a "done when".
+- `docs/snp-implementation-plan.md` — phases 0–10, each with a "done when".
 - `docs/work-log.md` — append-only, newest at bottom; "Current status" at
   top names the current phase. **Append an entry when finishing a phase or
   session**, including gotchas found; it is the resume point.
@@ -175,7 +175,9 @@ syntax shared by online and offline search), `templates.ts`
 (`{{var}}`/`{{var|default}}`), `db.ts` (IndexedDB via `idb`), `sync.ts`
 (idempotent merge + `server_time`), `search.ts` (MiniSearch, incremental on
 merge), `online.ts`, `desktop.ts` (desktop-shell detection; inert in
-browsers).
+browsers), `time.ts` (display formatting for the stored timestamps),
+`keys.ts` (platform-aware shortcut labels), `clipboard.ts` (clipboard write
+with a webview fallback).
 
 Vitest needs `resolve.conditions: ['browser']` in `vite.config.ts` or
 `svelte` resolves to its server entry and component tests lose `mount`.

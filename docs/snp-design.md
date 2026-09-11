@@ -11,6 +11,7 @@ Revised: 2026-09-10 (§3 SPA auth exception; §5 sync `>=` boundary; §2/§4/§9
 Revised: 2026-09-11 (§13 Ask-AI output kind; §6 read-view long-body collapse; §12 Linux desktop build; §5 starter pack)
 Revised: 2026-09-11 (§6 draggable pane dividers)
 Revised: 2026-09-11 (§13 Explain replaces Notes instead of appending, with undo)
+Revised: 2026-09-11 (§4/§5 `pinned`; §6 Favorites, explicit copy actions, the search keyboard workflow, simplified timestamps, two-line titles)
 Status: approved design, revised after review, implemented
 
 > Revision note (2026-09-06): §6 originally specified a CodeMirror 6
@@ -23,9 +24,10 @@ Status: approved design, revised after review, implemented
 > revisions (2026-09-09) restored Markdown notes (`marked` + DOMPurify)
 > and lazy per-language highlighting (highlight.js) and added the
 > left-pane tag list, so the section below again describes what is built.
-> CodeMirror, the API-backed online search, global keyboard shortcuts,
-> and responsive pane stacking remain unbuilt; `marked`, `dompurify`, and
-> `highlight.js` are dependencies.
+> CodeMirror, the API-backed online search, and responsive pane stacking
+> remain unbuilt; `marked`, `dompurify`, and `highlight.js` are
+> dependencies. Global keyboard shortcuts arrived with the 2026-09-11
+> refinement, scoped to the search workflow (§6 "Keyboard").
 
 ## Purpose
 
@@ -193,6 +195,7 @@ snippets (
   folder_id      TEXT REFERENCES folders(id),
   is_sensitive   INTEGER NOT NULL DEFAULT 0,
   uses_variables INTEGER NOT NULL DEFAULT 0,
+  pinned         INTEGER NOT NULL DEFAULT 0,-- 1 = favorite; plain, not FTS-indexed
   var_defaults   TEXT NOT NULL DEFAULT '',-- JSON {"name": value} map; '' when sensitive
   var_defaults_enc BLOB,                   -- sealed map when sensitive; NULL when empty
   created_at     TEXT NOT NULL,
@@ -314,6 +317,18 @@ the body's current variables on save. For sensitive snippets the map is
 encrypted at rest with the body (see "Encryption") and is omitted from
 list and sync responses, like the body.
 
+### Favorites
+
+The `snippets.pinned` flag marks a snippet as a favorite. Like
+`uses_variables`, it is a flag the server never interprets: it is not
+FTS-indexed, and it is stored plainly even for sensitive snippets — whether
+a snippet is a favorite says nothing about its body, so it is not
+encrypted alongside `body` and `var_defaults`. It rides the snippet JSON as
+`pinned`, so it syncs with the row and travels through export and import
+(an older export document without the field imports as unpinned). The
+frontend surfaces pinned snippets in a Favorites list above the folder tree
+(spec §6).
+
 ## 5. API
 
 All endpoints are under `/api`, JSON in and out, `Content-Type:
@@ -336,6 +351,7 @@ RFC3339 UTC strings, second precision, no fractional seconds.
   "tags": ["ops", "caddy"],
   "is_sensitive": false,
   "uses_variables": false,
+  "pinned": false,
   "var_defaults": {},
   "created_at": "2026-09-02T10:00:00Z",
   "updated_at": "2026-09-02T10:00:00Z"
@@ -346,6 +362,9 @@ In list and sync responses, sensitive snippets have `body` set to
 `null`; `var_defaults` is `null` for them as well. On input (POST/PUT),
 an omitted `var_defaults` decodes to an empty map; the server stores
 the keys it is given (the client prunes them to the body's variables).
+`pinned` is always present on output and defaults to `false` on input, so
+a PUT that omits it clears the pin — the same full-replace contract the
+other fields have.
 
 ### Endpoints
 
@@ -356,7 +375,7 @@ the keys it is given (the client prunes them to the body's variables).
 | GET | `/api/snippets?q=&tag=&lang=&folder=&limit=&offset=` | search/list; ordering `updated_at DESC, id DESC`; default `limit` 50, max 200; `q` may contain `tag:x lang:y` filters mixed with FTS terms; `tag:`/`lang:` tokens in `q` AND with the separate `tag=`/`lang=` params; if nothing is left after filter extraction, no FTS MATCH is issued and all rows matching the filters are returned |
 | POST | `/api/snippets` | create; server assigns id and timestamps |
 | GET | `/api/snippets/{id}` | full snippet, body decrypted |
-| PUT | `/api/snippets/{id}` | full replace; `var_defaults` carries the per-variable default map (keys owned by the client, pruned on save) |
+| PUT | `/api/snippets/{id}` | full replace; `var_defaults` carries the per-variable default map (keys owned by the client, pruned on save) and `pinned` the favorite flag — omitting either clears it |
 | DELETE | `/api/snippets/{id}` | soft delete |
 | GET | `/api/snippets/{id}/raw` | `text/plain` body, decrypted; for `curl \| sh` |
 | GET | `/api/folders` | full tree as a flat list with `parent_id` |
@@ -408,8 +427,8 @@ Import accepts snippets without `id` (one is assigned) and folders referenced
 by `folder_path` (`"shell/deploy"`) instead of `folder_id`, creating the
 path as needed. This is the mass-import format; anything can be munged into
 it. Snippet entries carry `var_defaults`, decrypted for sensitive
-snippets just like the body; export documents older than the field
-import as snippets with an empty map. An export file contains plaintext
+snippets just like the body, and `pinned`; export documents older than
+either field import with an empty map and no pin respectively. An export file contains plaintext
 sensitive bodies and is as sensitive as the database plus key file;
 treat it accordingly.
 
@@ -443,9 +462,11 @@ target builds both.
 
 ### Layout
 
-Three panes: folders with a tag list below (left), search box and result
-list (middle), snippet view or editor (right). Snippet tags are also
-shown as chips in the detail pane.
+Three panes: favorites and folders with a tag list below (left), search box
+and result list (middle), snippet view or editor (right). Snippet tags are
+also shown as chips in the detail pane. The favorites list sits above the
+folder tree and stays visible when empty, with a line saying how to add to
+it.
 
 The two dividers between the panes are draggable: dragging the folders
 divider trades width with the list pane, and dragging the list divider
@@ -466,6 +487,11 @@ stacking them on narrow screens remains unbuilt (see the revision note).
   same rule as typing `tag:a tag:b`. Clicking an active tag clears it.
   Active tags AND with the folder selection and the search box. The
   list is derived from the local cache, so filtering works offline.
+- **Favorites** (left column, above the folders): the pinned snippets,
+  newest first, with the flag toggled from the detail header. Clicking a
+  row selects that snippet, and a row can be unpinned from the list itself.
+  It is derived from the local cache, so it renders offline; pinning and
+  unpinning are server writes and are disabled offline, like the others.
 - **Search** runs against the locally synced index (kept current by the
   sync merge below) in both the online and offline states; the same query
   syntax works in both. v1 does not query `/api/snippets` per keystroke,
@@ -482,7 +508,9 @@ stacking them on narrow screens remains unbuilt (see the revision note).
   template Rendered preview collapses on the same rule but independently
   — a short template can render long, when a variable holds many lines —
   so each box has its own toggle. The editor stays uncapped, and a
-  sensitive body that has not been revealed offers no toggle.
+  sensitive body that has not been revealed offers no toggle. The detail
+  footer dates the snippet as "Updated Sep 11" (with the year when it is not
+  the current one) and keeps the precise local timestamp in its tooltip.
 - **Edit** uses a plain textarea for the body, a plain textarea for notes,
   a language text input, a folder picker, a comma-separated tag input with
   a sensitive checkbox, and a template checkbox that stays in sync with
@@ -491,33 +519,63 @@ stacking them on narrow screens remains unbuilt (see the revision note).
   so an edit never wipes saved defaults. Editing a sensitive snippet
   fetches its decrypted body first (sensitive bodies are never cached
   locally), so saving never replaces it with an empty body.
-- **Copy** copies the body. A snippet with `uses_variables` set shows a
-  variables panel: one input per variable, a live preview, and the
-  rendered text copied. The inputs are pre-filled from the snippet's
-  saved defaults (`var_defaults`, spec §4); precedence when copying is
-  the value typed in the panel, then the saved default, then the inline
-  `{{name|default}}` text, then an empty string (in the preview a
-  variable without a value stays visible as `{{name}}`). A "Save
-  defaults" button persists the current inputs as the snippet's
-  `var_defaults`: a blank input clears that default, and keys for
-  variables no longer in the body are dropped on save.
+- **Copy** places each action next to what it copies, so the template and
+  its rendered form cannot be confused. A plain snippet has the footer
+  **Copy** (the body). A snippet with `uses_variables` set shows a
+  variables panel: the Template box carries a small **Copy template** (the
+  body with its `{{var}}` placeholders intact, for reusing the shape) and
+  the Rendered box a small **Copy rendered** (filled in), while the footer
+  Copy keeps the rendered text as the pane's primary action. Every copy
+  control briefly reports its own outcome — "Copied.", or "Copy failed"
+  when the write is rejected — so a blocked clipboard is visible rather
+  than silent. The inputs are pre-filled from the snippet's saved defaults
+  (`var_defaults`, spec §4); precedence when copying is the value typed in
+  the panel, then the saved default, then the inline `{{name|default}}`
+  text, then an empty string. In the live preview a variable with no value
+  stays visible as `{{name}}`; the copied rendered text renders it empty.
+- **Save defaults** (variables panel) is inert until the inputs differ from
+  what the server holds — judged on the same pruned map the save writes, so
+  retyping the stored value is not a change and clearing an input is. A
+  successful save confirms with a brief "Defaults saved" and moves the
+  baseline; a failure reads "Save failed" and keeps the same write on
+  offer. A blank input clears that default, and keys for variables no
+  longer in the body are dropped on save.
 - **Sensitive** snippets show a masked body with a reveal button. The body
   is fetched on reveal and held only in memory for that view. Offline, the
   reveal button is disabled (the body is never stored locally) and a hint
   says an online connection is required; metadata stays visible.
-- **Keyboard**: no global shortcuts in v1 (the `/`-focus-search, `n`,
-  `Cmd/Ctrl+Enter`-save, `c`-copy set was designed but not built). The
-  folder-rename inline input answers Enter (commit) and Esc (cancel), and
-  forms save through their buttons.
+- **Keyboard**: `Cmd/Ctrl+K` focuses the search box (selecting the current
+  query, so typing replaces it) and is hinted inside the field. While the
+  search box has focus, `Up`/`Down` move the selection through the visible
+  results with wrapping at both ends, `Enter` copies the selected snippet,
+  and `Escape` clears the query and then leaves the field. Only the focus
+  shortcut is global: the arrows and `Enter` are scoped to the search box,
+  so the snippet editor keeps its own keys. The copy shortcut writes exactly
+  what the detail pane's Copy button would (typed variable values included)
+  and flashes "Copied." in the header, since there is no button under the
+  cursor to change its label. The folder-rename inline input answers Enter
+  (commit) and Esc (cancel), the pane dividers take focus and answer the
+  arrow keys, and forms save through their buttons.
+- **Timestamps** are simplified, with the exact value on hover: the header
+  reads "Synced 2 minutes ago" and each list row and the detail footer a
+  short calendar date ("Sep 11", with the year when it is not the current
+  one), the precise local date and time behind a tooltip. The sync age is
+  measured from when this client observed the sync, not from the response's
+  `server_time`: `server_time` is the sync cursor, and comparing it to the
+  local clock would render a negative age on a client whose clock trails the
+  server's, so a timestamp in the future reads "just now". The header label
+  re-renders on a 30-second tick so the age does not go stale.
 - **Appearance** (settings panel, 2026-09-08): a **Theme** select —
   auto (system), light, dark, Solarized Light, Solarized Dark, Kimbie
   Dark, Tokyo Night — and an **Interface text size** slider (75–150%).
   Themes remap the CSS palette variables via `:root[data-theme=…]`
   blocks (auto = no attribute, so `prefers-color-scheme` drives it);
   text size scales every `font-size` through the `--text-scale` custom
-  property. Both persist in localStorage and are applied before first
-  paint (`web/src/lib/settings.ts`), in the browser and the desktop
-  window alike.
+  property. A **Two-line titles in the list** checkbox wraps a long list
+  title onto a second line instead of truncating it at one; every list
+  title carries its full text as a tooltip either way. All three persist in
+  localStorage and are applied before first paint
+  (`web/src/lib/settings.ts`), in the browser and the desktop window alike.
 
 ### PWA and offline
 
@@ -535,9 +593,10 @@ stacking them on narrow screens remains unbuilt (see the revision note).
   match sensitive bodies, consistent with the server, which never indexes
   them.
 - Offline, create/edit/delete are disabled and a banner says so. Nothing is
-  queued. Saving variable defaults is a server write as well, so it is
-  disabled offline; saved defaults still pre-fill the inputs, since they
-  ride in the local cache (for non-sensitive snippets).
+  queued. Saving variable defaults and pinning are server writes as well, so
+  both are disabled offline; saved defaults still pre-fill the inputs and the
+  Favorites list still renders, since both ride in the local cache (the
+  defaults only for non-sensitive snippets).
 - Sensitive bodies are never written to IndexedDB.
 - A "full resync" action clears the local cache and re-syncs from scratch;
   this is the recovery path if the server is ever restored from an older

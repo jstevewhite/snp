@@ -419,13 +419,75 @@ README claims match observed behavior.
 - Full smoke pass of the Phase 4/6/7 checklists on the deployed instance.
 - Tag `v0.1.0`.
 
+## Phase 10 — UI refinement pass
+
+A second review pass over the built UI (2026-09-11). Executed
+highest-value-first: the cheap visible wins landed before the one task that
+needed a schema change. Each task is one commit with `make test` green.
+
+- **T3 — explicit copy actions** (`web/src/lib/CopyButton.svelte`,
+  `web/src/lib/clipboard.ts`, `SnippetDetail`): a small *Copy template*
+  beside the Template box (raw `{{var}}` text, for reusing the shape) and
+  *Copy rendered* beside the Rendered box, with the footer Copy unchanged as
+  the primary action. Every control briefly reports its own outcome —
+  "Copied.", or "Copy failed" when the write is rejected — and the write
+  prefers `navigator.clipboard` with a hidden-textarea fallback for
+  webviews that lack it.
+  *Done when*: each of the three controls writes the right text and the one
+  clicked briefly reads "Copied."
+- **T4 — distinct create labels** (`App`, `SnippetList`): "New folder" and
+  "New snippet" replace the two buttons that were both labelled "New".
+  *Done when*: no two controls share the label `New`.
+- **T6 — simplified timestamps** (`web/src/lib/time.ts`, `App`,
+  `SnippetList`, `SnippetDetail`): "Synced 2 minutes ago" in the header and
+  "Updated Sep 11" in the detail footer, the compact list date unchanged,
+  each carrying the precise local timestamp in a tooltip. The sync age is
+  measured from when this client observed the sync, not from `server_time`.
+  *Done when*: no raw RFC3339 string is user-visible and every simplified
+  label has the exact value on hover.
+- **T7 — search as the keyboard entry point** (`web/src/lib/keys.ts`,
+  `SnippetList`, `SnippetDetail`, `App`): `Cmd/Ctrl+K` focuses the search box
+  (with a platform-aware hint inside the field), `Up`/`Down` walk the visible
+  results with wrapping, `Enter` copies the selection, `Escape` clears the
+  query and then leaves the field. Arrows and Enter are scoped to the search
+  box, so the editor keeps its own keys.
+  *Done when*: `Cmd/Ctrl+K` → type → Down → Enter copies without the mouse,
+  and typing in the editor is unaffected.
+- **T5 — saved-default state** (`SnippetDetail`, `App`): Save defaults is
+  disabled until the inputs differ from what is stored, and a write the
+  server accepted confirms with a brief "Defaults saved" (a failure reads
+  "Save failed" and keeps the same write on offer).
+  *Done when*: the button is inert until there is something to save, and the
+  confirmation only follows a successful write.
+- **T8 — long-title discovery** (`SnippetList`, `settings.ts`, `App`):
+  every list title carries its full text as a tooltip, plus a persisted
+  "Two-line titles in the list" setting that wraps a long title instead of
+  truncating it at one line.
+  *Done when*: a truncated title is readable without opening the snippet,
+  and the toggle survives a reload.
+- **T1 — pinned flag, store and API** (`internal/store` migration 0004,
+  `internal/server`): `pinned` follows the `uses_variables` pattern through
+  create, replace, get, list/search, sync, export and import; plain,
+  unencrypted, and not FTS-indexed.
+  *Done when*: a pinned snippet reads back pinned from every read path, and
+  an export/import round trip preserves it.
+- **T2 — Favorites UI** (`web/src/lib/Favorites.svelte`, `SnippetDetail`,
+  `SnippetForm`, `App`): a pin control in the detail header, a Favorites list
+  above the folder tree, and one `replaceSnippet()` helper behind both the
+  pin toggle and the defaults save so a full-replace PUT cannot drop the
+  other field.
+  *Done when*: pinning shows the snippet under Favorites and that survives a
+  sync and a defaults save, and editing a snippet does not unpin it.
+- **T9 — docs**: this phase, spec §4/§5/§6, and the work log.
+  *Done when*: spec and code agree on `pinned` and on the keyboard map.
+
 ## Test plan (summary)
 
 | Layer | Where | Coverage |
 |---|---|---|
 | Store (in-memory SQLite, fake clock) | `internal/store/*_test.go` | spec §9 store list, incl. FTS rowid mapping, sync boundary, purge, folder invariants, import modes |
 | Handlers (`httptest`, fake resolver) | `internal/server/*_test.go` | auth accept/reject, 415/413, every endpoint happy + validation paths |
-| Frontend (Vitest) | `web/src/lib/*` | query parsing, template parse/render, sync merge, offline search |
+| Frontend (Vitest) | `web/src/lib/*` | query parsing, template parse/render, sync merge, offline search, timestamp formatting, clipboard writes, keyboard shortcuts, favorites |
 | Manual | `make dev` + tailnet + 3 platforms | Phase 4 smoke, Phase 7 PWA checklist, Phase 8 acceptance |
 
 No browser end-to-end tests in v1 (spec §9).
@@ -442,6 +504,7 @@ No browser end-to-end tests in v1 (spec §9).
 | M5 | 7 | PWA installed on macOS/Android/iOS; offline checklist passes |
 | M6 | 8 | deployed on a host; second-machine access; cron backup + restore drill |
 | M7 | 9 | error table verified; `v0.1.0` tagged |
+| M8 | 10 | refinement pass smoke: copy actions, favorites, keyboard search workflow |
 
 ## Risks and mitigations
 

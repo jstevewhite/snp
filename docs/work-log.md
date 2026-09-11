@@ -14,9 +14,9 @@ Spec: `docs/snp-design.md` · Plan: `docs/snp-implementation-plan.md`
 
 ## Current status
 
-- Updated: 2026-09-11 13:50
-- Phase: review fixes + desktop app (macOS **and Linux** builds) + appearance + AI generation (command/script/function kinds) + tag filter + .app bundle + **bundled starter pack** merged to main; **Markdown notes**, **read-view syntax highlighting**, **notarization in `make app`**, the **Linux desktop build/launcher** and **`snp seed`** landed; the **GitHub release workflows** and the **header version chip** (`GET /api/version`) landed; **v0.1.0 shipped** (signed + notarized macOS bundle, 7 assets, verified after publish); **draggable pane dividers** landed (spec §6, `web/src/lib/panes.ts`) and **Explain now replaces Notes** with an undo (spec §13); `make test` green (go test + vet + 232 Vitest + svelte-check 0 errors / 0 warnings). The Linux desktop binary **build was verified on an ARM Ubuntu 24 host** (git bundle → `make desktop`), after a first attempt failed because that work was still uncommitted and the bundle therefore carried the old darwin-only tree.
-- Next: **bump the Node-20 GitHub Actions** (`checkout`, `setup-node`, `setup-go`, `upload-artifact`, `download-artifact` — all still work but are force-run on Node 24 and annotate the run) **to their Node-24 majors** before the next release; then **Linux desktop container build + verification** (podman; `libgtk-3-dev` + `libwebkit2gtk-4.1-dev` + Go, `make web` then the desktop build, and exercise `install-desktop.sh` with a scratch `PREFIX=`); then the Windows port, desktop follow-ons (real app icon, startup-error surfacing in the window); then remaining v1 follow-ons (CLI client, SnippetsLab converter)
+- Updated: 2026-09-11 17:35
+- Phase: review fixes + desktop app (macOS **and Linux** builds) + appearance + AI generation (command/script/function kinds) + tag filter + .app bundle + **bundled starter pack** merged to main; **Markdown notes**, **read-view syntax highlighting**, **notarization in `make app`**, the **Linux desktop build/launcher** and **`snp seed`** landed; the **GitHub release workflows** and the **header version chip** (`GET /api/version`) landed; **v0.1.0 shipped** (signed + notarized macOS bundle, 7 assets, verified after publish); **draggable pane dividers** landed (spec §6, `web/src/lib/panes.ts`) and **Explain now replaces Notes** with an undo (spec §13); **Phase 10, the UI refinement pass, is complete** on branch `feat/ui-refinements` (explicit copy actions, distinct create labels, simplified timestamps, the search keyboard workflow, visible saved-default state, two-line titles, and the **Favorites** list on a new `pinned` column); `make test` green (go test + vet + 290 Vitest + svelte-check 0 errors / 0 warnings). The Linux desktop binary **build was verified on an ARM Ubuntu 24 host** (git bundle → `make desktop`), after a first attempt failed because that work was still uncommitted and the bundle therefore carried the old darwin-only tree.
+- Next: **push `feat/ui-refinements`** and merge it (nothing in it is released yet — the branch is local); then **bump the Node-20 GitHub Actions** (`checkout`, `setup-node`, `setup-go`, `upload-artifact`, `download-artifact` — all still work but are force-run on Node 24 and annotate the run) **to their Node-24 majors** before the next release; then **Linux desktop container build + verification** (podman; `libgtk-3-dev` + `libwebkit2gtk-4.1-dev` + Go, `make web` then the desktop build, and exercise `install-desktop.sh` with a scratch `PREFIX=`); then the Windows port, desktop follow-ons (real app icon, startup-error surfacing in the window); then remaining v1 follow-ons (CLI client, SnippetsLab converter, named variable presets per machine — the follow-on named in Phase 10 T5)
 
 ## Log
 
@@ -1090,3 +1090,78 @@ Spec: `docs/snp-design.md` · Plan: `docs/snp-implementation-plan.md`
   narrow-layout recommendations. No application changes or tests/builds;
   review conclusions are source-based, not reproduced runtime defects.
   Existing modification to web/dist/index.html preserved.
+- 2026-09-11 — **Phase 10, the UI refinement pass** (branch
+  `feat/ui-refinements`, one commit per task, `make test` green at each).
+  Driven by a seven-item review of the built UI. Executed highest-value
+  first, so the cheap visible wins landed before the only task that needed
+  a schema change. Nine commits plus the spec, plan, and log:
+
+  1. **Explicit copy actions** (T3). `CopyButton.svelte` +
+     `clipboard.ts`. *Copy template* beside the Template box writes the raw
+     `{{var}}` body, *Copy rendered* beside the Rendered box writes the
+     filled-in text, and the footer Copy is unchanged as the primary
+     action. Every control flashes "Copied." — or "Copy failed", which
+     finally gives the copy path a failure state.
+  2. **Distinct create labels** (T4): "New folder" / "New snippet".
+  3. **Simplified timestamps** (T6). `time.ts`: the header reads "Synced
+     2 minutes ago" and the detail footer "Updated Sep 11", each carrying
+     the precise local timestamp in a tooltip, with a 30s tick so the age
+     does not go stale.
+  4. **Search keyboard workflow** (T7). `keys.ts`: `Cmd/Ctrl+K` focuses the
+     field (hinted inside it), `Up`/`Down` walk the results, `Enter` copies,
+     `Escape` clears then leaves. Arrows and Enter are scoped to the search
+     field so the editor keeps its keys — there is a regression test for
+     exactly that.
+  5. **Visible saved-default state** (T5): Save defaults is disabled until
+     the inputs differ from what is stored, and a successful write confirms
+     with "Defaults saved".
+  6. **Long-title discovery** (T8): the full title in a tooltip on every
+     row, plus a persisted "Two-line titles in the list" setting.
+  7. **Favorites** (T1 + T2): a `pinned` column (migration 0004) carried
+     through store, API, sync, export and import, with a pin control in the
+     detail header and a Favorites list above the folder tree.
+
+  - Gotcha — **the Go build cache lives outside the workspace.** Under the
+    sandbox, `go build`/`go test` fail with "operation not permitted" on
+    `~/Library/Caches/go-build` as soon as a source change forces a
+    recompile (a warm cache hides it, which is why `make test` passed for
+    the frontend-only commits). `GOCACHE=/tmp/snp-gocache make test` works
+    and keeps the canonical command; nothing in the repo needed changing.
+  - Gotcha — **PUT is a full replace, so every new snippet field is a
+    trap for every partial update.** `pinned` had to be carried by three
+    separate paths that rebuild a full `SnippetInput`: `App.saveDefaults`,
+    the new pin toggle, and `SnippetForm.submit`. Miss one and the field
+    silently resets — saving defaults would have unpinned, and toggling a
+    pin would have wiped `var_defaults`. `replaceSnippet(id, patch)` in
+    `App.svelte` now rebuilds the payload once and merges the patch, and
+    `SnippetForm` seeds `pinned` and sends it back. Both have regression
+    tests. The next field added to a snippet must do the same.
+  - Gotcha — **sensitive rows hide `body` *and* `var_defaults` in list and
+    sync responses** (spec §5). A full-replace payload built from a cached
+    sensitive row would blank both, so `replaceSnippet` fetches the row
+    first via `GET /api/snippets/{id}`.
+  - Deliberate omission — **no pin toggle on the list rows.** Each row is a
+    `<button>`; nesting a pin button inside it is invalid HTML, and
+    restructuring the row (plus its tests and the keyboard selection path)
+    was more churn than the feature needs. Pin lives in the detail header
+    and unpin also on each Favorites row. A row-level toggle is a
+    follow-on.
+  - Gotcha — **the "Synced …" age must come from the client's observation
+    of the sync, not from `server_time`.** `server_time` is the sync cursor
+    (`lib/sync.ts`); comparing it to the local clock renders a negative age
+    on a client whose clock trails the server's, so `App` stores
+    `Date.now()` at sync completion and a future timestamp reads "just
+    now". The 30s tick is a separate effect from the sync effect on
+    purpose: a reactive read of the clock there would re-trigger a sync.
+  - Gotcha — **`getByText` goes ambiguous once a snippet is pinned**: the
+    title appears in both Favorites and the list. The App tests select via
+    `.snippet-list .title` instead.
+  - `$bindable` was needed to hand the search `<input>` from `SnippetList`
+    up to `App` for the global focus shortcut.
+  - Docs: spec §4 gains the column and a "Favorites" subsection, §5 the
+    JSON field and its full-replace note, §6 the Favorites list, the copy
+    actions, the real keyboard map, the timestamp rules, and the two-line
+    title setting; the implementation plan gains Phase 10; `AGENTS.md` and
+    `CLAUDE.md` now say phases 0–10 and list the three new lib modules.
+  - `make test` green: go vet, `go test ./...` (all packages), 290 Vitest
+    across 25 files, svelte-check 0 errors / 0 warnings.

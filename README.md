@@ -214,7 +214,16 @@ printf '%s\n' "Hello, {{name|world}}"
 The form detects the template. After saving, fill in `name` in the
 variables panel and use the Rendered preview to check the result before
 copying. `{{name|world}}` defaults to `world`; `{{name}}` has no default.
-A blank variable without a default is copied as an empty string.
+A blank variable without a default is copied as an empty string. **Copy
+template** keeps the placeholders for reuse; **Copy rendered** writes the
+filled-in text. **Save defaults** remembers the values you type for that
+snippet, and stays inert until you actually change something.
+
+Pin the commands you reach for daily with the pin control beside a
+snippet's title; they collect under **Favorites**, above the folders.
+`Cmd/Ctrl+K` jumps to the search box (the field shows the shortcut), the
+arrow keys move through the results, `Enter` copies the selected snippet,
+and `Escape` clears the query.
 
 **Settings → Add starter snippets** adds a sample config, a template, and
 some everyday commands. Applying the starter pack again overwrites edits
