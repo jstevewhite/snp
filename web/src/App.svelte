@@ -584,10 +584,13 @@
    * (cached, or revealed and held in memory), so the body text is never
    * blanked.
    */
-  async function saveDefaults(id: string, defaults: Record<string, string>): Promise<void> {
-    if (!db || !online) return
+  async function saveDefaults(
+    id: string,
+    defaults: Record<string, string>,
+  ): Promise<boolean> {
+    if (!db || !online) return false
     const s = snippets.find((x) => x.id === id)
-    if (s === undefined) return
+    if (s === undefined) return false
     try {
       const updated = await api.updateSnippet(id, {
         title: s.title,
@@ -603,8 +606,10 @@
       await putSnippet(db, updated)
       index.upsert(updated)
       snippets = snippets.map((x) => (x.id === id ? updated : x))
+      return true
     } catch (e) {
       fail(e)
+      return false
     }
   }
 
@@ -977,7 +982,7 @@
           onedit={startEdit}
           onremove={() => (dialog = { kind: 'snippetDelete', id: selectedSnippet.id })}
           onreveal={() => void reveal(selectedSnippet.id)}
-          onsavedefaults={(defaults) => void saveDefaults(selectedSnippet.id, defaults)}
+          onsavedefaults={(defaults) => saveDefaults(selectedSnippet.id, defaults)}
           oncopytext={(id, text) => (detailCopy = { id, text })}
         />
         {/key}

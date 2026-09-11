@@ -807,6 +807,18 @@ button.danger {
 
 .detail .vars-actions {
   display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* The saved-defaults result: neutral for success, danger for failure. */
+.detail .defaults-note {
+  font-size: calc(12px * var(--text-scale, 1));
+  color: var(--accent);
+}
+
+.detail .defaults-note.failed {
+  color: var(--danger);
 }
 
 .detail .notes {

@@ -38,8 +38,12 @@
     onedit: () => void
     onremove: () => void
     onreveal: () => void
-    /** Persists per-variable defaults (spec §6); keys are client-owned. */
-    onsavedefaults: (defaults: Record<string, string>) => void
+    /**
+     * Persists per-variable defaults (spec §6); keys are client-owned.
+     * Resolves true only when the server accepted them, so the button
+     * reports success for a write that actually happened.
+     */
+    onsavedefaults: (defaults: Record<string, string>) => Promise<boolean>
     /**
      * Publishes the text the Copy buttons would write, so the app-level
      * copy shortcut writes exactly the same thing — variable values typed
@@ -140,18 +144,59 @@
   }
 
   /**
-   * Persist the current inputs as the snippet's saved defaults (spec
-   * §4/§6): a blank input clears that default, and keys for variables no
-   * longer in the body are dropped. The server treats the map opaquely.
+   * The map saveDefaults would persist (spec §4/§6): a blank input clears
+   * that default, and keys for variables no longer in the body are dropped.
+   * The server treats the map opaquely.
    */
-  function saveDefaults(): void {
+  function cleanedValues(): Record<string, string> {
     const names = new Set(vars.map((v) => v.name))
-    const next: Record<string, string> = {}
+    const out: Record<string, string> = {}
     for (const [name, value] of Object.entries(values)) {
-      if (names.has(name) && value !== '') next[name] = value
+      if (names.has(name) && value !== '') out[name] = value
     }
-    onsavedefaults(next)
+    return out
   }
+
+  function sameDefaults(a: Record<string, string>, b: Record<string, string>): boolean {
+    const keys = Object.keys(a)
+    return keys.length === Object.keys(b).length && keys.every((k) => a[k] === b[k])
+  }
+
+  /**
+   * What the server holds, in the same cleaned shape. Starts as the
+   * mount-time saved defaults and moves only on a save the server accepted,
+   * so a failure keeps offering the same write.
+   */
+  let savedBaseline = $state<Record<string, string>>({ ...seedValues })
+
+  /** Inert until the inputs differ from what is stored. */
+  const defaultsDirty = $derived(!sameDefaults(cleanedValues(), savedBaseline))
+
+  /** Transient result shown next to the button. */
+  type DefaultsStatus = 'idle' | 'saved' | 'failed'
+  let defaultsStatus = $state<DefaultsStatus>('idle')
+  let defaultsTimer: ReturnType<typeof setTimeout> | undefined
+  const SAVED_FLASH_MS = 1500
+
+  /** Persist the current inputs as the snippet's saved defaults (spec §4/§6). */
+  async function saveDefaults(): Promise<void> {
+    // The button is disabled in these cases; the guard keeps a
+    // programmatic click from writing anyway.
+    if (offline || !defaultsDirty) return
+    const next = cleanedValues()
+    const ok = await onsavedefaults(next)
+    if (ok) {
+      savedBaseline = next
+      defaultsStatus = 'saved'
+    } else {
+      defaultsStatus = 'failed'
+    }
+    clearTimeout(defaultsTimer)
+    defaultsTimer = setTimeout(() => (defaultsStatus = 'idle'), SAVED_FLASH_MS)
+  }
+
+  // Drop a pending revert if the component unmounts.
+  $effect(() => () => clearTimeout(defaultsTimer))
 </script>
 
 <div class="detail">
@@ -276,9 +321,22 @@
         {/if}
       </div>
       <div class="vars-actions">
-        <button class="save-defaults" disabled={offline} onclick={saveDefaults}>
+        <button
+          class="save-defaults"
+          disabled={offline || !defaultsDirty}
+          onclick={() => void saveDefaults()}
+        >
           Save defaults
         </button>
+        {#if defaultsStatus !== 'idle'}
+          <span
+            class="defaults-note"
+            class:failed={defaultsStatus === 'failed'}
+            role="status"
+          >
+            {defaultsStatus === 'saved' ? 'Defaults saved' : 'Save failed'}
+          </span>
+        {/if}
       </div>
     </section>
   {/if}

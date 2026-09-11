@@ -30,7 +30,7 @@ function renderDetail(
     folderName?: string | null
     offline?: boolean
     oncopy?: (text: string) => void
-    onsavedefaults?: (defaults: Record<string, string>) => void
+    onsavedefaults?: (defaults: Record<string, string>) => Promise<boolean>
     onreveal?: () => void
   } = {},
 ) {
@@ -43,11 +43,20 @@ function renderDetail(
     onedit: noop,
     onremove: noop,
     onreveal: extra.onreveal ?? noop,
-    onsavedefaults: extra.onsavedefaults ?? noop,
+    onsavedefaults: extra.onsavedefaults ?? (async () => true),
   })
 }
 
-afterEach(cleanup)
+afterEach(() => {
+  cleanup()
+  // The transient-result cases opt into fake timers; always restore.
+  vi.useRealTimers()
+})
+
+/** The Save defaults button; inert while it has nothing to save. */
+function saveDefaultsButton(): HTMLButtonElement {
+  return screen.getByText('Save defaults').closest('button') as HTMLButtonElement
+}
 
 describe('SnippetDetail', () => {
   it('renders title, body, meta and notes', () => {
@@ -139,7 +148,7 @@ describe('SnippetDetail', () => {
       onedit,
       onremove,
       onreveal: noop,
-      onsavedefaults: noop,
+      onsavedefaults: async () => true,
     })
     await fireEvent.click(screen.getByText('Copy'))
     expect(oncopy).toHaveBeenCalled()
@@ -380,7 +389,7 @@ describe('SnippetDetail', () => {
   })
 
   it('ignores saved defaults for variables no longer in the body', async () => {
-    const onsavedefaults = vi.fn()
+    const onsavedefaults = vi.fn().mockResolvedValue(true)
     renderDetail(
       {
         body: 'curl {{host}}',
@@ -389,15 +398,23 @@ describe('SnippetDetail', () => {
       },
       { onsavedefaults },
     )
-    // The stale key is not pre-filled...
+    // The stale key is not pre-filled, and it is not part of what a save
+    // would write either — so with nothing else changed there is nothing
+    // to save.
     expect(screen.queryByLabelText('gone')).toBeNull()
-    // ...and saving prunes it.
+    expect(saveDefaultsButton().disabled).toBe(true)
+    // Changing the value it does own re-enables the button, and saving
+    // still prunes the stale key.
+    await fireEvent.input(screen.getByLabelText('host'), {
+      target: { value: 'new.dev' },
+    })
+    expect(saveDefaultsButton().disabled).toBe(false)
     await fireEvent.click(screen.getByText('Save defaults'))
-    expect(onsavedefaults).toHaveBeenCalledWith({ host: 'example.com' })
+    expect(onsavedefaults).toHaveBeenCalledWith({ host: 'new.dev' })
   })
 
   it('saving defaults prunes blanks: a cleared input clears that default', async () => {
-    const onsavedefaults = vi.fn()
+    const onsavedefaults = vi.fn().mockResolvedValue(true)
     renderDetail(
       {
         body: 'curl {{host}} {{port}}',
@@ -414,13 +431,72 @@ describe('SnippetDetail', () => {
   })
 
   it('saving defaults keeps typed values', async () => {
-    const onsavedefaults = vi.fn()
+    const onsavedefaults = vi.fn().mockResolvedValue(true)
     renderDetail({ body: 'curl {{host}}', uses_variables: true }, { onsavedefaults })
     await fireEvent.input(screen.getByLabelText('host'), {
       target: { value: 'type.dev' },
     })
     await fireEvent.click(screen.getByText('Save defaults'))
     expect(onsavedefaults).toHaveBeenCalledWith({ host: 'type.dev' })
+  })
+
+  it('keeps Save defaults inert until a value differs from what is stored', async () => {
+    renderDetail({
+      body: 'curl {{host}}',
+      uses_variables: true,
+      var_defaults: { host: 'example.com' },
+    })
+    expect(saveDefaultsButton().disabled).toBe(true)
+
+    // Retyping the same value is not a change.
+    await fireEvent.input(screen.getByLabelText('host'), {
+      target: { value: 'example.com' },
+    })
+    expect(saveDefaultsButton().disabled).toBe(true)
+
+    await fireEvent.input(screen.getByLabelText('host'), {
+      target: { value: 'example.org' },
+    })
+    expect(saveDefaultsButton().disabled).toBe(false)
+
+    // Back to the stored value: nothing to save again.
+    await fireEvent.input(screen.getByLabelText('host'), {
+      target: { value: 'example.com' },
+    })
+    expect(saveDefaultsButton().disabled).toBe(true)
+  })
+
+  it('confirms a successful save, then goes inert again', async () => {
+    vi.useFakeTimers()
+    const onsavedefaults = vi.fn().mockResolvedValue(true)
+    renderDetail({ body: 'curl {{host}}', uses_variables: true }, { onsavedefaults })
+    await fireEvent.input(screen.getByLabelText('host'), {
+      target: { value: 'type.dev' },
+    })
+    await fireEvent.click(screen.getByText('Save defaults'))
+    await vi.advanceTimersByTimeAsync(0)
+    expect(screen.getByText('Defaults saved')).toBeDefined()
+    // The saved value is now the baseline, so there is nothing left to save.
+    expect(saveDefaultsButton().disabled).toBe(true)
+
+    await vi.advanceTimersByTimeAsync(1500)
+    expect(screen.queryByText('Defaults saved')).toBeNull()
+    vi.useRealTimers()
+  })
+
+  it('reports a failed save and keeps offering it', async () => {
+    vi.useFakeTimers()
+    const onsavedefaults = vi.fn().mockResolvedValue(false)
+    renderDetail({ body: 'curl {{host}}', uses_variables: true }, { onsavedefaults })
+    await fireEvent.input(screen.getByLabelText('host'), {
+      target: { value: 'type.dev' },
+    })
+    await fireEvent.click(screen.getByText('Save defaults'))
+    await vi.advanceTimersByTimeAsync(0)
+    expect(screen.getByText('Save failed')).toBeDefined()
+    // The baseline did not move, so the same save is still on offer.
+    expect(saveDefaultsButton().disabled).toBe(false)
+    vi.useRealTimers()
   })
 
   it('disables saving defaults when offline', () => {
