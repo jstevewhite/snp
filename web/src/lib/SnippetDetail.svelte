@@ -288,6 +288,13 @@
         <span class="box-label">Template</span>
         <CopyButton small label="Copy template" text={shown} {oncopy} />
       </div>
+    {:else}
+      <!-- A non-template body still carries its own copy action, so the
+           pane needs no footer Copy button. Inert while a sensitive body
+           is hidden. -->
+      <div class="box-head">
+        <CopyButton small label="Copy snippet" text={copyText} disabled={hidden} {oncopy} />
+      </div>
     {/if}
     {#if hidden}
       <div class="reveal-block">
@@ -365,7 +372,6 @@
   {/if}
 
   <footer class="actions">
-    <CopyButton label="Copy" text={copyText} disabled={hidden} {oncopy} />
     <button class="edit" disabled={offline} onclick={onedit}>Edit</button>
   </footer>
 

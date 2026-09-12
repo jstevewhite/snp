@@ -153,7 +153,7 @@ describe('SnippetDetail', () => {
       onpin: noop,
       onsavedefaults: async () => true,
     })
-    await fireEvent.click(screen.getByText('Copy'))
+    await fireEvent.click(screen.getByText('Copy snippet'))
     expect(oncopy).toHaveBeenCalled()
     await fireEvent.click(screen.getByText('Edit'))
     expect(onedit).toHaveBeenCalled()
@@ -161,7 +161,7 @@ describe('SnippetDetail', () => {
     expect(onremove).toHaveBeenCalled()
   })
 
-  it('places the copy/edit/delete actions above the notes', () => {
+  it('places the edit action above the notes', () => {
     const { container } = renderDetail()
     const actions = container.querySelector('.actions') as HTMLElement
     const notes = container.querySelector('.notes') as HTMLElement
@@ -177,7 +177,7 @@ describe('SnippetDetail', () => {
     const onreveal = vi.fn()
     renderDetail({ body: null, is_sensitive: true }, { onreveal })
     expect(screen.getByText('Show body')).toBeDefined()
-    const copyBtn = screen.getByText('Copy').closest('button') as HTMLButtonElement
+    const copyBtn = screen.getByText('Copy snippet').closest('button') as HTMLButtonElement
     expect(copyBtn.disabled).toBe(true)
     await fireEvent.click(screen.getByText('Show body'))
     expect(onreveal).toHaveBeenCalled()
@@ -232,8 +232,9 @@ describe('SnippetDetail', () => {
     expect(oncopy).toHaveBeenCalledWith('curl example.com')
   })
 
-  it('offers neither box copy action for a non-template snippet', () => {
+  it('offers Copy snippet, not the box actions, for a non-template snippet', () => {
     renderDetail({ body: 'echo hi', uses_variables: false })
+    expect(screen.getByText('Copy snippet')).toBeDefined()
     expect(screen.queryByText('Copy template')).toBeNull()
     expect(screen.queryByText('Copy rendered')).toBeNull()
   })
@@ -352,7 +353,7 @@ describe('SnippetDetail', () => {
   it('copies the rendered body, falling back to the default', async () => {
     const oncopy = vi.fn()
     renderDetail({ body: 'curl {{host|example.com}}', uses_variables: true }, { oncopy })
-    await fireEvent.click(screen.getByText('Copy'))
+    await fireEvent.click(screen.getByText('Copy rendered'))
     expect(oncopy).toHaveBeenCalledWith('curl example.com')
   })
 
@@ -365,7 +366,7 @@ describe('SnippetDetail', () => {
     await fireEvent.input(screen.getByLabelText('host'), {
       target: { value: 'example.com' },
     })
-    await fireEvent.click(screen.getByText('Copy'))
+    await fireEvent.click(screen.getByText('Copy rendered'))
     expect(oncopy).toHaveBeenCalledWith('curl example.com -H ')
   })
 
@@ -392,7 +393,7 @@ describe('SnippetDetail', () => {
       },
       { oncopy },
     )
-    await fireEvent.click(screen.getByText('Copy'))
+    await fireEvent.click(screen.getByText('Copy rendered'))
     expect(oncopy).toHaveBeenCalledWith('curl example.com')
   })
 
@@ -406,7 +407,7 @@ describe('SnippetDetail', () => {
       },
       { oncopy },
     )
-    await fireEvent.click(screen.getByText('Copy'))
+    await fireEvent.click(screen.getByText('Copy rendered'))
     expect(oncopy).toHaveBeenCalledWith('curl example.com')
   })
 

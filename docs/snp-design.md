@@ -536,19 +536,21 @@ stacking them on narrow screens remains unbuilt (see the revision note).
   fetches its decrypted body first (sensitive bodies are never cached
   locally), so saving never replaces it with an empty body.
 - **Copy** places each action next to what it copies, so the template and
-  its rendered form cannot be confused. A plain snippet has the footer
-  **Copy** (the body). A snippet with `uses_variables` set shows a
-  variables panel: the Template box carries a small **Copy template** (the
-  body with its `{{var}}` placeholders intact, for reusing the shape) and
-  the Rendered box a small **Copy rendered** (filled in), while the footer
-  Copy keeps the rendered text as the pane's primary action. Every copy
-  control briefly reports its own outcome — "Copied.", or "Copy failed"
-  when the write is rejected — so a blocked clipboard is visible rather
-  than silent. The inputs are pre-filled from the snippet's saved defaults
-  (`var_defaults`, spec §4); precedence when copying is the value typed in
-  the panel, then the saved default, then the inline `{{name|default}}`
-  text, then an empty string. In the live preview a variable with no value
-  stays visible as `{{name}}`; the copied rendered text renders it empty.
+  its rendered form cannot be confused, and each box's copy button is the
+  pane's accented primary action (the footer holds only Edit). A plain
+  snippet's body box carries **Copy snippet** (the body). A snippet with
+  `uses_variables` set shows a variables panel: the Template box carries
+  **Copy template** (the body with its `{{var}}` placeholders intact, for
+  reusing the shape) and the Rendered box **Copy rendered** (filled in).
+  A sensitive body that has not been revealed shows **Copy snippet**
+  disabled. Every copy control briefly reports its own outcome — "Copied.",
+  or "Copy failed" when the write is rejected — so a blocked clipboard is
+  visible rather than silent. The inputs are pre-filled from the snippet's
+  saved defaults (`var_defaults`, spec §4); precedence when copying is the
+  value typed in the panel, then the saved default, then the inline
+  `{{name|default}}` text, then an empty string. In the live preview a
+  variable with no value stays visible as `{{name}}`; the copied rendered
+  text renders it empty.
 - **Save defaults** (variables panel) is inert until the inputs differ from
   what the server holds — judged on the same pruned map the save writes, so
   retyping the stored value is not a change and clearing an input is. A
@@ -567,7 +569,7 @@ stacking them on narrow screens remains unbuilt (see the revision note).
   and `Escape` clears the query and then leaves the field. Only the focus
   shortcut is global: the arrows and `Enter` are scoped to the search box,
   so the snippet editor keeps its own keys. The copy shortcut writes exactly
-  what the detail pane's Copy button would (typed variable values included)
+  what the detail pane's copy buttons would (typed variable values included)
   and flashes "Copied." in the header, since there is no button under the
   cursor to change its label. The folder-rename inline input answers Enter
   (commit) and Esc (cancel), the pane dividers take focus and answer the

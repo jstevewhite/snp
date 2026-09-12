@@ -804,8 +804,8 @@ describe('App', () => {
     await fireEvent.keyDown(window, { key: 'ArrowDown' })
     await waitFor(() => expect(screen.getByText('Show body')).toBeDefined())
 
-    // Back to the template; Enter copies what its Copy button would write,
-    // with {{ns}} resolved from the saved default.
+    // Back to the template; Enter copies what its Copy rendered button would
+    // write, with {{ns}} resolved from the saved default.
     await fireEvent.keyDown(window, { key: 'ArrowUp' })
     await waitFor(() => expect(screen.getByRole('heading', { name: 'Deploy' })).toBeDefined())
     await fireEvent.keyDown(window, { key: 'Enter' })

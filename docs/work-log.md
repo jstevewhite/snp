@@ -14,7 +14,7 @@ Spec: `docs/snp-design.md` · Plan: `docs/snp-implementation-plan.md`
 
 ## Current status
 
-- Updated: 2026-09-12 17:25
+- Updated: 2026-09-12 18:51
 - Phase: review fixes + desktop app (macOS **and Linux** builds) + appearance + AI generation (command/script/function kinds) + tag filter + .app bundle + **bundled starter pack** merged to main; **Markdown notes**, **read-view syntax highlighting**, **notarization in `make app`**, the **Linux desktop build/launcher** and **`snp seed`** landed; the **GitHub release workflows** and the **header version chip** (`GET /api/version`) landed; **v0.1.0 shipped** (signed + notarized macOS bundle, 7 assets, verified after publish); **draggable pane dividers** landed (spec §6, `web/src/lib/panes.ts`) and **Explain now replaces Notes** with an undo (spec §13); **Phase 10, the UI refinement pass**, is on branch `feat/ui-refinements` (**pushed**, and deployed to the tailnet from a dirty tree — `/api/version` reports `v0.1.0-14-g8e82a64-dirty`): explicit copy actions, distinct create labels, simplified timestamps, the search keyboard workflow, visible saved-default state, two-line titles, and the **Favorites** list on a new `pinned` column; plus the **service-worker update check** and **create/cancel test coverage** added while chasing a stale-shell report; `make test` green (go test + vet + 298 Vitest + svelte-check 0 errors / 0 warnings). The Linux desktop binary **build was verified on an ARM Ubuntu 24 host** (git bundle → `make desktop`), after a first attempt failed because that work was still uncommitted and the bundle therefore carried the old darwin-only tree.
 - Next: **Linux desktop container build + verification** (podman; `libgtk-3-dev` + `libwebkit2gtk-4.1-dev` + Go, `make web` then the desktop build, and exercise `install-desktop.sh` with a scratch `PREFIX=`); then the Windows port, desktop follow-ons (real app icon, startup-error surfacing in the window); then remaining v1 follow-ons (CLI client, SnippetsLab converter, named variable presets per machine — the follow-on named in Phase 10 T5). `feat/ui-refinements` is merged to main and two betas are published (`v0.2.0-beta.1`, and `v0.2.0-beta.2` as the CI validation build); cutting `v0.2.0` is the next release step whenever wanted
 
@@ -1284,3 +1284,22 @@ Spec: `docs/snp-design.md` · Plan: `docs/snp-implementation-plan.md`
     because it was unannotated was wrong — the beta's macOS job imported the
     certificate and notarized successfully, so the Apple secrets are live.)
   - `make test` unaffected (the change is `.github/` only).
+
+### 2026-09-12
+
+- 18:51 — Read-view copy actions consolidated. The detail pane had three
+  copy buttons, and the footer **Copy** was a duplicate of **Copy
+  rendered** for templates: both passed `copyText`, and because `showVars`
+  requires `!hidden`, the footer's `disabled={hidden}` was always false
+  whenever the Rendered box was visible. The footer button is gone; every
+  code box now owns its copy action in its `.box-head`, and those buttons
+  carry the accent fill/border the footer button used to have
+  (`.detail .box-head .copy-button`, with a higher-specificity `.failed`
+  override so a rejected write still reads danger). A non-template body
+  box gets **Copy snippet** (disabled while a sensitive body is hidden);
+  templates keep **Copy template** (raw placeholders) and **Copy rendered**
+  (filled). The footer holds only Edit. The keyboard copy is unaffected —
+  it uses the published `detailCopy`, not the button. Tests retargeted
+  (footer clicks → "Copy snippet"/"Copy rendered", the unrevealed-sensitive
+  assertion now checks the disabled snippet button) and spec §6 updated.
+  `make test` green (300 Vitest, svelte-check 0).

@@ -977,17 +977,28 @@ button.danger {
   padding-top: 12px;
 }
 
-/* Copy is the pane's primary action, so it gets the same subtle accent
-   treatment as an active tag: a tinted fill plus an accent border/text.
-   Edit is pushed to the far right, opposite Copy. */
-.detail .actions .copy-button {
+/* Each code box's copy action is the pane's primary action, so it gets the
+   same subtle accent treatment as an active tag: a tinted fill plus an
+   accent border/text. margin-left:auto right-aligns it, both beside a
+   Template/Rendered label and alone in a non-template body box. Edit sits
+   alone in the footer, still pushed right. */
+.detail .box-head .copy-button {
+  margin-left: auto;
   background: color-mix(in srgb, var(--accent) 12%, var(--bg));
   border-color: var(--accent);
   color: var(--accent);
 }
 
-.detail .actions .copy-button:hover:not(:disabled) {
+.detail .box-head .copy-button:hover:not(:disabled) {
   background: color-mix(in srgb, var(--accent) 20%, var(--bg));
+}
+
+/* A failed write must not read as the accented success; outrank the rule
+   above (its 3 classes) with the same specificity plus .failed. */
+.detail .box-head .copy-button.failed {
+  background: color-mix(in srgb, var(--danger) 12%, var(--bg));
+  border-color: var(--danger);
+  color: var(--danger);
 }
 
 .detail .actions .edit {
