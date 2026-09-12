@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import {
+  LAYOUTS,
+  LAYOUT_STORAGE_KEY,
   TEXT_SCALE_MAX,
   TEXT_SCALE_MIN,
   THEMES,
@@ -9,6 +11,7 @@ import {
   clampTextScale,
   defaultSettings,
   loadSettings,
+  saveLayout,
   saveTextScale,
   saveTheme,
   saveTwoLineTitles,
@@ -16,7 +19,12 @@ import {
   THEME_STORAGE_KEY,
 } from './settings'
 
-const keys = [THEME_STORAGE_KEY, TEXT_SCALE_STORAGE_KEY, TWO_LINE_TITLES_STORAGE_KEY]
+const keys = [
+  THEME_STORAGE_KEY,
+  TEXT_SCALE_STORAGE_KEY,
+  TWO_LINE_TITLES_STORAGE_KEY,
+  LAYOUT_STORAGE_KEY,
+]
 
 afterEach(() => {
   for (const k of keys) localStorage.removeItem(k)
@@ -35,7 +43,7 @@ describe('settings', () => {
   })
 
   it('defaults to auto theme at 100% and loads those when storage is empty', () => {
-    const d = { theme: 'auto', textScale: 100, twoLineTitles: false }
+    const d = { theme: 'auto', textScale: 100, twoLineTitles: false, layout: 'auto' }
     expect(defaultSettings()).toEqual(d)
     expect(loadSettings()).toEqual(d)
   })
@@ -44,23 +52,40 @@ describe('settings', () => {
     saveTheme('tokyo-night')
     saveTextScale(125)
     saveTwoLineTitles(true)
+    saveLayout('compact')
     expect(loadSettings()).toEqual({
       theme: 'tokyo-night',
       textScale: 125,
       twoLineTitles: true,
+      layout: 'compact',
     })
     // Auto and "off" persist as the absence of their keys.
     saveTheme('auto')
     saveTwoLineTitles(false)
+    saveLayout('auto')
     expect(localStorage.getItem(THEME_STORAGE_KEY)).toBeNull()
     expect(localStorage.getItem(TWO_LINE_TITLES_STORAGE_KEY)).toBeNull()
+    expect(localStorage.getItem(LAYOUT_STORAGE_KEY)).toBeNull()
+  })
+
+  it('offers the three layouts and ignores an unknown stored one', () => {
+    expect(LAYOUTS.map((l) => l.id)).toEqual(['auto', 'wide', 'compact'])
+    localStorage.setItem(LAYOUT_STORAGE_KEY, 'stacked')
+    expect(loadSettings().layout).toBe('auto')
+    saveLayout('wide')
+    expect(loadSettings().layout).toBe('wide')
   })
 
   it('ignores unknown stored values and falls back to defaults', () => {
     localStorage.setItem(THEME_STORAGE_KEY, 'not-a-theme')
     localStorage.setItem(TEXT_SCALE_STORAGE_KEY, 'nope')
     localStorage.setItem(TWO_LINE_TITLES_STORAGE_KEY, 'maybe')
-    expect(loadSettings()).toEqual({ theme: 'auto', textScale: 100, twoLineTitles: false })
+    expect(loadSettings()).toEqual({
+      theme: 'auto',
+      textScale: 100,
+      twoLineTitles: false,
+      layout: 'auto',
+    })
   })
 
   it('applies a theme via the data-theme attribute and auto removes it', () => {

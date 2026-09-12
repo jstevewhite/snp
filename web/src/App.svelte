@@ -32,6 +32,7 @@
   } from './lib/panes'
   import { SnippetIndex } from './lib/search'
   import {
+    LAYOUTS,
     THEMES,
     TEXT_SCALE_MAX,
     TEXT_SCALE_MIN,
@@ -39,6 +40,7 @@
     applyTextScale,
     applyTheme,
     loadSettings,
+    saveLayout,
     saveTextScale,
     saveTheme,
     saveTwoLineTitles,
@@ -114,6 +116,7 @@
   let theme = $state(savedAppearance.theme)
   let textScale = $state(savedAppearance.textScale)
   let twoLineTitles = $state(savedAppearance.twoLineTitles)
+  let layout = $state(savedAppearance.layout)
   $effect(() => {
     applyTheme(theme)
     saveTheme(theme)
@@ -124,6 +127,9 @@
   })
   $effect(() => {
     saveTwoLineTitles(twoLineTitles)
+  })
+  $effect(() => {
+    saveLayout(layout)
   })
 
   // Pane layout (spec §6): the folders and list panes are sized by inline
@@ -879,6 +885,14 @@
               <select aria-label="Theme" bind:value={theme}>
                 {#each THEMES as t (t.id)}
                   <option value={t.id}>{t.label}</option>
+                {/each}
+              </select>
+            </label>
+            <label class="field">
+              <span>Layout</span>
+              <select aria-label="Layout" bind:value={layout}>
+                {#each LAYOUTS as l (l.id)}
+                  <option value={l.id}>{l.label}</option>
                 {/each}
               </select>
             </label>

@@ -1,6 +1,6 @@
 /**
- * Appearance settings (themes, interface text size, list title wrapping),
- * shared by the settings panel (App.svelte) and the startup apply step
+ * Appearance settings (themes, interface text size, list title wrapping,
+ * layout), shared by the settings panel (App.svelte) and the startup apply step
  * (main.ts).
  *
  * Themes are applied by setting `data-theme` on <html>; app.css defines
@@ -13,6 +13,24 @@
  * Both settings persist in localStorage and are re-applied on startup,
  * in the browser and in the wails desktop window alike.
  */
+
+/**
+ * Layout setting (spec §6 "Compact layout"): 'auto' follows the window
+ * width (lib/layout.ts owns the breakpoint); 'wide' and 'compact' are
+ * plain overrides that ignore it.
+ */
+export type Layout = 'auto' | 'wide' | 'compact'
+
+export interface LayoutOption {
+  id: Layout
+  label: string
+}
+
+export const LAYOUTS: LayoutOption[] = [
+  { id: 'auto', label: 'Auto (by window width)' },
+  { id: 'wide', label: 'Wide (three panes)' },
+  { id: 'compact', label: 'Compact (one screen)' },
+]
 
 export interface ThemeOption {
   /** Value of the data-theme attribute; 'auto' is no attribute. */
@@ -39,10 +57,12 @@ export const TEXT_SCALE_STEP = 5
 export const THEME_STORAGE_KEY = 'snp.theme'
 export const TEXT_SCALE_STORAGE_KEY = 'snp.textScale'
 export const TWO_LINE_TITLES_STORAGE_KEY = 'snp.twoLineTitles'
+export const LAYOUT_STORAGE_KEY = 'snp.layout'
 
 const DEFAULT_THEME = 'auto'
 const DEFAULT_TEXT_SCALE = 100
 const DEFAULT_TWO_LINE_TITLES = false
+const DEFAULT_LAYOUT: Layout = 'auto'
 
 export interface AppearanceSettings {
   theme: string
@@ -54,6 +74,8 @@ export interface AppearanceSettings {
    * available as a tooltip either way.
    */
   twoLineTitles: boolean
+  /** Pane arrangement: auto (by width), or a forced wide/compact. */
+  layout: Layout
 }
 
 export function defaultSettings(): AppearanceSettings {
@@ -61,7 +83,12 @@ export function defaultSettings(): AppearanceSettings {
     theme: DEFAULT_THEME,
     textScale: DEFAULT_TEXT_SCALE,
     twoLineTitles: DEFAULT_TWO_LINE_TITLES,
+    layout: DEFAULT_LAYOUT,
   }
+}
+
+function isLayout(v: string): v is Layout {
+  return LAYOUTS.some((l) => l.id === v)
 }
 
 function storage(): Storage | undefined {
@@ -88,6 +115,8 @@ export function loadSettings(): AppearanceSettings {
     }
     const twoLine = s.getItem(TWO_LINE_TITLES_STORAGE_KEY)
     if (twoLine !== null) out.twoLineTitles = twoLine === 'true'
+    const layout = s.getItem(LAYOUT_STORAGE_KEY)
+    if (layout !== null && isLayout(layout)) out.layout = layout
   } catch {
     // Ignore malformed values; keep defaults.
   }
@@ -122,6 +151,18 @@ export function saveTwoLineTitles(on: boolean): void {
   try {
     if (on === DEFAULT_TWO_LINE_TITLES) s.removeItem(TWO_LINE_TITLES_STORAGE_KEY)
     else s.setItem(TWO_LINE_TITLES_STORAGE_KEY, String(on))
+  } catch {
+    // Persistence is best-effort.
+  }
+}
+
+/** Persist the layout setting (auto is the absence of the key, like the theme). */
+export function saveLayout(layout: Layout): void {
+  const s = storage()
+  if (!s) return
+  try {
+    if (layout === DEFAULT_LAYOUT || !isLayout(layout)) s.removeItem(LAYOUT_STORAGE_KEY)
+    else s.setItem(LAYOUT_STORAGE_KEY, layout)
   } catch {
     // Persistence is best-effort.
   }
