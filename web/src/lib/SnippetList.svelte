@@ -14,6 +14,7 @@
     onsearch,
     oncreate,
     onfolders,
+    visible = true,
   }: {
     snippets: Snippet[]
     selectedId?: string | null
@@ -35,6 +36,12 @@
      * folders pane is on screen and no button is shown.
      */
     onfolders?: () => void
+    /**
+     * False while the compact layout shows the detail screen over the list.
+     * The list stays mounted but hidden, which loses its scroll position,
+     * so the selected row is scrolled back into view when it returns.
+     */
+    visible?: boolean
   } = $props()
 
   let listEl = $state<HTMLElement | undefined>()
@@ -44,7 +51,7 @@
   // mouse click on a row that is already visible.
   $effect(() => {
     const id = selectedId
-    if (id === null) return
+    if (id === null || !visible) return
     const row = listEl?.querySelector(`[data-id="${id}"]`)
     row?.scrollIntoView?.({ block: 'nearest' })
   })

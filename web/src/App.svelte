@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { tick as settle, untrack } from 'svelte'
   import * as api from './lib/api'
   import { writeClipboard } from './lib/clipboard'
   import { ApiError } from './lib/types'
@@ -17,6 +18,7 @@
   import {
     browserHistory,
     createCompactNav,
+    isTextInput,
     resolveLayout,
     watchNarrow,
     type NavHistory,
@@ -151,12 +153,38 @@
   const mode = $derived(resolveLayout(layout, narrow))
   const compact = $derived(mode === 'compact')
   let navState = $state<NavState>({ screen: 'list', drawerOpen: false, depth: 0 })
-  const inertHistory: NavHistory = { pushState() {}, back() {}, go() {} }
+  const inertHistory: NavHistory = {
+    state: null,
+    pushState() {},
+    replaceState() {},
+    back() {},
+    go() {},
+  }
   const nav = createCompactNav(browserHistory() ?? inertHistory, (s) => (navState = s))
   $effect(() => {
     const onPop = (e: PopStateEvent): void => nav.onPopState(e.state)
     window.addEventListener('popstate', onPop)
     return () => window.removeEventListener('popstate', onPop)
+  })
+  // Switching modes: entering compact lands on detail when something is
+  // open (a window dragged narrower keeps what was being read); leaving it
+  // forgets the stack. Reads of the selection are untracked so only the
+  // mode change re-runs this.
+  $effect(() => {
+    if (compact) nav.enter(untrack(() => editing || selectedSnippetId !== null))
+    else nav.leave()
+  })
+  // Landing on the list while the editor is open means Back was pressed in
+  // the editor (button, gesture or Escape): that is Cancel (spec §6).
+  $effect(() => {
+    if (compact && navState.screen === 'list' && editing) cancelEdit()
+  })
+  // A detail screen with nothing to show (the snippet was deleted, or the
+  // cache was cleared) falls back to the list.
+  $effect(() => {
+    if (compact && navState.screen === 'detail' && !editing && selectedSnippet === null) {
+      nav.back()
+    }
   })
 
   // Pane layout (spec §6): the folders and list panes are sized by inline
@@ -572,6 +600,7 @@
     if (!online) return
     editing = true
     editingSnippet = null
+    if (compact) nav.openDetail()
   }
 
   /**
@@ -599,11 +628,18 @@
     }
     editing = true
     editingSnippet = s
+    if (compact) nav.openDetail()
   }
 
+  /**
+   * Leave the editor. In compact mode a cancelled *create* returns to the
+   * list it was opened from; a cancelled edit stays on the snippet.
+   */
   function cancelEdit(): void {
+    const wasCreate = editing && editingSnippet === null
     editing = false
     editingSnippet = null
+    if (compact && wasCreate && navState.screen === 'detail') nav.back()
   }
 
   async function saveSnippet(input: SnippetInput): Promise<void> {
@@ -735,6 +771,16 @@
    * inline until the keyboard path needed the same behavior.
    */
   function selectSnippet(id: string): void {
+    setSelection(id)
+    if (compact) nav.openDetail()
+  }
+
+  /**
+   * Change the selection without navigating: the arrow keys in the search
+   * box walk the list in place, so in compact mode they must not push the
+   * detail screen (spec §6).
+   */
+  function setSelection(id: string): void {
     selectedSnippetId = id
     editing = false
     editingSnippet = null
@@ -763,7 +809,7 @@
           ? 0
           : items.length - 1
         : (at + delta + items.length) % items.length
-    selectSnippet(items[next].id)
+    setSelection(items[next].id)
   }
 
   /**
@@ -823,7 +869,26 @@
     if (isSearchShortcut(e)) {
       // Also stops Firefox focusing its own search bar on Ctrl+K.
       e.preventDefault()
-      focusSearch()
+      if (compact && navState.depth > 0) {
+        // Back to the list in one history move, then focus once the list
+        // is visible again (a hidden field cannot take focus).
+        nav.toRoot()
+        void settle().then(focusSearch)
+      } else {
+        focusSearch()
+      }
+      return
+    }
+    if (compact && e.key === 'Escape' && document.activeElement !== searchEl) {
+      // Escape pops a level: the drawer, else detail → list — but never
+      // out of the editor or a text field, where Cancel is explicit.
+      if (navState.drawerOpen) {
+        e.preventDefault()
+        nav.back()
+      } else if (navState.screen === 'detail' && !editing && !isTextInput(document.activeElement)) {
+        e.preventDefault()
+        nav.back()
+      }
       return
     }
     if (document.activeElement !== searchEl) return
@@ -1072,7 +1137,10 @@
         {folders}
         selectedId={selectedFolderId}
         offline={!online}
-        onselect={(id) => (selectedFolderId = id)}
+        onselect={(id) => {
+          selectedFolderId = id
+          if (compact) nav.closeDrawer()
+        }}
         oncreate={(pid) => promptFolder(pid)}
         onrename={(id, name) => void renameFolder(id, name)}
         onremove={(id) => void deleteFolder(id)}
@@ -1102,6 +1170,7 @@
         onsearch={(q) => (query = q)}
         oncreate={startCreate}
         onfolders={compact ? () => nav.openDrawer() : undefined}
+        visible={!compact || navState.screen === 'list'}
       />
     </section>
 
