@@ -14,9 +14,9 @@ Spec: `docs/snp-design.md` · Plan: `docs/snp-implementation-plan.md`
 
 ## Current status
 
-- Updated: 2026-09-12 01:20
+- Updated: 2026-09-12 17:25
 - Phase: review fixes + desktop app (macOS **and Linux** builds) + appearance + AI generation (command/script/function kinds) + tag filter + .app bundle + **bundled starter pack** merged to main; **Markdown notes**, **read-view syntax highlighting**, **notarization in `make app`**, the **Linux desktop build/launcher** and **`snp seed`** landed; the **GitHub release workflows** and the **header version chip** (`GET /api/version`) landed; **v0.1.0 shipped** (signed + notarized macOS bundle, 7 assets, verified after publish); **draggable pane dividers** landed (spec §6, `web/src/lib/panes.ts`) and **Explain now replaces Notes** with an undo (spec §13); **Phase 10, the UI refinement pass**, is on branch `feat/ui-refinements` (**pushed**, and deployed to the tailnet from a dirty tree — `/api/version` reports `v0.1.0-14-g8e82a64-dirty`): explicit copy actions, distinct create labels, simplified timestamps, the search keyboard workflow, visible saved-default state, two-line titles, and the **Favorites** list on a new `pinned` column; plus the **service-worker update check** and **create/cancel test coverage** added while chasing a stale-shell report; `make test` green (go test + vet + 298 Vitest + svelte-check 0 errors / 0 warnings). The Linux desktop binary **build was verified on an ARM Ubuntu 24 host** (git bundle → `make desktop`), after a first attempt failed because that work was still uncommitted and the bundle therefore carried the old darwin-only tree.
-- Next: **merge `feat/ui-refinements`** to main (pushed; nothing in it is released yet); then **verify the GitHub Actions bump on the next workflow run** (the Node-24 majors are committed but the only way to exercise these workflows is a beta/release run, so the first `v0.2.0-beta.2` or `v0.2.0` proves it); then **Linux desktop container build + verification** (podman; `libgtk-3-dev` + `libwebkit2gtk-4.1-dev` + Go, `make web` then the desktop build, and exercise `install-desktop.sh` with a scratch `PREFIX=`); then the Windows port, desktop follow-ons (real app icon, startup-error surfacing in the window); then remaining v1 follow-ons (CLI client, SnippetsLab converter, named variable presets per machine — the follow-on named in Phase 10 T5)
+- Next: **Linux desktop container build + verification** (podman; `libgtk-3-dev` + `libwebkit2gtk-4.1-dev` + Go, `make web` then the desktop build, and exercise `install-desktop.sh` with a scratch `PREFIX=`); then the Windows port, desktop follow-ons (real app icon, startup-error surfacing in the window); then remaining v1 follow-ons (CLI client, SnippetsLab converter, named variable presets per machine — the follow-on named in Phase 10 T5). `feat/ui-refinements` is merged to main and two betas are published (`v0.2.0-beta.1`, and `v0.2.0-beta.2` as the CI validation build); cutting `v0.2.0` is the next release step whenever wanted
 
 ## Log
 
@@ -1267,9 +1267,14 @@ Spec: `docs/snp-design.md` · Plan: `docs/snp-implementation-plan.md`
     description edits; the codesign action's inputs are byte-identical, and
     it gains a `post` step (temp-keychain cleanup). The workflows were then
     re-parsed to confirm all six jobs still resolve.
-  - **Not yet exercised**: these workflows only run on a beta/release, so the
-    bump is committed but unproven until the next run. The in-flight beta
-    used the old refs, having already captured its workflow definition.
+  - **Verified** by re-running the beta on the bumped commit (`v0.2.0-beta.2`,
+    run 34707798309): all eight jobs passed, the macOS bundle still signed and
+    notarized, `v0.2.0-beta.2` published as a prerelease with all 7 assets —
+    and the run carries **no annotations at all**, where both earlier runs were
+    annotated in every job. The bumped refs are visible in the step list
+    (checkout@v5, setup-node@v5, setup-go@v6, upload-artifact@v6,
+    download-artifact@v7, import-codesign-certs@v6 — including its new post
+    step, which ran).
   - Gotcha — **GitHub's Node-20 annotation covers first-party actions only**.
     The macOS job ran `apple-actions/import-codesign-certs@v3` (also node20)
     without it being listed anywhere in the annotations, so treating that
