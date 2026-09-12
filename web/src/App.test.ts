@@ -2,7 +2,7 @@ import 'fake-indexeddb/auto'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/svelte'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { PANE_WIDTHS_STORAGE_KEY } from './lib/panes'
-import { TWO_LINE_TITLES_STORAGE_KEY } from './lib/settings'
+import { LAYOUT_STORAGE_KEY, TWO_LINE_TITLES_STORAGE_KEY } from './lib/settings'
 import App from './App.svelte'
 
 const T0 = '2026-09-03T00:00:00Z'
@@ -82,6 +82,48 @@ function stubFetch(): ReturnType<typeof vi.fn> {
   return fetchMock
 }
 
+/**
+ * Replace window.history's navigation with a fake that answers back()/go()
+ * synchronously by dispatching popstate with the landed-on entry's state,
+ * the way a browser does asynchronously. Index 0 is the page's own entry.
+ */
+function stubHistory() {
+  const entries: unknown[] = [null]
+  let index = 0
+  const pushState = vi.spyOn(window.history, 'pushState').mockImplementation((state) => {
+    entries.splice(index + 1)
+    entries.push(state)
+    index = entries.length - 1
+  })
+  vi.spyOn(window.history, 'replaceState').mockImplementation((state) => {
+    entries[index] = state
+  })
+  const travel = (delta: number): void => {
+    index = Math.max(0, Math.min(entries.length - 1, index + delta))
+    window.dispatchEvent(new PopStateEvent('popstate', { state: entries[index] }))
+  }
+  vi.spyOn(window.history, 'back').mockImplementation(() => travel(-1))
+  vi.spyOn(window.history, 'go').mockImplementation((delta = 0) => travel(delta))
+  Object.defineProperty(window.history, 'state', {
+    get: () => entries[index],
+    configurable: true,
+  })
+  return {
+    pushState,
+    get index() {
+      return index
+    },
+    /** The OS/browser back gesture. */
+    back: () => travel(-1),
+  }
+}
+
+const listPane = (): HTMLElement => document.querySelector('.pane.list') as HTMLElement
+const detailPane = (): HTMLElement => document.querySelector('.pane.detail') as HTMLElement
+const drawer = (): HTMLElement => document.querySelector('.pane.folders') as HTMLElement
+/** The detail body's text, whole even after highlighting splits it into spans. */
+const detailBody = (): string => document.querySelector('.detail .body')?.textContent ?? ''
+
 /** Stubs navigator.clipboard and returns its writeText spy. */
 function stubClipboard(): ReturnType<typeof vi.fn> {
   const writeText = vi.fn().mockResolvedValue(undefined)
@@ -97,6 +139,7 @@ describe('App', () => {
     localStorage.removeItem('snp.version')
     localStorage.removeItem(PANE_WIDTHS_STORAGE_KEY)
     localStorage.removeItem(TWO_LINE_TITLES_STORAGE_KEY)
+    localStorage.removeItem(LAYOUT_STORAGE_KEY)
     document.documentElement.removeAttribute('data-theme')
     document.documentElement.style.removeProperty('--text-scale')
   })
@@ -104,6 +147,8 @@ describe('App', () => {
   afterEach(() => {
     cleanup()
     Reflect.deleteProperty(navigator, 'clipboard')
+    Reflect.deleteProperty(window.history, 'state')
+    vi.restoreAllMocks()
     vi.unstubAllGlobals()
   })
 
@@ -1003,6 +1048,217 @@ describe('App', () => {
     body.focus()
     await fireEvent.keyDown(window, { key: 'Enter' })
     expect(writeText).not.toHaveBeenCalled()
+    unmount()
+  })
+
+  it('wide mode renders both dividers and never touches history', async () => {
+    stubFetch()
+    const history = stubHistory()
+    const { unmount } = render(App)
+    await waitFor(() => expect(screen.getByText('Caddyfile')).toBeDefined())
+    expect(document.querySelectorAll('.splitter')).toHaveLength(2)
+    expect(document.querySelector('.app')?.classList.contains('compact')).toBe(false)
+    await fireEvent.click(screen.getAllByText('Caddyfile')[0])
+    await waitFor(() => expect(detailBody()).toContain('http://localhost:8080'))
+    expect(history.pushState).not.toHaveBeenCalled()
+    expect(listPane().hidden).toBe(false)
+    expect(screen.queryByLabelText('Back')).toBeNull()
+    expect(screen.queryByLabelText('Folders')).toBeNull()
+    unmount()
+  })
+})
+
+/**
+ * Compact layout (spec §6 "Compact layout", plan Phase 11). jsdom has no
+ * matchMedia, so Auto resolves to wide; compact is forced through the
+ * setting, which is also what a user on a wide screen would do.
+ */
+describe('App (compact layout)', () => {
+  beforeEach(async () => {
+    await indexedDB.deleteDatabase('snp')
+    localStorage.removeItem('snp.version')
+    localStorage.removeItem(PANE_WIDTHS_STORAGE_KEY)
+    localStorage.setItem(LAYOUT_STORAGE_KEY, 'compact')
+  })
+
+  afterEach(() => {
+    cleanup()
+    localStorage.removeItem(LAYOUT_STORAGE_KEY)
+    Reflect.deleteProperty(window.history, 'state')
+    vi.restoreAllMocks()
+    vi.unstubAllGlobals()
+  })
+
+  async function mountCompact() {
+    stubFetch()
+    const history = stubHistory()
+    const view = render(App)
+    await waitFor(() => expect(screen.getByText('Caddyfile')).toBeDefined())
+    expect(document.querySelector('.app')?.classList.contains('compact')).toBe(true)
+    return { ...view, history }
+  }
+
+  it('shows one screen at a time, no dividers, and a compact top bar', async () => {
+    const { unmount } = await mountCompact()
+    expect(document.querySelectorAll('.splitter')).toHaveLength(0)
+    expect(listPane().hidden).toBe(false)
+    expect(detailPane().hidden).toBe(true)
+    expect(drawer().classList.contains('open')).toBe(false)
+    // The bar: ☰, wordmark, gear — the chips moved into the settings sheet.
+    expect(screen.getByLabelText('Folders')).toBeDefined()
+    expect(screen.queryByLabelText('Back')).toBeNull()
+    expect(document.querySelector('.topbar .conn')).toBeNull()
+    expect(document.querySelector('.topbar .version')).toBeNull()
+    await fireEvent.click(screen.getByLabelText('Settings'))
+    expect(document.querySelector('.settings .panel .conn')?.textContent).toBe('online')
+    expect(screen.getByText('Resync').closest('.panel')).not.toBeNull()
+    unmount()
+  })
+
+  it('tapping a snippet pushes detail; Back returns to the list with the row selected', async () => {
+    const { unmount, history } = await mountCompact()
+    await fireEvent.click(screen.getAllByText('Caddyfile')[0])
+    await waitFor(() => expect(detailBody()).toContain('http://localhost:8080'))
+    expect(history.pushState).toHaveBeenCalledTimes(1)
+    expect(history.pushState.mock.calls[0][0]).toEqual(expect.objectContaining({ snp: 1 }))
+    expect(listPane().hidden).toBe(true)
+    expect(detailPane().hidden).toBe(false)
+    expect(screen.queryByLabelText('Folders')).toBeNull()
+
+    await fireEvent.click(screen.getByLabelText('Back'))
+    await waitFor(() => expect(listPane().hidden).toBe(false))
+    expect(detailPane().hidden).toBe(true)
+    expect(history.index).toBe(0)
+    expect(document.querySelector('.snippet-list .item.selected .title')?.textContent).toBe(
+      'Caddyfile',
+    )
+    // Tapping the same row again pushes again — it is a fresh level.
+    await fireEvent.click(screen.getAllByText('Caddyfile')[0])
+    await waitFor(() => expect(detailPane().hidden).toBe(false))
+    expect(history.pushState).toHaveBeenCalledTimes(2)
+    unmount()
+  })
+
+  it('the browser back gesture and Escape each pop one level', async () => {
+    const { unmount, history } = await mountCompact()
+    await fireEvent.click(screen.getAllByText('Deploy')[0])
+    await waitFor(() => expect(detailPane().hidden).toBe(false))
+    history.back()
+    await waitFor(() => expect(listPane().hidden).toBe(false))
+
+    await fireEvent.click(screen.getAllByText('Deploy')[0])
+    await waitFor(() => expect(detailPane().hidden).toBe(false))
+    await fireEvent.keyDown(window, { key: 'Escape' })
+    await waitFor(() => expect(listPane().hidden).toBe(false))
+
+    // Escape inside a text field on the detail screen does not navigate.
+    await fireEvent.click(screen.getAllByText('Deploy')[0])
+    await waitFor(() => expect(detailPane().hidden).toBe(false))
+    const ns = screen.getByLabelText('ns') as HTMLInputElement
+    ns.focus()
+    await fireEvent.keyDown(window, { key: 'Escape' })
+    expect(detailPane().hidden).toBe(false)
+    unmount()
+  })
+
+  it('the search shortcut returns to the list and focuses the field', async () => {
+    const { unmount, history } = await mountCompact()
+    await fireEvent.click(screen.getAllByText('Caddyfile')[0])
+    await waitFor(() => expect(detailPane().hidden).toBe(false))
+    await fireEvent.click(screen.getByLabelText('Back'))
+    await waitFor(() => expect(listPane().hidden).toBe(false))
+    await fireEvent.click(screen.getByLabelText('Folders'))
+    await waitFor(() => expect(drawer().classList.contains('open')).toBe(true))
+    await fireEvent.click(screen.getAllByText('Caddyfile')[0])
+    await waitFor(() => expect(detailPane().hidden).toBe(false))
+    expect(drawer().classList.contains('open')).toBe(false)
+
+    await fireEvent.keyDown(window, { key: 'k', ctrlKey: true })
+    await waitFor(() => expect(listPane().hidden).toBe(false))
+    const search = screen.getByLabelText('Search snippets')
+    await waitFor(() => expect(document.activeElement).toBe(search))
+    expect(history.index).toBe(0)
+
+    // The arrow keys move the selection without leaving the list.
+    await fireEvent.keyDown(window, { key: 'ArrowDown' })
+    expect(listPane().hidden).toBe(false)
+    expect(history.pushState).toHaveBeenCalledTimes(2)
+    unmount()
+  })
+
+  it('the drawer opens from ☰ and Folders, closes on a folder pick, stays for a tag', async () => {
+    const { unmount, history } = await mountCompact()
+    await fireEvent.click(screen.getByLabelText('Folders'))
+    await waitFor(() => expect(drawer().classList.contains('open')).toBe(true))
+    expect(screen.getByLabelText('Back')).toBeDefined()
+    expect(document.querySelector('.scrim')).not.toBeNull()
+
+    await fireEvent.click(screen.getByLabelText('Filter by tag ops'))
+    expect(drawer().classList.contains('open')).toBe(true)
+    await fireEvent.click(screen.getByLabelText('Filter by tag ops'))
+
+    await fireEvent.click(screen.getByText('Ops'))
+    await waitFor(() => expect(drawer().classList.contains('open')).toBe(false))
+    expect(history.index).toBe(0)
+    await waitFor(() => expect(screen.queryByText('Deploy')).toBeNull())
+
+    // The toolbar button and the scrim are the other two ways in and out.
+    await fireEvent.click(screen.getByText('Folders', { selector: '.toolbar button' }))
+    await waitFor(() => expect(drawer().classList.contains('open')).toBe(true))
+    await fireEvent.click(document.querySelector('.scrim') as HTMLElement)
+    await waitFor(() => expect(drawer().classList.contains('open')).toBe(false))
+    await fireEvent.click(screen.getByLabelText('Folders'))
+    await waitFor(() => expect(drawer().classList.contains('open')).toBe(true))
+    await fireEvent.keyDown(window, { key: 'Escape' })
+    await waitFor(() => expect(drawer().classList.contains('open')).toBe(false))
+    unmount()
+  })
+
+  it('create then Cancel returns to the list; edit then Cancel stays on detail', async () => {
+    const { unmount, history } = await mountCompact()
+    await fireEvent.click(screen.getByText('New snippet'))
+    await waitFor(() => expect(screen.getByLabelText('Title')).toBeDefined())
+    expect(detailPane().hidden).toBe(false)
+    await fireEvent.click(screen.getByText('Cancel'))
+    await waitFor(() => expect(listPane().hidden).toBe(false))
+    expect(screen.queryByLabelText('Title')).toBeNull()
+    expect(history.index).toBe(0)
+
+    await fireEvent.click(screen.getAllByText('Caddyfile')[0])
+    await waitFor(() => expect(detailBody()).toContain('http://localhost:8080'))
+    await fireEvent.click(screen.getByText('Edit'))
+    await waitFor(() => expect(screen.getByLabelText('Title')).toBeDefined())
+    expect(history.pushState).toHaveBeenCalledTimes(2)
+    await fireEvent.click(screen.getByText('Cancel'))
+    await waitFor(() => expect(screen.queryByLabelText('Title')).toBeNull())
+    expect(detailPane().hidden).toBe(false)
+    expect(detailBody()).toContain('http://localhost:8080')
+
+    // Back out of the editor is Cancel.
+    await fireEvent.click(screen.getByText('Edit'))
+    await waitFor(() => expect(screen.getByLabelText('Title')).toBeDefined())
+    history.back()
+    await waitFor(() => expect(listPane().hidden).toBe(false))
+    expect(screen.queryByLabelText('Title')).toBeNull()
+    unmount()
+  })
+
+  it('switching the Layout setting back to wide restores the panes', async () => {
+    const { unmount } = await mountCompact()
+    await fireEvent.click(screen.getAllByText('Caddyfile')[0])
+    await waitFor(() => expect(detailPane().hidden).toBe(false))
+    await fireEvent.click(screen.getByLabelText('Settings'))
+    const select = screen.getByLabelText('Layout') as HTMLSelectElement
+    await fireEvent.change(select, { target: { value: 'wide' } })
+    await waitFor(() => expect(document.querySelectorAll('.splitter')).toHaveLength(2))
+    expect(listPane().hidden).toBe(false)
+    expect(detailPane().hidden).toBe(false)
+    expect(localStorage.getItem(LAYOUT_STORAGE_KEY)).toBe('wide')
+    // And back: a snippet is open, so compact lands on its detail screen.
+    await fireEvent.change(select, { target: { value: 'compact' } })
+    await waitFor(() => expect(document.querySelectorAll('.splitter')).toHaveLength(0))
+    expect(detailPane().hidden).toBe(false)
+    expect(listPane().hidden).toBe(true)
     unmount()
   })
 })
