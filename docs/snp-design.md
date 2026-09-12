@@ -12,6 +12,7 @@ Revised: 2026-09-11 (§13 Ask-AI output kind; §6 read-view long-body collapse; 
 Revised: 2026-09-11 (§6 draggable pane dividers)
 Revised: 2026-09-11 (§13 Explain replaces Notes instead of appending, with undo)
 Revised: 2026-09-11 (§4/§5 `pinned`; §6 Favorites, explicit copy actions, the search keyboard workflow, simplified timestamps, two-line titles)
+Revised: 2026-09-12 (§6 service-worker update check, so a stale precached shell cannot linger)
 Status: approved design, revised after review, implemented
 
 > Revision note (2026-09-06): §6 originally specified a CodeMirror 6
@@ -582,6 +583,14 @@ stacking them on narrow screens remains unbuilt (see the revision note).
 - `manifest.webmanifest` with icons; installable on macOS, iOS, Android.
 - Service worker precaches the built app shell and serves it cache-first.
   API requests are network-only.
+- The precached shell can go stale: a browser only looks for a new worker on
+  a navigation, so a window left open — or a PWA resumed from the background
+  — can keep serving a bundle from an old deploy while every request still
+  succeeds, which reads as "the app is broken" rather than "the app is old".
+  The app therefore re-checks for an update whenever the window is focused or
+  shown again, and reloads once when a new worker takes over
+  (`web/src/lib/sw.ts`); the reload is skipped on a first install, where the
+  worker claiming clients fires the same event.
 - On startup, on `visibilitychange`/`focus`, and every few minutes while
   open, the app calls `/api/sync?since=` and merges folders, snippets, and
   tombstones into IndexedDB (mobile OSes suspend background apps, so the

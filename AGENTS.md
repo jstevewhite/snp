@@ -177,7 +177,7 @@ syntax shared by online and offline search), `templates.ts`
 merge), `online.ts`, `desktop.ts` (desktop-shell detection; inert in
 browsers), `time.ts` (display formatting for the stored timestamps),
 `keys.ts` (platform-aware shortcut labels), `clipboard.ts` (clipboard write
-with a webview fallback).
+with a webview fallback), `sw.ts` (service-worker update check).
 
 Vitest needs `resolve.conditions: ['browser']` in `vite.config.ts` or
 `svelte` resolves to its server entry and component tests lose `mount`.

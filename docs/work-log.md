@@ -14,9 +14,9 @@ Spec: `docs/snp-design.md` · Plan: `docs/snp-implementation-plan.md`
 
 ## Current status
 
-- Updated: 2026-09-11 17:35
-- Phase: review fixes + desktop app (macOS **and Linux** builds) + appearance + AI generation (command/script/function kinds) + tag filter + .app bundle + **bundled starter pack** merged to main; **Markdown notes**, **read-view syntax highlighting**, **notarization in `make app`**, the **Linux desktop build/launcher** and **`snp seed`** landed; the **GitHub release workflows** and the **header version chip** (`GET /api/version`) landed; **v0.1.0 shipped** (signed + notarized macOS bundle, 7 assets, verified after publish); **draggable pane dividers** landed (spec §6, `web/src/lib/panes.ts`) and **Explain now replaces Notes** with an undo (spec §13); **Phase 10, the UI refinement pass, is complete** on branch `feat/ui-refinements` (explicit copy actions, distinct create labels, simplified timestamps, the search keyboard workflow, visible saved-default state, two-line titles, and the **Favorites** list on a new `pinned` column); `make test` green (go test + vet + 290 Vitest + svelte-check 0 errors / 0 warnings). The Linux desktop binary **build was verified on an ARM Ubuntu 24 host** (git bundle → `make desktop`), after a first attempt failed because that work was still uncommitted and the bundle therefore carried the old darwin-only tree.
-- Next: **push `feat/ui-refinements`** and merge it (nothing in it is released yet — the branch is local); then **bump the Node-20 GitHub Actions** (`checkout`, `setup-node`, `setup-go`, `upload-artifact`, `download-artifact` — all still work but are force-run on Node 24 and annotate the run) **to their Node-24 majors** before the next release; then **Linux desktop container build + verification** (podman; `libgtk-3-dev` + `libwebkit2gtk-4.1-dev` + Go, `make web` then the desktop build, and exercise `install-desktop.sh` with a scratch `PREFIX=`); then the Windows port, desktop follow-ons (real app icon, startup-error surfacing in the window); then remaining v1 follow-ons (CLI client, SnippetsLab converter, named variable presets per machine — the follow-on named in Phase 10 T5)
+- Updated: 2026-09-12 00:50
+- Phase: review fixes + desktop app (macOS **and Linux** builds) + appearance + AI generation (command/script/function kinds) + tag filter + .app bundle + **bundled starter pack** merged to main; **Markdown notes**, **read-view syntax highlighting**, **notarization in `make app`**, the **Linux desktop build/launcher** and **`snp seed`** landed; the **GitHub release workflows** and the **header version chip** (`GET /api/version`) landed; **v0.1.0 shipped** (signed + notarized macOS bundle, 7 assets, verified after publish); **draggable pane dividers** landed (spec §6, `web/src/lib/panes.ts`) and **Explain now replaces Notes** with an undo (spec §13); **Phase 10, the UI refinement pass**, is on branch `feat/ui-refinements` (**pushed**, and deployed to the tailnet from a dirty tree — `/api/version` reports `v0.1.0-14-g8e82a64-dirty`): explicit copy actions, distinct create labels, simplified timestamps, the search keyboard workflow, visible saved-default state, two-line titles, and the **Favorites** list on a new `pinned` column; plus the **service-worker update check** and **create/cancel test coverage** added while chasing a stale-shell report; `make test` green (go test + vet + 298 Vitest + svelte-check 0 errors / 0 warnings). The Linux desktop binary **build was verified on an ARM Ubuntu 24 host** (git bundle → `make desktop`), after a first attempt failed because that work was still uncommitted and the bundle therefore carried the old darwin-only tree.
+- Next: **merge `feat/ui-refinements`** to main (pushed; nothing in it is released yet); then **bump the Node-20 GitHub Actions** (`checkout`, `setup-node`, `setup-go`, `upload-artifact`, `download-artifact` — all still work but are force-run on Node 24 and annotate the run) **to their Node-24 majors** before the next release; then **Linux desktop container build + verification** (podman; `libgtk-3-dev` + `libwebkit2gtk-4.1-dev` + Go, `make web` then the desktop build, and exercise `install-desktop.sh` with a scratch `PREFIX=`); then the Windows port, desktop follow-ons (real app icon, startup-error surfacing in the window); then remaining v1 follow-ons (CLI client, SnippetsLab converter, named variable presets per machine — the follow-on named in Phase 10 T5)
 
 ## Log
 
@@ -1165,3 +1165,42 @@ Spec: `docs/snp-design.md` · Plan: `docs/snp-implementation-plan.md`
     `CLAUDE.md` now say phases 0–10 and list the three new lib modules.
   - `make test` green: go vet, `go test ./...` (all packages), 290 Vitest
     across 25 files, svelte-check 0 errors / 0 warnings.
+- 2026-09-12 — Follow-up to Phase 10: **stale app shells**, and the create
+  flow's missing tests. A report that Create and Cancel "did nothing" on one
+  machine — while the same build worked on another — turned out to be
+  environmental, but only after ruling out the code:
+
+  - The served bundle was current: every Phase 10 change is present in the
+    deployed `index-hqkw1XYL.js`, and `/api/version` reports
+    `v0.1.0-14-g8e82a64-dirty` (branch tip, built from a dirty tree).
+  - Driving that live instance in real headless Chrome — real bundle, real
+    data (50 snippets) — reproduced **neither** symptom: Cancel closed the
+    editor, Create created and closed it, and the page logged no exception.
+    The harness was a local proxy of the live site with a driver script
+    injected into the served HTML, reporting back over a `POST /__diag`; it
+    created nothing (Create is exercised with cleanup, and the last full run
+    made no POST at all).
+  - **Gotcha — a stale service worker is invisible from the server.** The
+    logs show ordinary 2xx responses and `/api/version` reports the
+    *server's* version, so a device can execute an old bundle while looking
+    completely current. The only reliable check is the script URL the client
+    is actually running (`document.querySelectorAll('script[src]')`) against
+    what the server serves. Deploying repeatedly from a mid-work tree is
+    exactly how a device ends up caching an intermediate shell.
+  - **Fix shipped**: `web/src/lib/sw.ts` — `registration.update()` on window
+    focus and on becoming visible again, plus a single reload on
+    `controllerchange` when a worker was already in control. With
+    `registerType: 'autoUpdate'` a new worker claims clients, but the
+    already-loaded page keeps executing its old script until it reloads, so
+    without this a PWA that never navigates can serve an old bundle
+    indefinitely. The reload is deliberately skipped on a first install,
+    where claiming clients fires the same event.
+  - **Test gap closed**: the create-from-form and cancel flows had no tests
+    at all, which is why the report could not be settled from the suite.
+    Both are covered now.
+  - Diagnosis tooling (throwaway, not committed): under the sandbox Chrome
+    will not start at all without full filesystem access — its profile and
+    crashpad writes are denied under `workspace-write` — and `GOCACHE` must
+    point inside `/tmp` once a Go source change forces a recompile.
+  - `make test` green: go vet, `go test ./...`, 298 Vitest, svelte-check 0
+    errors / 0 warnings.

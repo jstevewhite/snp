@@ -2,6 +2,7 @@ import { mount } from 'svelte'
 import './app.css'
 import App from './App.svelte'
 import { applyTextScale, applyTheme, loadSettings } from './lib/settings'
+import { watchServiceWorkerUpdates } from './lib/sw'
 
 // Apply the saved appearance (theme + text size) before first paint so
 // the shell mounts already themed, in the browser and the desktop
@@ -36,6 +37,13 @@ window.addEventListener('unhandledrejection', (event) => {
   const detail = reason instanceof Error ? (reason.stack ?? reason.message) : String(reason)
   pageLog(`unhandled rejection: ${detail}`)
 })
+
+// A browser or installed PWA can be running a bundle older than the one the
+// server now serves, and nothing on the server side can tell: the requests
+// all succeed. Re-check for a new service worker whenever the window comes
+// back, and reload once when one takes over (lib/sw.ts). Inert in the wails
+// window, which registers no worker.
+watchServiceWorkerUpdates()
 
 const app = mount(App, {
   target: document.getElementById('app')!,
