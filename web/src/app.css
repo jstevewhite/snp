@@ -357,6 +357,17 @@ button.danger {
   z-index: 1;
 }
 
+.pane-head .head-actions {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+/* The drawer's own close control; rendered in compact mode only. */
+.pane-head .close {
+  display: none;
+}
+
 .pane-head h2 {
   margin: 0;
   font-size: calc(13px * var(--text-scale, 1));
@@ -1512,4 +1523,122 @@ button.danger {
 
 .hljs-deletion {
   color: var(--danger);
+}
+
+/* ---- compact layout (spec §6 "Compact layout") ----
+ *
+ * Scoped under the .compact class App.svelte sets from the resolved mode,
+ * not a media query, so the manual Layout override and Auto share one path
+ * and tests can force it. One screen at a time: the list is the root and
+ * the detail pane replaces it (the inactive one carries `hidden`, and the
+ * list stays mounted underneath so its state survives); the folders pane
+ * is a drawer over whichever screen is showing. The pane dividers are not
+ * rendered in compact mode and the inline pane widths are not emitted, so
+ * a width dragged on a desktop never reaches the phone layout. */
+
+.app.compact .panes {
+  grid-template-columns: minmax(0, 1fr);
+  position: relative;
+}
+
+.app.compact .pane.list,
+.app.compact .pane.detail {
+  grid-column: 1;
+  grid-row: 1;
+  min-width: 0;
+}
+
+/* Belt and braces: `hidden` is display:none by UA default, and .pane sets
+ * no display of its own, but a future `display: flex` on .pane would
+ * silently un-hide the inactive screen without this. */
+.app.compact .pane[hidden] {
+  display: none;
+}
+
+/* The drawer and its scrim are positioned inside .panes, which is the grid
+ * row under the chrome (top bar, plus the offline banner when shown), so
+ * they start exactly where the chrome ends without measuring it. */
+.app.compact .pane.folders {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: min(85vw, 320px);
+  background: var(--bg);
+  border-right: 1px solid var(--border);
+  box-shadow: 0 0 24px rgb(0 0 0 / 0.25);
+  transform: translateX(-100%);
+  transition: transform 160ms ease-out;
+  z-index: 20;
+  /* Off-screen but still laid out; make sure it cannot take focus or a
+   * tap while closed. */
+  visibility: hidden;
+}
+
+.app.compact .pane.folders.open {
+  transform: none;
+  visibility: visible;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app.compact .pane.folders {
+    transition: none;
+  }
+}
+
+.app.compact .pane-head .close {
+  display: inline-block;
+  min-width: 40px;
+  font-size: calc(18px * var(--text-scale, 1));
+  line-height: 1;
+}
+
+.app.compact .scrim {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  border-radius: 0;
+  padding: 0;
+  background: rgb(0 0 0 / 0.35);
+  z-index: 19;
+  cursor: default;
+}
+
+/* Touch sizing: rows and the bar's controls reach the 40–44px targets. */
+.app.compact .snippet-list .item {
+  min-height: 44px;
+  justify-content: center;
+}
+
+.app.compact .topbar button,
+.app.compact .snippet-list .toolbar button,
+.app.compact .detail .box-head .copy-button {
+  min-height: 40px;
+}
+
+.app.compact .snippet-list .search {
+  min-height: 40px;
+}
+
+/* The settings popover becomes a full-width sheet under the chrome, which
+ * is the panel's positioned ancestor in compact mode. */
+.app.compact .chrome {
+  position: relative;
+  z-index: 21;
+}
+
+.app.compact .settings {
+  position: static;
+}
+
+.app.compact .settings .panel {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 100%;
+  width: auto;
+  max-height: 80dvh;
+  overflow: auto;
+  border-radius: 0 0 8px 8px;
+  border-top: 0;
 }

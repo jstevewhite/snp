@@ -14,6 +14,14 @@
     type SnpDB,
   } from './lib/db'
   import { isSearchShortcut } from './lib/keys'
+  import {
+    browserHistory,
+    createCompactNav,
+    resolveLayout,
+    watchNarrow,
+    type NavHistory,
+    type NavState,
+  } from './lib/layout'
   import { OnlineTracker } from './lib/online'
   import {
     FOLDERS_MAX,
@@ -130,6 +138,25 @@
   })
   $effect(() => {
     saveLayout(layout)
+  })
+
+  // Compact layout (spec §6 "Compact layout"): the Layout setting plus the
+  // live width resolve to wide or compact. In compact mode the panes become
+  // a screen stack — list (root) → detail — with the folders pane as a
+  // drawer, driven by lib/layout.ts through one history entry per level so
+  // the OS back gesture and the in-app Back share the popstate path. The
+  // stack's snapshot is mirrored into `navState` so the markup can react.
+  let narrow = $state(false)
+  $effect(() => watchNarrow((n) => (narrow = n)))
+  const mode = $derived(resolveLayout(layout, narrow))
+  const compact = $derived(mode === 'compact')
+  let navState = $state<NavState>({ screen: 'list', drawerOpen: false, depth: 0 })
+  const inertHistory: NavHistory = { pushState() {}, back() {}, go() {} }
+  const nav = createCompactNav(browserHistory() ?? inertHistory, (s) => (navState = s))
+  $effect(() => {
+    const onPop = (e: PopStateEvent): void => nav.onPopState(e.state)
+    window.addEventListener('popstate', onPop)
+    return () => window.removeEventListener('popstate', onPop)
   })
 
   // Pane layout (spec §6): the folders and list panes are sized by inline
@@ -852,7 +879,7 @@
      snippet editor keeps its own keys. -->
 <svelte:window onkeydown={onGlobalKeydown} />
 
-<div class="app">
+<div class="app" class:compact>
   <div class="chrome">
     <header class="topbar">
       <span class="brand">snp</span>
@@ -974,12 +1001,29 @@
     class="panes"
     class:resizing={dragging !== null}
     bind:this={panesEl}
-    style={paneStyleVars(paneWidths)}
+    style={compact ? '' : paneStyleVars(paneWidths)}
   >
-    <aside class="pane folders">
+    {#if compact && navState.drawerOpen}
+      <!-- Covers the screen behind the drawer; a tap closes it, the same
+           way as Back, through history. -->
+      <button class="scrim" aria-label="Close folders" onclick={() => nav.closeDrawer()}
+      ></button>
+    {/if}
+    <aside
+      class="pane folders"
+      class:open={navState.drawerOpen}
+      aria-hidden={compact && !navState.drawerOpen ? 'true' : undefined}
+    >
       <div class="pane-head">
         <h2>Folders</h2>
-        <button onclick={() => promptFolder(null)} disabled={!online}>New folder</button>
+        <span class="head-actions">
+          <button onclick={() => promptFolder(null)} disabled={!online}>New folder</button>
+          {#if compact}
+            <button class="close" aria-label="Close folders" onclick={() => nav.closeDrawer()}>
+              ×
+            </button>
+          {/if}
+        </span>
       </div>
       <Favorites
         snippets={favoriteSnippets}
@@ -1000,15 +1044,17 @@
       <TagList tags={tagItems} active={activeTags} onselect={toggleTag} />
     </aside>
 
-    {@render paneSplitter(
-      'folders',
-      'Resize folders pane',
-      paneWidths?.folders ?? null,
-      FOLDERS_MIN,
-      FOLDERS_MAX,
-    )}
+    {#if !compact}
+      {@render paneSplitter(
+        'folders',
+        'Resize folders pane',
+        paneWidths?.folders ?? null,
+        FOLDERS_MIN,
+        FOLDERS_MAX,
+      )}
+    {/if}
 
-    <section class="pane list">
+    <section class="pane list" hidden={compact && navState.screen === 'detail'}>
       <SnippetList
         snippets={visibleSnippets}
         selectedId={selectedSnippetId}
@@ -1022,15 +1068,17 @@
       />
     </section>
 
-    {@render paneSplitter(
-      'list',
-      'Resize snippet list pane',
-      paneWidths?.list ?? null,
-      LIST_MIN,
-      LIST_MAX,
-    )}
+    {#if !compact}
+      {@render paneSplitter(
+        'list',
+        'Resize snippet list pane',
+        paneWidths?.list ?? null,
+        LIST_MIN,
+        LIST_MAX,
+      )}
+    {/if}
 
-    <section class="pane detail">
+    <section class="pane detail" hidden={compact && navState.screen === 'list'}>
       {#if editing}
         {#key editingSnippet?.id ?? 'new'}
           <SnippetForm
