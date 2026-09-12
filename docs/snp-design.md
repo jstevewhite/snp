@@ -13,6 +13,7 @@ Revised: 2026-09-11 (§6 draggable pane dividers)
 Revised: 2026-09-11 (§13 Explain replaces Notes instead of appending, with undo)
 Revised: 2026-09-11 (§4/§5 `pinned`; §6 Favorites, explicit copy actions, the search keyboard workflow, simplified timestamps, two-line titles)
 Revised: 2026-09-12 (§6 service-worker update check, so a stale precached shell cannot linger)
+Revised: 2026-09-12 (§5/§6 search: prefix terms, terms ANDed, operators literal — online and offline now match the same set)
 Status: approved design, revised after review, implemented
 
 > Revision note (2026-09-06): §6 originally specified a CodeMirror 6
@@ -373,7 +374,7 @@ other fields have.
 |---|---|---|
 | GET | `/api/me` | identity |
 | GET | `/api/version` | `{ "version": ... }` — the release version stamped into the binary (`internal/buildinfo`), or `"dev"` for an unstamped build; the SPA header shows it next to the wordmark |
-| GET | `/api/snippets?q=&tag=&lang=&folder=&limit=&offset=` | search/list; ordering `updated_at DESC, id DESC`; default `limit` 50, max 200; `q` may contain `tag:x lang:y` filters mixed with FTS terms; `tag:`/`lang:` tokens in `q` AND with the separate `tag=`/`lang=` params; if nothing is left after filter extraction, no FTS MATCH is issued and all rows matching the filters are returned |
+| GET | `/api/snippets?q=&tag=&lang=&folder=&limit=&offset=` | search/list; ordering `updated_at DESC, id DESC`; default `limit` 50, max 200; `q` may contain `tag:x lang:y` filters mixed with search terms (prefix-matched, ANDed, see "Query syntax"); `tag:`/`lang:` tokens in `q` AND with the separate `tag=`/`lang=` params; if nothing is left after filter extraction, no FTS MATCH is issued and all rows matching the filters are returned |
 | POST | `/api/snippets` | create; server assigns id and timestamps |
 | GET | `/api/snippets/{id}` | full snippet, body decrypted |
 | PUT | `/api/snippets/{id}` | full replace; `var_defaults` carries the per-variable default map (keys owned by the client, pruned on save) and `pinned` the favorite flag — omitting either clears it |
@@ -407,11 +408,21 @@ Import: duplicate ids within one document are a 400. `created_at` /
 ### Query syntax
 
 `q` is split on whitespace. Tokens of the form `tag:foo` and `lang:foo`
-become filters (repeatable, ANDed). Everything else is joined and passed to
-FTS5 as a `MATCH` expression. If FTS5 rejects the expression, the server
-retries it as a quoted phrase; if that also fails, it returns 400.
+become filters (repeatable, ANDed). Everything else is a search term, and
+every term must match (terms are ANDed). A term matches when it is a
+*prefix* of a token in the snippet's title, notes, body or tags —
+case-insensitively, so `zeb` finds `Zebra deployment` while `estart` finds
+nothing. Each term reaches FTS5 as a quoted prefix query (`"term"*`), which
+makes FTS5 syntax in user input literal text: `AND`, `OR`, `NOT`, `NEAR` and
+column filters like `title:x` are ordinary words. That is deliberate — the
+offline engine has no operators, so quoting the terms is what keeps the two
+agreeing (spec §6). A term containing no letters or digits is dropped. If
+FTS5 nonetheless rejects the generated expression, the server retries the
+terms as a single quoted phrase; if that fails too it returns 400.
 
-Search ranking uses `bm25()` with title weighted highest.
+Search ranking uses `bm25()` with title weighted highest. Ranking is
+per-engine, so online and offline return the same *set* of snippets but may
+order it differently.
 
 ### Export / import document
 
@@ -494,12 +505,16 @@ stacking them on narrow screens remains unbuilt (see the revision note).
   It is derived from the local cache, so it renders offline; pinning and
   unpinning are server writes and are disabled offline, like the others.
 - **Search** runs against the locally synced index (kept current by the
-  sync merge below) in both the online and offline states; the same query
-  syntax works in both. v1 does not query `/api/snippets` per keystroke,
-  so online results are as fresh as the last sync rather than hitting the
-  server's FTS5 ranking live. The two local search engines differ in
-  fringe cases (FTS5 phrase/AND/NOT operators, ranking); the syntax
-  accepted is the same.
+  sync merge below) in both the online and offline states, and the two
+  engines are held to the same rule: every whitespace-separated term must
+  prefix a token (case-insensitively) in the title, notes, body or tags,
+  with all terms required. Neither engine offers FTS5 operators — the
+  server quotes each term, so `AND`/`OR`/`NOT`/`NEAR` and `title:x` are
+  literal words — which is what makes the matched *set* identical online
+  and offline. Ranking stays per-engine (`bm25` against MiniSearch), so
+  equally-matching results can be ordered differently. v1 does not query
+  `/api/snippets` per keystroke, so online results are as fresh as the last
+  sync rather than hitting the server's FTS5 ranking live.
 - **View** shows title, language badge, tags, folder path, notes rendered
   as sanitized Markdown, and the body with read-only syntax highlighting
   when its `language` matches a known grammar (highlight.js, loaded per

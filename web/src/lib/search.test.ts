@@ -66,13 +66,27 @@ describe('SnippetIndex', () => {
     expect(index.search('dev').map((s) => s.id)).toEqual(['s3'])
   })
 
-  it('ORs multiple FTS terms, like FTS5', () => {
+  it('prefix-matches the start of a token, like the server', () => {
     const index = new SnippetIndex(all)
-    const ids = index
-      .search('caddy deploy')
-      .map((s) => s.id)
-      .sort()
-    expect(ids).toEqual(['s1', 's2'])
+    expect(index.search('rest').map((s) => s.id)).toEqual(['s1'])
+    expect(index.search('depl').map((s) => s.id)).toEqual(['s2'])
+    expect(index.search('back').map((s) => s.id)).toEqual(['s4'])
+  })
+
+  it('does not match the middle of a token', () => {
+    const index = new SnippetIndex(all)
+    expect(index.search('estart')).toEqual([])
+  })
+
+  it('ANDs multiple terms: every term must match, like FTS5', () => {
+    // MiniSearch defaults to OR, so combineWith is set explicitly to match
+    // the server. internal/store/search_test.go pins the same behaviour
+    // against FTS5 (TestFTSMatch prefix and AND cases) — keep the two in
+    // step when touching either engine.
+    const index = new SnippetIndex(all)
+    expect(index.search('rest caddy').map((s) => s.id)).toEqual(['s1'])
+    // One unmatched term drops the row, even though 'caddy' alone matches.
+    expect(index.search('caddy nonexistentterm')).toEqual([])
   })
 
   it('returns everything, most recently updated first, when no FTS terms remain', () => {

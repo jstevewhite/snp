@@ -3,8 +3,8 @@
 // so the tokenization rules are copied, not approximated.
 
 export interface ParsedQuery {
-  /** FTS terms joined by single spaces; '' when no terms. */
-  text: string
+  /** Free-text terms, in order; empty when the query is filters only. */
+  terms: string[]
   tags: string[]
   langs: string[]
 }
@@ -17,7 +17,7 @@ const tagFilterRe = /^tag:(.+)$/
 const langFilterRe = /^lang:(.+)$/
 
 export function parseQuery(q: string): ParsedQuery {
-  const text: string[] = []
+  const terms: string[] = []
   const tags: string[] = []
   const langs: string[] = []
   for (const tok of q.split(/\s+/)) {
@@ -32,7 +32,7 @@ export function parseQuery(q: string): ParsedQuery {
       langs.push(lang[1])
       continue
     }
-    text.push(tok)
+    terms.push(tok)
   }
-  return { text: text.join(' '), tags, langs }
+  return { terms, tags, langs }
 }

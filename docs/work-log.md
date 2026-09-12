@@ -14,7 +14,7 @@ Spec: `docs/snp-design.md` · Plan: `docs/snp-implementation-plan.md`
 
 ## Current status
 
-- Updated: 2026-09-12 00:50
+- Updated: 2026-09-12 01:20
 - Phase: review fixes + desktop app (macOS **and Linux** builds) + appearance + AI generation (command/script/function kinds) + tag filter + .app bundle + **bundled starter pack** merged to main; **Markdown notes**, **read-view syntax highlighting**, **notarization in `make app`**, the **Linux desktop build/launcher** and **`snp seed`** landed; the **GitHub release workflows** and the **header version chip** (`GET /api/version`) landed; **v0.1.0 shipped** (signed + notarized macOS bundle, 7 assets, verified after publish); **draggable pane dividers** landed (spec §6, `web/src/lib/panes.ts`) and **Explain now replaces Notes** with an undo (spec §13); **Phase 10, the UI refinement pass**, is on branch `feat/ui-refinements` (**pushed**, and deployed to the tailnet from a dirty tree — `/api/version` reports `v0.1.0-14-g8e82a64-dirty`): explicit copy actions, distinct create labels, simplified timestamps, the search keyboard workflow, visible saved-default state, two-line titles, and the **Favorites** list on a new `pinned` column; plus the **service-worker update check** and **create/cancel test coverage** added while chasing a stale-shell report; `make test` green (go test + vet + 298 Vitest + svelte-check 0 errors / 0 warnings). The Linux desktop binary **build was verified on an ARM Ubuntu 24 host** (git bundle → `make desktop`), after a first attempt failed because that work was still uncommitted and the bundle therefore carried the old darwin-only tree.
 - Next: **merge `feat/ui-refinements`** to main (pushed; nothing in it is released yet); then **bump the Node-20 GitHub Actions** (`checkout`, `setup-node`, `setup-go`, `upload-artifact`, `download-artifact` — all still work but are force-run on Node 24 and annotate the run) **to their Node-24 majors** before the next release; then **Linux desktop container build + verification** (podman; `libgtk-3-dev` + `libwebkit2gtk-4.1-dev` + Go, `make web` then the desktop build, and exercise `install-desktop.sh` with a scratch `PREFIX=`); then the Windows port, desktop follow-ons (real app icon, startup-error surfacing in the window); then remaining v1 follow-ons (CLI client, SnippetsLab converter, named variable presets per machine — the follow-on named in Phase 10 T5)
 
@@ -1203,4 +1203,44 @@ Spec: `docs/snp-design.md` · Plan: `docs/snp-implementation-plan.md`
     crashpad writes are denied under `workspace-write` — and `GOCACHE` must
     point inside `/tmp` once a Go source change forces a recompile.
   - `make test` green: go vet, `go test ./...`, 298 Vitest, svelte-check 0
+    errors / 0 warnings.
+- 2026-09-12 — Search: **prefix matching, and the same behaviour online and
+  offline**. "Does search cover the title?" — yes, alongside notes, body and
+  tags, with the title weighted highest (bm25 10.0 on the server, `boost:
+  {title: 10}` offline). Checking that properly turned up a real divergence.
+
+  - **The bug**: `web/src/lib/search.ts` asserted the engines agreed
+    ("MiniSearch's default combineWith is OR, like FTS5"), and a test name
+    pinned it: `'ORs multiple FTS terms, like FTS5'`. FTS5 does not OR, it
+    **ANDs** — so `zebra nonexistentterm` returned nothing online and one
+    snippet offline. The same query gave different results depending on
+    connectivity, which spec §6 promised would not happen.
+  - **Server** (`internal/store/search.go`): `ParseQuery` now returns terms
+    individually and `prefixExpr` renders each as a quoted prefix query
+    (`"term"*`), which FTS5 ANDs. Quoting makes FTS5 syntax literal —
+    `AND`/`OR`/`NOT`/`NEAR` and `title:x` are ordinary words now — which is
+    deliberate: the offline engine has no operators, so treating them
+    literally is what buys parity. Terms with no letters or digits are
+    dropped, since an empty quoted phrase is a syntax error. The
+    quoted-phrase retry stays as a safety net, and the 400 path with it.
+  - **Client**: MiniSearch gets `prefix: true, combineWith: 'AND'`;
+    `parseQuery` returns a term array instead of a joined string.
+    `SnippetIndex.search` re-joins it, because MiniSearch's `search()` takes
+    a string (or `Wildcard`/`QueryCombination`), **not** an array — passing
+    one type-checked as `SearchOptions` and threw at runtime.
+  - **Verified rather than assumed**: seeded the same fixture into a real
+    server and ran 17 queries through both the real FTS5 path and the real
+    `SnippetIndex`, comparing matched sets. All 17 identical, including the
+    bug case (now empty on both), prefix hits (`rest`, `depl`, `back`),
+    infix non-matches (`estart`, `ing`) and a sensitive snippet whose body is
+    unsearchable in both. Throwaway test, since it needs a live server.
+  - Left alone deliberately: **ranking**. bm25 and MiniSearch cannot be made
+    to score identically, so the matched set is shared but the order of
+    equally-matching results can still differ. Making the order identical too
+    would mean replacing both rankers with one shared rule (title match
+    first, then `updated_at DESC`) — available on request.
+  - Docs: spec §5 "Query syntax" and the endpoints table, and §6's search
+    bullet, now state prefix + AND + literal operators, and that only the
+    set — not the ranking — is shared.
+  - `make test` green: go vet, `go test ./...`, 300 Vitest, svelte-check 0
     errors / 0 warnings.

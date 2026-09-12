@@ -6,9 +6,9 @@ import (
 )
 
 func TestParseQuery(t *testing.T) {
-	fts, tags, langs := ParseQuery("tag:ops lang:bash restart the service")
-	if fts != "restart the service" {
-		t.Errorf("fts = %q", fts)
+	terms, tags, langs := ParseQuery("tag:ops lang:bash restart the service")
+	if len(terms) != 3 || terms[0] != "restart" || terms[2] != "service" {
+		t.Errorf("terms = %v", terms)
 	}
 	if len(tags) != 1 || tags[0] != "ops" {
 		t.Errorf("tags = %v", tags)
@@ -16,9 +16,28 @@ func TestParseQuery(t *testing.T) {
 	if len(langs) != 1 || langs[0] != "bash" {
 		t.Errorf("langs = %v", langs)
 	}
-	fts, tags, langs = ParseQuery("tag:a tag:b lang:c")
-	if fts != "" || len(tags) != 2 || len(langs) != 1 {
-		t.Errorf("fts=%q tags=%v langs=%v", fts, tags, langs)
+	terms, tags, langs = ParseQuery("tag:a tag:b lang:c")
+	if len(terms) != 0 || len(tags) != 2 || len(langs) != 1 {
+		t.Errorf("terms=%v tags=%v langs=%v", terms, tags, langs)
+	}
+}
+
+func TestPrefixExpr(t *testing.T) {
+	// Every term becomes a quoted prefix query; FTS5 ANDs them.
+	if got := prefixExpr([]string{"zeb", "deploy"}); got != `"zeb"* "deploy"*` {
+		t.Errorf("prefixExpr = %q", got)
+	}
+	// Embedded quotes are doubled, so the term stays one literal string.
+	if got := prefixExpr([]string{`a"b`}); got != `"a""b"*` {
+		t.Errorf("prefixExpr escaping = %q", got)
+	}
+	// A term with no letters or digits cannot prefix a token, so it is
+	// dropped instead of emitted as an empty phrase (which FTS5 rejects).
+	if got := prefixExpr([]string{"!!!", "ok"}); got != `"ok"*` {
+		t.Errorf("prefixExpr drop = %q", got)
+	}
+	if got := prefixExpr(nil); got != "" {
+		t.Errorf("prefixExpr(nil) = %q", got)
 	}
 }
 
@@ -53,32 +72,71 @@ func TestFTSMatch(t *testing.T) {
 	if len(got) != 0 {
 		t.Errorf("got %+v", got)
 	}
+
+	// Every term is a prefix query, so a partial word finds its token —
+	// in the body ("zeb" → "zebra crossing") or the title ("alp" →
+	// "alpha one").
+	got, err = s.ListSnippets(ListFilter{Q: "zeb"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].Title != "alpha one" {
+		t.Errorf("prefix in body: got %+v", got)
+	}
+	got, err = s.ListSnippets(ListFilter{Q: "alp"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].Title != "alpha one" {
+		t.Errorf("prefix in title: got %+v", got)
+	}
+
+	// A prefix only matches the start of a token, not the middle.
+	got, err = s.ListSnippets(ListFilter{Q: "ebr"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 0 {
+		t.Errorf("infix must not match: got %+v", got)
+	}
+
+	// Terms are ANDed: one term that matches nothing drops the row, even
+	// though the other term does match it. (The offline engine must agree
+	// — see web/src/lib/search.test.ts, same fixture.)
+	got, err = s.ListSnippets(ListFilter{Q: "zebra nonexistentword"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 0 {
+		t.Errorf("terms must AND: got %+v", got)
+	}
 }
 
-func TestFTSFallbackQuotedPhrase(t *testing.T) {
+func TestFTSMetacharactersAreLiteral(t *testing.T) {
 	s, _ := newTestStore(t)
 	mustCreate(t, s, SnippetInput{Title: "x y z", Body: "x y z"})
-	// "x:y" is a column filter on a non-column: FTS5 rejects it raw,
-	// so the quoted-phrase retry must find the literal text.
+	// `x:y` would be a column filter if it reached FTS5 raw. Terms are
+	// quoted, so it is literal text instead: the tokenizer reduces it to
+	// `x` then `y`, which prefixes the title as a phrase. No syntax error,
+	// and no driver down the fallback path.
 	got, err := s.ListSnippets(ListFilter{Q: "x:y"})
 	if err != nil {
-		t.Fatalf("fallback failed: %v", err)
+		t.Fatalf("ListSnippets: %v", err)
 	}
 	if len(got) != 1 {
 		t.Errorf("got %d results, want 1", len(got))
 	}
 }
 
-func TestFTSUnbalancedQuote(t *testing.T) {
+func TestFTSQuoteInTermIsLiteral(t *testing.T) {
 	s, _ := newTestStore(t)
 	mustCreate(t, s, SnippetInput{Title: "abc def", Body: "plain"})
-	// Unterminated quote: raw MATCH fails; the quoted-phrase retry is the
-	// phrase 'abc"', which the unicode61 tokenizer reduces to the token
-	// 'abc' (the quote is a separator) and which matches the title,
-	// without error.
+	// An unterminated quote is just a character: the term is quoted and
+	// escaped (`"abc"""*`), which the tokenizer reduces to the token `abc`
+	// and which prefixes the title, without error.
 	got, err := s.ListSnippets(ListFilter{Q: `abc"`})
 	if err != nil {
-		t.Fatalf("expected fallback, got %v", err)
+		t.Fatalf("ListSnippets: %v", err)
 	}
 	if len(got) != 1 {
 		t.Errorf("got %d results, want 1", len(got))

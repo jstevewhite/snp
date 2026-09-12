@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"unicode"
 )
 
 // ListFilter drives ListSnippets. Q uses the spec §5 query syntax
@@ -24,9 +25,10 @@ var (
 	langFilterRe = regexp.MustCompile(`^lang:(.+)$`)
 )
 
-// ParseQuery splits q into FTS terms, tag filters, and language
-// filters (spec §5).
-func ParseQuery(q string) (fts string, tags, langs []string) {
+// ParseQuery splits q into search terms, tag filters, and language
+// filters (spec §5). Terms come back individually so the caller can turn
+// each one into a prefix query.
+func ParseQuery(q string) (terms, tags, langs []string) {
 	for _, tok := range strings.Fields(q) {
 		if m := tagFilterRe.FindStringSubmatch(tok); m != nil {
 			tags = append(tags, m[1])
@@ -36,20 +38,43 @@ func ParseQuery(q string) (fts string, tags, langs []string) {
 			langs = append(langs, m[1])
 			continue
 		}
-		if fts == "" {
-			fts = tok
-		} else {
-			fts += " " + tok
-		}
+		terms = append(terms, tok)
 	}
-	return fts, tags, langs
+	return terms, tags, langs
 }
+
+// prefixExpr renders terms as an FTS5 MATCH expression in which every term
+// is a prefix query: `"term"*`. FTS5 ANDs adjacent terms, so a snippet
+// matches only when every term prefixes a token somewhere in the indexed
+// columns — which is what the offline engine does too (spec §6).
+//
+// Quoting the term (doubling any embedded quote) means FTS5 syntax in user
+// input is literal text, not operators: `AND`, `OR`, `NOT`, `NEAR` and
+// column filters like `title:x` match as words. That is deliberate — the
+// offline index has no operators, so treating them literally is what keeps
+// the two engines agreeing.
+//
+// A term with no letters or digits cannot prefix any token, so it is
+// dropped rather than emitted as an empty phrase, which FTS5 rejects.
+func prefixExpr(terms []string) string {
+	parts := make([]string, 0, len(terms))
+	for _, term := range terms {
+		if !strings.ContainsFunc(term, isWordRune) {
+			continue
+		}
+		parts = append(parts, `"`+strings.ReplaceAll(term, `"`, `""`)+`"*`)
+	}
+	return strings.Join(parts, " ")
+}
+
+func isWordRune(r rune) bool { return unicode.IsLetter(r) || unicode.IsDigit(r) }
 
 // ListSnippets searches/lists live snippets (spec §5). Sensitive
 // bodies are never returned in this context.
 func (s *Store) ListSnippets(f ListFilter) ([]SnippetOut, error) {
 	ctx := context.Background()
-	pqFts, pqTags, pqLangs := ParseQuery(f.Q)
+	pqTerms, pqTags, pqLangs := ParseQuery(f.Q)
+	ftsExpr := prefixExpr(pqTerms)
 	tags := dedupe(append(append([]string{}, f.Tags...), pqTags...))
 	langs := dedupe(append(append([]string{}, f.Langs...), pqLangs...))
 	limit := f.Limit
@@ -150,11 +175,13 @@ func (s *Store) ListSnippets(f ListFilter) ([]SnippetOut, error) {
 		return out, nil
 	}
 
-	out, err := run(pqFts)
-	if err != nil && pqFts != "" {
-		// Spec §5: retry the whole expression as a quoted phrase; if
-		// that also fails, it is a 400 at the API layer.
-		quoted := `"` + strings.ReplaceAll(pqFts, `"`, `""`) + `"`
+	out, err := run(ftsExpr)
+	if err != nil && ftsExpr != "" {
+		// Safety net: prefixExpr is quoted, so FTS5 should accept it, but
+		// the tokenizer remains the authority on what a valid expression
+		// is. Retry the terms as one quoted phrase; if even that fails,
+		// surface ErrFTS (a 400 at the API layer, spec §5).
+		quoted := `"` + strings.ReplaceAll(strings.Join(pqTerms, " "), `"`, `""`) + `"`
 		out, err = run(quoted)
 		if err != nil {
 			return nil, fmt.Errorf("%w: %v", ErrFTS, err)
