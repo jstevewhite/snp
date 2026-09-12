@@ -14,9 +14,9 @@ Spec: `docs/snp-design.md` · Plan: `docs/snp-implementation-plan.md`
 
 ## Current status
 
-- Updated: 2026-09-12 (compact layout design)
+- Updated: 2026-09-12 (compact layout built)
 - Phase: review fixes + desktop app (macOS **and Linux** builds) + appearance + AI generation (command/script/function kinds) + tag filter + .app bundle + **bundled starter pack** merged to main; **Markdown notes**, **read-view syntax highlighting**, **notarization in `make app`**, the **Linux desktop build/launcher** and **`snp seed`** landed; the **GitHub release workflows** and the **header version chip** (`GET /api/version`) landed; **v0.1.0 shipped** (signed + notarized macOS bundle, 7 assets, verified after publish); **draggable pane dividers** landed (spec §6, `web/src/lib/panes.ts`) and **Explain now replaces Notes** with an undo (spec §13); **Phase 10, the UI refinement pass**, is on branch `feat/ui-refinements` (**pushed**, and deployed to the tailnet from a dirty tree — `/api/version` reports `v0.1.0-14-g8e82a64-dirty`): explicit copy actions, distinct create labels, simplified timestamps, the search keyboard workflow, visible saved-default state, two-line titles, and the **Favorites** list on a new `pinned` column; plus the **service-worker update check** and **create/cancel test coverage** added while chasing a stale-shell report; `make test` green (go test + vet + 298 Vitest + svelte-check 0 errors / 0 warnings). The Linux desktop binary **build was verified on an ARM Ubuntu 24 host** (git bundle → `make desktop`), after a first attempt failed because that work was still uncommitted and the bundle therefore carried the old darwin-only tree.
-- Next: **Phase 11, the compact layout** (spec §6 "Compact layout", plan Phase 11 T1–T7, branch `claude/eloquent-maxwell-bcugjn`): designed and planned on 2026-09-12, nothing built yet — start with T1 (layout setting) and T2 (`lib/layout.ts`, pure TS with fake-history tests). After that, as before: **Linux desktop container build + verification** (podman; `libgtk-3-dev` + `libwebkit2gtk-4.1-dev` + Go, `make web` then the desktop build, and exercise `install-desktop.sh` with a scratch `PREFIX=`); then the Windows port, desktop follow-ons (real app icon, startup-error surfacing in the window); then remaining v1 follow-ons (CLI client, SnippetsLab converter, named variable presets per machine — the follow-on named in Phase 10 T5). `feat/ui-refinements` is merged to main and two betas are published (`v0.2.0-beta.1`, and `v0.2.0-beta.2` as the CI validation build); cutting `v0.2.0` is the next release step whenever wanted
+- Next: **Phase 11 on-device checklist** (plan Phase 11 T7; branch `claude/eloquent-maxwell-bcugjn`, T1–T6 built and green): iOS Safari as a tab and as the installed PWA (swipe-back at each depth), Android Chrome hardware back (drawer → detail → leaves the app), the wails app with Settings → Layout = Compact; then merge. After that, as before: **Linux desktop container build + verification** (podman; `libgtk-3-dev` + `libwebkit2gtk-4.1-dev` + Go, `make web` then the desktop build, and exercise `install-desktop.sh` with a scratch `PREFIX=`); then the Windows port, desktop follow-ons (real app icon, startup-error surfacing in the window); then remaining v1 follow-ons (CLI client, SnippetsLab converter, named variable presets per machine — the follow-on named in Phase 10 T5). `feat/ui-refinements` is merged to main and two betas are published (`v0.2.0-beta.1`, and `v0.2.0-beta.2` as the CI validation build); cutting `v0.2.0` is the next release step whenever wanted
 
 ## Log
 
@@ -1338,3 +1338,69 @@ Spec: `docs/snp-design.md` · Plan: `docs/snp-implementation-plan.md`
     its absence as "not narrow" and the compact tests force the setting via
     `localStorage['snp.layout'] = 'compact'` rather than a viewport.
   - `make test` untouched (docs only); `web/dist/index.html` untouched.
+
+- (later) — **Phase 11, the compact layout, built** (T1–T6, one commit
+  each, `make test` green at each: go test + vet, 324 Vitest, svelte-check
+  0/0). One unplanned commit between T5's two halves fixed a stack bug.
+  - **T1** `settings.ts`: `Layout` type, `LAYOUTS`, `snp.layout` (Auto is
+    the absence of the key), *Layout* select under *Theme*.
+  - **T2** `lib/layout.ts`: `resolveLayout`, `watchNarrow` (matchMedia
+    `(max-width: 719px)`; "not narrow" once when matchMedia is missing),
+    `createCompactNav` with an injected `NavHistory`, `browserHistory()`,
+    `isTextInput()`. 15 unit tests with a fake history that answers
+    `back()`/`go()` asynchronously via a `flush()`.
+  - **T3** `.app.compact` rules: one-column grid, list/detail share the
+    cell with the inactive one `hidden` (list stays mounted), the folders
+    pane is an `absolute` drawer *inside* `.panes` with a scrim and its
+    own × — positioned in the panes row rather than `fixed` from a
+    measured chrome height, because `bind:clientHeight` needs
+    ResizeObserver, which jsdom lacks (first attempt failed all 28 App
+    tests). Settings popover becomes a sheet under a `position: relative`
+    `.chrome`. Splitters not rendered, no inline pane widths.
+  - **T4** compact bar: ☰ / ← at the left (Back whenever `depth > 0`),
+    wordmark, error/notice, gear; version/conn/synced/Resync in a status
+    row at the top of the settings sheet via one shared `{#snippet
+    syncStatus()}`; *Folders* button in the list toolbar (`onfolders`
+    prop, button only when passed).
+  - **T5** wiring: `selectSnippet` (tap) pushes, `setSelection` (arrows)
+    does not; create/edit push; `cancelEdit` of a *create* goes back;
+    an effect turns "landed on list while editing" into `cancelEdit()`
+    (Back-is-Cancel) and "detail with nothing to show" into `back()`;
+    folder pick closes the drawer; Escape pops drawer then detail unless
+    editing or in a text field; ⌘/Ctrl+K → `toRoot()` then focus after
+    svelte `tick()` (a `hidden` field cannot take focus — and App already
+    has its own `tick()` for sync, so svelte's is imported as `settle`);
+    mode-switch effect with `untrack` around the selection reads;
+    `SnippetList` `visible` prop re-runs the scroll-into-view.
+  - **Stack bug found in the browser, not in unit tests:** wide → compact
+    (detail) → wide → compact pushed a second `{snp:1}` on top of the
+    stale one, so Back landed on the stale entry, which *looked like*
+    depth 1 and was ignored — the "leftover entries are ignored" rule
+    only held while nothing was pushed on top of them. Fix: entries carry
+    a `ses` id renewed on every `enter()`, popstate trusts only this
+    session's entries (anything else at depth 1 is the root), and
+    `enter(true)` onto a stale depth-1 entry reuses it via
+    `replaceState`. Two regression tests.
+  - **T6** App tests: a `stubHistory()` that spies `window.history` and
+    dispatches `popstate` synchronously from `back()`/`go()`; compact is
+    forced via `localStorage['snp.layout']`. Gotcha: a new wide-mode test
+    that clicked *Caddyfile* before the old "selecting a snippet" test
+    primed the lazy highlight module, after which the body renders as
+    spans and `getByText('http://localhost:8080')` fails — the new tests
+    match on `.detail .body` `textContent` and the wide test runs last.
+  - **Browser verification** (headless Chromium via playwright-core in the
+    scratchpad, against `./bin/snp serve --dev-listen` seeded with the
+    starter pack): at 400×800 — list, ☰ drawer, folder pick closes it,
+    tag toggle keeps it, tap → detail (h1 matches), ← and `page.goBack()`
+    and Escape each pop one level with the row still selected, ⌘K from
+    detail/drawer → list with search focused, New → Cancel → list, Edit →
+    Cancel → detail, `goBack()` out of the editor cancels it, delete →
+    list, settings sheet holds Resync + Layout, forced Wide at 400px is
+    cramped but usable, forced Compact at 1200px works and survives a
+    reload at the root; 400 → 1200 → 400 with a snippet open shows three
+    panes with two splitters and then lands back on detail; no horizontal
+    overflow at any step. `pkill -f "bin/snp serve"` from the tool shell
+    matches the shell itself — start the server as a background task.
+  - **Not done:** the on-device checklist (iOS tab + installed PWA,
+    Android hardware back, wails forced Compact). Recorded as the next
+    step above.

@@ -14,7 +14,7 @@ Revised: 2026-09-11 (§13 Explain replaces Notes instead of appending, with undo
 Revised: 2026-09-11 (§4/§5 `pinned`; §6 Favorites, explicit copy actions, the search keyboard workflow, simplified timestamps, two-line titles)
 Revised: 2026-09-12 (§6 service-worker update check, so a stale precached shell cannot linger)
 Revised: 2026-09-12 (§5/§6 search: prefix terms, terms ANDed, operators literal — online and offline now match the same set)
-Revised: 2026-09-12 (§6 compact layout: the single-pane phone/narrow-window mode and the Layout setting — designed, Phase 11, not yet built)
+Revised: 2026-09-12 (§6 compact layout: the single-pane phone/narrow-window mode and the Layout setting — built, Phase 11; verified in headless Chromium, on-device checklist pending)
 Status: approved design, revised after review, implemented
 
 > Revision note (2026-09-06): §6 originally specified a CodeMirror 6
@@ -31,7 +31,7 @@ Status: approved design, revised after review, implemented
 > `dompurify`, and `highlight.js` are dependencies. "Responsive pane
 > stacking" was replaced on 2026-09-12 by the compact layout below
 > (§6 "Compact layout"), a stacked navigation model rather than stacked
-> panes; it is designed and planned (Phase 11) but not yet built. Global keyboard shortcuts arrived with the 2026-09-11
+> panes; built in Phase 11 (`web/src/lib/layout.ts`). Global keyboard shortcuts arrived with the 2026-09-11
 > refinement, scoped to the search workflow (§6 "Keyboard").
 
 ## Purpose
@@ -497,7 +497,8 @@ components are arranged as one screen at a time instead (next section).
 
 ### Compact layout
 
-Designed 2026-09-12; built in Phase 11 (status there). The three panes
+Designed and built 2026-09-12 (Phase 11; `web/src/lib/layout.ts`,
+`.app.compact` rules in `app.css`). The three panes
 do not fit a phone, and stacking them vertically would put the search
 box and the result list on different scroll positions from the body the
 user actually wants, so narrow windows get a **stacked navigation

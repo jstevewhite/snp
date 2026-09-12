@@ -239,6 +239,15 @@ Install it so it works offline:
 - **iOS:** Safari → Share → “Add to Home Screen”.
 - **Android:** Chrome → menu → “Install app”.
 
+Phone layout: below about 720px the app shows one screen at a time — the
+search box and list first, a tap opens the snippet with a **←** Back
+control, and **☰** (or the **Folders** button beside the search box)
+slides in the favorites, folders and tags. The phone's back gesture works
+at every level. **Settings → Layout** forces the wide three-pane or the
+compact one-screen arrangement regardless of width; in compact mode the
+version, connection, sync age and **Resync** live at the top of the
+settings sheet.
+
 Offline: browsing and search work from the local cache; creating, editing,
 and deleting are disabled (nothing is queued), and revealing a sensitive
 snippet requires a connection. When you come back online the app syncs

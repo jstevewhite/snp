@@ -483,6 +483,13 @@ needed a schema change. Each task is one commit with `make test` green.
 
 ## Phase 11 — Compact layout (phone / narrow window)
 
+Status (2026-09-12): T1–T6 landed on `claude/eloquent-maxwell-bcugjn`,
+`make test` green (324 Vitest); T7's docs are done and the flow was
+walked in headless Chromium at 400px and across the breakpoint (see the
+work log), but the on-device part of the checklist — iOS Safari tab and
+installed PWA, Android hardware back at each depth, the wails app with
+Layout = Compact — has not been run and stays open.
+
 Spec §6 "Compact layout" (2026-09-12). One screen at a time below a
 width breakpoint or on request: the list is the root, a snippet pushes a
 detail screen with Back, and the left pane becomes a drawer. Replaces the
