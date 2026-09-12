@@ -481,13 +481,213 @@ needed a schema change. Each task is one commit with `make test` green.
 - **T9 — docs**: this phase, spec §4/§5/§6, and the work log.
   *Done when*: spec and code agree on `pinned` and on the keyboard map.
 
+## Phase 11 — Compact layout (phone / narrow window)
+
+Spec §6 "Compact layout" (2026-09-12). One screen at a time below a
+width breakpoint or on request: the list is the root, a snippet pushes a
+detail screen with Back, and the left pane becomes a drawer. Replaces the
+"responsive pane stacking" placeholder from the 2026-09-06 revision note.
+All frontend; no store, API, or Go changes. Each task is one commit with
+`make test` green; the order below is dependency order, and T1–T2 are
+pure TypeScript modules with tests before any markup moves.
+
+Decisions fixed up front (spec §6), so they are not re-litigated per task:
+
+- Breakpoint **720px**: `(max-width: 719px)`. Chosen because
+  `FOLDERS_MAX + LIST_MIN` in `panes.ts` is 700px, below which the wide
+  grid is already clamping folders first; a phone in landscape (≈ 670–850
+  CSS px) mostly lands in compact, a tablet mostly in wide.
+- Layout setting **Auto / Wide / Compact**, default Auto, manual values
+  ignore the viewport. Persisted like the theme.
+- Compact is a **screen stack with history entries**, not CSS stacking of
+  the three panes. Wide mode pushes no history.
+- Back in the editor **is Cancel**; the dirty-editor guard is a separate
+  follow-on for both layouts.
+- Folder choice closes the drawer; tag toggles do not.
+
+- **T1 — layout setting** (`web/src/lib/settings.ts`, `settings.test.ts`,
+  `web/src/main.ts`, `App` settings panel):
+  - `LAYOUTS: LayoutOption[]` = `auto` "Auto (by window width)", `wide`
+    "Wide (three panes)", `compact` "Compact (one screen)";
+    `LAYOUT_STORAGE_KEY = 'snp.layout'`; `AppearanceSettings.layout`;
+    `loadSettings()` reads it (unknown value → `auto`); `saveLayout()`
+    removes the key for `auto`, mirroring `saveTheme`.
+  - A *Layout* `<select aria-label="Layout">` directly under *Theme* in the
+    settings panel, bound like `theme` (`$effect` → `saveLayout`).
+  - `main.ts`: nothing to apply before mount — the resolved mode is App
+    state (T2), not a document attribute — but `loadSettings()` already
+    runs there and now carries `layout` through.
+  *Done when*: the select round-trips through localStorage, an unknown
+  stored value falls back to Auto, and Auto stores no key.
+- **T2 — layout resolution and the screen stack** (`web/src/lib/layout.ts`,
+  `layout.test.ts`; new module, no Svelte import so it tests without the
+  DOM):
+  - `COMPACT_MAX_WIDTH = 719`, `COMPACT_MEDIA = '(max-width: 719px)'`.
+  - `resolveLayout(setting: Layout, narrow: boolean): 'wide' | 'compact'`
+    — `wide`/`compact` return themselves; `auto` returns `compact` iff
+    `narrow`.
+  - `watchNarrow(cb: (narrow: boolean) => void): () => void` — wraps
+    `window.matchMedia(COMPACT_MEDIA)`, calls `cb` once with the current
+    value and again on every `change`, returns an unsubscribe. When
+    `matchMedia` is missing (jsdom, the App tests) it calls `cb(false)` and
+    returns a no-op, so the wide layout is the test default and compact is
+    opted into by forcing the setting.
+  - `createCompactNav(history: NavHistory)` — the stack. `NavHistory` is
+    the two-method slice of `window.history` the module needs
+    (`pushState(state, '', url?)`, `back()`) plus a `popstate` subscription,
+    so tests inject a fake and the wails webview gets the real one.
+    Reactive state (`$state` is a Svelte rune, so the module exposes plain
+    getters and the App mirrors them; or the module is `.svelte.ts` — pick
+    `.svelte.ts` if it keeps App simpler, the tests still run under
+    Vitest): `screen: 'list' | 'detail'`, `drawerOpen: boolean`,
+    `depth: number`.
+    Operations: `openDetail()` (no-op if already on detail), `openDrawer()`,
+    `closeDrawer()`, `back()`, `enter(hasDetail: boolean)` (called on the
+    switch to compact: resets, and pushes detail when `hasDetail`),
+    `toRoot()` (synchronously zeroes the state and calls
+    `history.go(-depth)` once, so the later popstate finds `depth` already
+    0 and is ignored — the keyboard search shortcut uses this),
+    `leave()` (switch to wide: resets state; does *not* call
+    `history.back()` `depth` times — the leftover entries are tagged and the
+    popstate handler ignores them once `depth` is 0).
+    Every push does `history.pushState({ snp: depth+1 }, '')`; `back()` and
+    the close operations call `history.back()` and let the `popstate`
+    handler do the state change, so the in-app control and the OS gesture
+    are the same code path. The handler ignores a popstate whose
+    `event.state?.snp` is not `depth - 1` (a foreign entry, or a stale one
+    from a previous page load) and otherwise pops one level: drawer open →
+    closed, else detail → list. A push while the drawer is open closes
+    the drawer first (so depth is never > 2).
+  *Done when*: unit tests cover `resolveLayout` (six cases), `watchNarrow`
+  with and without `matchMedia`, and the stack: detail push/back, drawer
+  open/close, gesture pop via a fake popstate, a foreign popstate ignored,
+  `enter(true)` landing on detail with depth 1, `leave()` zeroing without
+  calling `back()`, `toRoot()` from depth 2 calling `go(-2)` once, and no double-push on a repeated `openDetail()`.
+- **T3 — compact grid and drawer CSS** (`web/src/app.css`, `App.svelte`
+  root class only):
+  - App resolves `mode = resolveLayout(layout, narrow)` and sets
+    `class:compact={mode === 'compact'}` on `.app`. Every compact rule is
+    scoped under `.app.compact` — **not** a media query — so the manual
+    override and Auto share one stylesheet path and the tests can force
+    compact by class.
+  - `.app.compact .panes`: `grid-template-columns: minmax(0, 1fr)`; the
+    inline `--folders-w` / `--list-w` are not emitted in compact (App passes
+    `null` to `paneStyleVars`) and the two splitters are not rendered
+    (`{#if mode === 'wide'}` around each `{@render paneSplitter(...)}`).
+  - `.app.compact .pane.folders` becomes the drawer: `position: fixed`
+    (top: the top bar's bottom, so the bar stays tappable), left 0, height
+    to the viewport bottom, `width: min(85vw, 320px)`, `translateX(-100%)`
+    unless `.open`, `transition: transform 160ms` honoring
+    `prefers-reduced-motion`, `z-index` above the panes; a `.scrim`
+    `<button aria-label="Close folders">` behind it covering the rest of the
+    viewport.
+  - `.app.compact .pane.list` and `.pane.detail` each fill the single grid
+    cell; the inactive one carries the `hidden` attribute (app.css has no
+    `[hidden]` rule today, and `.pane` sets `overflow: auto` with no
+    `display`, so the UA default applies; add an explicit
+    `.app.compact .pane[hidden] { display: none }` anyway so a future
+    `display: flex` on `.pane` cannot un-hide it) so the
+    list stays mounted behind detail.
+  - Touch sizing under `.app.compact`: list rows `min-height: 44px`; the
+    top-bar buttons and `.box-head` copy buttons `min-height: 40px`;
+    `.settings .panel` becomes `position: fixed; left: 0; right: 0;
+    width: auto; top: <bar height>; border-radius: 0 0 8px 8px`.
+  *Done when*: with the class forced in the browser (devtools) at 400px,
+  the list fills the width, the folders pane is off-screen, and no
+  horizontal scrollbar appears; at 1200px without the class nothing has
+  changed (pixel-compare the three-pane screenshot before/after).
+- **T4 — compact top bar** (`App.svelte`, `app.css`):
+  - Left of the wordmark, only in compact: a Back button
+    (`aria-label="Back"`, `←`) when `screen === 'detail'` or the drawer is
+    open, else the drawer toggle (`aria-label="Folders"`, `☰`,
+    `aria-expanded`).
+  - In compact the version chip, connection pill, `Synced …` age and
+    *Resync* button are rendered inside the settings panel instead of the
+    bar (one `{#if mode === 'compact'}` block in the panel, the bar's
+    copies wrapped in `{#if mode === 'wide'}`); `.error` and `.notice`
+    stay in the bar since they are transient and the bar has the room once
+    the chips are gone. The gear is rendered in both modes.
+  - The list toolbar gets a *Folders* button beside *New snippet* in
+    compact only, opening the drawer — the ☰ alone is easy to miss on a
+    first visit.
+  *Done when*: at 400px the bar holds exactly ☰/Back, `snp`, gear (plus a
+  transient notice), and every relocated control still works from the
+  panel.
+- **T5 — navigation wiring** (`App.svelte`):
+  - `nav = createCompactNav(window.history-backed adapter)`, created once;
+    the `popstate` listener is attached in an `$effect` with cleanup.
+  - Mode switch `$effect`: on `wide → compact` call
+    `nav.enter(editing || selectedSnippetId !== null)`; on `compact → wide`
+    call `nav.leave()`.
+  - `selectSnippet()` → after setting the selection, `if compact
+    nav.openDetail()`. `startCreate()` and `startEdit()` likewise.
+    `cancelEdit()` from a create (no `editingSnippet`) → `nav.back()` in
+    compact; from an edit it stays on detail. A successful create selects
+    the new snippet, which already lands on detail.
+  - The `back()` pop, when it lands on the list while `editing`, calls
+    `cancelEdit()` (Back is Cancel, spec §6).
+  - Folder select (`FolderTree onselect`, and the *All* affordance) →
+    `nav.closeDrawer()` in compact; `toggleTag` unchanged.
+  - Keyboard (`onGlobalKeydown`): before the search-field branch, in
+    compact: `Escape` with the drawer open → `nav.back()`; `Escape` on
+    detail when `!editing` and the active element is not an
+    input/textarea/contenteditable → `nav.back()`. `isSearchShortcut` →
+    `nav.toRoot()` (one synchronous state change plus one `history.go`,
+    rather than chained `back()` calls that would each wait on popstate),
+    then `focusSearch()` after a `tick()` so the list is visible when it
+    focuses.
+  - Arrow keys in the search box move the selection without
+    `openDetail()`: route them through a `setSelection(id)` that
+    `selectSnippet` and `moveSelection` share, and only `selectSnippet`
+    (click/tap) pushes.
+  - `SnippetList`: the scroll-into-view `$effect` also re-runs when the
+    list becomes visible again (add `hidden` to its dependencies via a
+    prop, or key the effect on a `visible` prop), so returning from detail
+    restores the place.
+  *Done when*: tap → detail → Back (button, Escape, and a synthetic
+  `popstate`) each return to the list with the row still selected and in
+  view; New → Cancel returns to the list; Edit → Cancel returns to
+  detail; `Cmd/Ctrl+K` from detail shows the list with the search box
+  focused; the arrow keys never leave the list.
+- **T6 — App tests** (`web/src/App.test.ts`): the existing harness mounts
+  App against a fake `api` and IndexedDB; add a compact describe block that
+  seeds `localStorage['snp.layout'] = 'compact'` (jsdom has no
+  `matchMedia`, so Auto would resolve wide) and a fake `history` on
+  `window` with a recorded stack and a `dispatchEvent(new
+  PopStateEvent('popstate', { state }))` helper. Scenarios: the T5 done-when
+  list, the drawer opening from ☰ and from *Folders*, folder click closing
+  it, tag click not closing it, the settings panel holding *Resync* in
+  compact, and — the regression guard — that in wide mode `history.pushState`
+  is never called and both splitters render.
+  *Done when*: the scenarios pass and the wide-mode assertions run in the
+  existing describe blocks unchanged (no existing test edited except to
+  share the `history` fake).
+- **T7 — manual verification and docs** (`README.md`, spec §6 status line,
+  this phase, work log): phone checklist run on iOS Safari (as a tab and
+  as the installed PWA — standalone mode has no browser back button, so
+  the swipe gesture and the in-app Back are the only ways out), Android
+  Chrome (hardware back at each depth: drawer, detail, then leaves the
+  app), a desktop browser window dragged across 720px both ways with a
+  snippet open, and the wails app with Layout = Compact. Confirm the
+  offline banner, reveal, copy and the variables panel behave identically
+  in compact. README gets a short "Phone layout" paragraph under the PWA
+  section naming the setting.
+  *Done when*: the checklist is recorded in the work log with the device
+  list, spec §6 "Compact layout" no longer says "not yet built", and the
+  revision note is updated.
+
+Follow-ons named here, deliberately out of scope: the dirty-editor
+"discard changes?" guard (both layouts; sits in front of Cancel);
+swipe-to-go-back on the detail screen (the OS gesture covers it on both
+phone platforms); remembering the last screen across a reload.
+
 ## Test plan (summary)
 
 | Layer | Where | Coverage |
 |---|---|---|
 | Store (in-memory SQLite, fake clock) | `internal/store/*_test.go` | spec §9 store list, incl. FTS rowid mapping, sync boundary, purge, folder invariants, import modes |
 | Handlers (`httptest`, fake resolver) | `internal/server/*_test.go` | auth accept/reject, 415/413, every endpoint happy + validation paths |
-| Frontend (Vitest) | `web/src/lib/*` | query parsing, template parse/render, sync merge, offline search, timestamp formatting, clipboard writes, keyboard shortcuts, favorites |
+| Frontend (Vitest) | `web/src/lib/*` | query parsing, template parse/render, sync merge, offline search, timestamp formatting, clipboard writes, keyboard shortcuts, favorites, layout resolution + compact screen stack (fake history) |
 | Manual | `make dev` + tailnet + 3 platforms | Phase 4 smoke, Phase 7 PWA checklist, Phase 8 acceptance |
 
 No browser end-to-end tests in v1 (spec §9).
@@ -505,6 +705,7 @@ No browser end-to-end tests in v1 (spec §9).
 | M6 | 8 | deployed on a host; second-machine access; cron backup + restore drill |
 | M7 | 9 | error table verified; `v0.1.0` tagged |
 | M8 | 10 | refinement pass smoke: copy actions, favorites, keyboard search workflow |
+| M9 | 11 | compact layout: phone checklist (iOS PWA, Android back at each depth), narrow desktop window across the breakpoint, desktop app forced Compact |
 
 ## Risks and mitigations
 
@@ -522,6 +723,11 @@ No browser end-to-end tests in v1 (spec §9).
   dynamic imports; only the active language is loaded.
 - **iOS PWA limitations** (no background sync, app suspension) —
   visibility/focus-triggered sync; documented in the README.
+- **History/popstate divergence in compact mode** (a foreign entry, a
+  stale entry from a previous load, the iOS standalone PWA's swipe-back)
+  — every entry we push is tagged with its depth and the popstate handler
+  ignores anything else; the stack is never persisted, so a reload always
+  starts at the root; covered by the fake-history unit tests in Phase 11.
 - **Single-machine SPOF** (host down = no snippets) — out of scope by
   design; mitigated by cron backups + offsite copy (operator's job,
   README).

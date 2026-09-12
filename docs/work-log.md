@@ -14,9 +14,9 @@ Spec: `docs/snp-design.md` · Plan: `docs/snp-implementation-plan.md`
 
 ## Current status
 
-- Updated: 2026-09-12 18:51
+- Updated: 2026-09-12 (compact layout design)
 - Phase: review fixes + desktop app (macOS **and Linux** builds) + appearance + AI generation (command/script/function kinds) + tag filter + .app bundle + **bundled starter pack** merged to main; **Markdown notes**, **read-view syntax highlighting**, **notarization in `make app`**, the **Linux desktop build/launcher** and **`snp seed`** landed; the **GitHub release workflows** and the **header version chip** (`GET /api/version`) landed; **v0.1.0 shipped** (signed + notarized macOS bundle, 7 assets, verified after publish); **draggable pane dividers** landed (spec §6, `web/src/lib/panes.ts`) and **Explain now replaces Notes** with an undo (spec §13); **Phase 10, the UI refinement pass**, is on branch `feat/ui-refinements` (**pushed**, and deployed to the tailnet from a dirty tree — `/api/version` reports `v0.1.0-14-g8e82a64-dirty`): explicit copy actions, distinct create labels, simplified timestamps, the search keyboard workflow, visible saved-default state, two-line titles, and the **Favorites** list on a new `pinned` column; plus the **service-worker update check** and **create/cancel test coverage** added while chasing a stale-shell report; `make test` green (go test + vet + 298 Vitest + svelte-check 0 errors / 0 warnings). The Linux desktop binary **build was verified on an ARM Ubuntu 24 host** (git bundle → `make desktop`), after a first attempt failed because that work was still uncommitted and the bundle therefore carried the old darwin-only tree.
-- Next: **Linux desktop container build + verification** (podman; `libgtk-3-dev` + `libwebkit2gtk-4.1-dev` + Go, `make web` then the desktop build, and exercise `install-desktop.sh` with a scratch `PREFIX=`); then the Windows port, desktop follow-ons (real app icon, startup-error surfacing in the window); then remaining v1 follow-ons (CLI client, SnippetsLab converter, named variable presets per machine — the follow-on named in Phase 10 T5). `feat/ui-refinements` is merged to main and two betas are published (`v0.2.0-beta.1`, and `v0.2.0-beta.2` as the CI validation build); cutting `v0.2.0` is the next release step whenever wanted
+- Next: **Phase 11, the compact layout** (spec §6 "Compact layout", plan Phase 11 T1–T7, branch `claude/eloquent-maxwell-bcugjn`): designed and planned on 2026-09-12, nothing built yet — start with T1 (layout setting) and T2 (`lib/layout.ts`, pure TS with fake-history tests). After that, as before: **Linux desktop container build + verification** (podman; `libgtk-3-dev` + `libwebkit2gtk-4.1-dev` + Go, `make web` then the desktop build, and exercise `install-desktop.sh` with a scratch `PREFIX=`); then the Windows port, desktop follow-ons (real app icon, startup-error surfacing in the window); then remaining v1 follow-ons (CLI client, SnippetsLab converter, named variable presets per machine — the follow-on named in Phase 10 T5). `feat/ui-refinements` is merged to main and two betas are published (`v0.2.0-beta.1`, and `v0.2.0-beta.2` as the CI validation build); cutting `v0.2.0` is the next release step whenever wanted
 
 ## Log
 
@@ -1303,3 +1303,38 @@ Spec: `docs/snp-design.md` · Plan: `docs/snp-implementation-plan.md`
   (footer clicks → "Copy snippet"/"Copy rendered", the unrevealed-sensitive
   assertion now checks the disabled snippet button) and spec §6 updated.
   `make test` green (300 Vitest, svelte-check 0).
+
+- (later) — **Compact layout designed and planned; no code.** Discussed
+  the phone / narrow-window layout and settled on a stacked navigation
+  model rather than the "responsive pane stacking" placeholder the
+  2026-09-06 revision note had carried: the list (search on top) is the
+  root screen, tapping a snippet pushes a detail screen with Back, and the
+  left pane (Favorites, folders, tags, New folder) becomes a left drawer.
+  Plus a three-way **Layout** setting — Auto / Wide / Compact — modelled
+  on the theme select: Auto follows a 720px `matchMedia` breakpoint live,
+  the two manual values ignore the viewport entirely.
+  - Spec §6: new "Compact layout" subsection (setting, screens, drawer,
+    top bar, history, keyboard, what does not change, Back-in-editor is
+    Cancel); the "Panes stay side by side at every width" sentence and the
+    revision note now point at it and say it is designed, not built.
+  - Plan: **Phase 11** (T1 setting, T2 `lib/layout.ts` resolution + screen
+    stack with an injected history, T3 compact grid/drawer CSS scoped
+    under `.app.compact` — a class, not a media query, so the override and
+    Auto share one path and tests can force it — T4 compact top bar with
+    the chips relocated into the settings panel, T5 navigation wiring in
+    App, T6 App tests with a fake `history`, T7 phone checklist + docs),
+    milestone M9, a test-plan row, and a history/popstate risk entry.
+  - Decisions worth knowing before starting: every push tags its history
+    entry with its depth and popstate ignores anything else, so a stale
+    entry from a previous load or a foreign entry cannot desync the
+    stack; the in-app Back goes through `history.back()` so the OS gesture
+    and the button share one path; `toRoot()` uses one `history.go(-depth)`
+    for the ⌘/Ctrl+K shortcut instead of chained backs; the list stays
+    mounted (hidden) under detail so its state survives; the wails
+    window's 900px `MinWidth` means Auto never trips there but manual
+    Compact does. The dirty-editor guard is explicitly a follow-on for
+    both layouts.
+  - Gotcha for T6: jsdom has no `matchMedia`, so `watchNarrow` must treat
+    its absence as "not narrow" and the compact tests force the setting via
+    `localStorage['snp.layout'] = 'compact'` rather than a viewport.
+  - `make test` untouched (docs only); `web/dist/index.html` untouched.

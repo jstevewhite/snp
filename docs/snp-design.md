@@ -14,6 +14,7 @@ Revised: 2026-09-11 (§13 Explain replaces Notes instead of appending, with undo
 Revised: 2026-09-11 (§4/§5 `pinned`; §6 Favorites, explicit copy actions, the search keyboard workflow, simplified timestamps, two-line titles)
 Revised: 2026-09-12 (§6 service-worker update check, so a stale precached shell cannot linger)
 Revised: 2026-09-12 (§5/§6 search: prefix terms, terms ANDed, operators literal — online and offline now match the same set)
+Revised: 2026-09-12 (§6 compact layout: the single-pane phone/narrow-window mode and the Layout setting — designed, Phase 11, not yet built)
 Status: approved design, revised after review, implemented
 
 > Revision note (2026-09-06): §6 originally specified a CodeMirror 6
@@ -26,9 +27,11 @@ Status: approved design, revised after review, implemented
 > revisions (2026-09-09) restored Markdown notes (`marked` + DOMPurify)
 > and lazy per-language highlighting (highlight.js) and added the
 > left-pane tag list, so the section below again describes what is built.
-> CodeMirror, the API-backed online search, and responsive pane stacking
-> remain unbuilt; `marked`, `dompurify`, and `highlight.js` are
-> dependencies. Global keyboard shortcuts arrived with the 2026-09-11
+> CodeMirror and the API-backed online search remain unbuilt; `marked`,
+> `dompurify`, and `highlight.js` are dependencies. "Responsive pane
+> stacking" was replaced on 2026-09-12 by the compact layout below
+> (§6 "Compact layout"), a stacked navigation model rather than stacked
+> panes; it is designed and planned (Phase 11) but not yet built. Global keyboard shortcuts arrived with the 2026-09-11
 > refinement, scoped to the search workflow (§6 "Keyboard").
 
 ## Purpose
@@ -488,8 +491,89 @@ arrow keys resize by 16px (1px with Shift) and Home or a double-click
 restores the default layout. Widths persist in localStorage
 (`snp.paneWidths`, see `web/src/lib/panes.ts`); a window whose dividers
 were never dragged keeps the stylesheet's own flexible proportions and
-so still adapts to its size. Panes stay side by side at every width —
-stacking them on narrow screens remains unbuilt (see the revision note).
+so still adapts to its size. This is the **wide** layout; below the
+compact breakpoint, or when the Layout setting says so, the same
+components are arranged as one screen at a time instead (next section).
+
+### Compact layout
+
+Designed 2026-09-12; built in Phase 11 (status there). The three panes
+do not fit a phone, and stacking them vertically would put the search
+box and the result list on different scroll positions from the body the
+user actually wants, so narrow windows get a **stacked navigation
+model** instead: one screen at a time, with the list as the root.
+
+- **Layout setting.** A three-way *Layout* select in the settings panel
+  next to *Theme*: **Auto** (default), **Wide**, **Compact**. It persists
+  in localStorage (`snp.layout`; Auto is the absence of the key, like
+  `snp.theme`) and is re-applied before first paint. Auto resolves to
+  compact when the viewport is narrower than **720px**
+  (`(max-width: 719px)`, tracked live with `matchMedia`, so a resize or a
+  rotation switches without a reload) and to wide otherwise. Wide and
+  Compact are plain overrides that ignore the viewport entirely; there is
+  no "compact unless the window is huge" middle ground. The wails desktop
+  window enforces a 900px minimum width, so Auto never trips there, but a
+  manual Compact applies to it like anywhere else — same SPA, same code,
+  no per-platform special case.
+- **Screens.** The **list** is the root: the search box and *New snippet*
+  at the top, the result list below, full width. Tapping a result pushes
+  the **detail** screen — the same snippet view, or the editor for
+  *New snippet* / *Edit* — with a **Back** control at the left of the top
+  bar. Back returns to the list with the selection and scroll position
+  kept (the list stays mounted while detail is shown, and the existing
+  scroll-selected-row-into-view behavior restores the place). Saving a
+  new snippet lands on its detail screen, as selecting it would; Cancel
+  in the editor returns to where the editor was opened from (detail for
+  Edit, the list for New).
+- **Drawer.** Favorites, the folder tree, the tag list and *New folder*
+  — the whole left pane — live in a **drawer** that slides in over the
+  list from the left, opened by a ☰ control at the left of the top bar
+  or by the *Folders* affordance beside the search box, and closed by its
+  own close control, a tap on the scrim, Back, or Escape. Choosing a
+  folder (including *All*) closes the drawer, since it is a filter on the
+  list behind it. Toggling a tag does not, because tags combine with AND
+  and the user may want several; the counts and the highlighted list
+  behind the scrim show the effect as they go. The drawer is an overlay,
+  not a push, so the list never reflows under it.
+- **Top bar.** In compact mode the top bar holds only the ☰ / Back
+  control, the `snp` wordmark, and the settings gear. The version chip,
+  the connection pill, the *Synced …* age and *Resync* move into the
+  settings panel (which becomes a full-width sheet under the bar instead
+  of an anchored popover); the offline banner already announces the
+  offline state on its own line. The gear stays reachable on every
+  screen, so a Layout override chosen by mistake can always be undone.
+- **History.** Every push — opening the drawer, opening detail — pushes
+  one `history` entry tagged as ours, so the browser's or the OS's back
+  gesture pops exactly one level and only leaves the app once the list is
+  showing with the drawer closed. The in-app Back and the close controls
+  go through `history.back()` too, so the stack and the history never
+  disagree. Wide mode pushes nothing. Switching from wide to compact with
+  a snippet selected or the editor open starts on the detail screen (so a
+  window dragged narrower keeps what was being read); switching back to
+  wide discards the stack and shows all three panes. Reload starts at the
+  root: the stack is not persisted, and an entry left over from a
+  previous page load is ignored.
+- **Keyboard in compact mode.** Escape closes the drawer if it is open,
+  otherwise leaves the detail screen for the list — except while the
+  editor is open, where Escape does nothing and *Cancel* is explicit, the
+  same as wide mode. `Cmd/Ctrl+K` first pops back to the list, then
+  focuses the search box, so the search workflow (arrows, Enter to copy)
+  works from anywhere. The arrow keys in the search box move the
+  selection without pushing detail; Enter copies, as in wide mode.
+- **Not changed by compact mode.** Everything the screens contain: the
+  detail view, the editor, the copy actions, the variables panel, the
+  reveal flow, offline behavior. The pane dividers and the persisted
+  pane widths are simply inert in compact mode — the grid is one column
+  and the dividers are not rendered — so a width dragged on a desktop
+  never leaks into the phone layout, and it is still there when the
+  window is wide again.
+- **Editor and Back.** Back (button, gesture, or Escape outside a text
+  field) while the editor is open behaves as *Cancel*: edits are
+  dropped, as they already are in wide mode when another snippet is
+  selected mid-edit (the 2026-09-11 review noted this). A "discard
+  changes?" guard is a follow-on for both layouts, not part of compact
+  mode, and would sit in front of Cancel rather than in the history
+  handling.
 
 ### Behaviors
 
