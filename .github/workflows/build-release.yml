@@ -64,8 +64,8 @@ jobs:
     name: Web app (Svelte)
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: '24'
           cache: npm
@@ -75,7 +75,7 @@ jobs:
         run: |
           npm ci
           npm run build
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: web-dist
           path: web/dist
@@ -87,12 +87,12 @@ jobs:
     needs: web
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v7
         with:
           name: web-dist
           path: web/dist
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
       - name: Cross-compile and package
@@ -112,7 +112,7 @@ jobs:
             tar -C build -czf "dist/${name}.tar.gz" "${name}"
           done
           ls -l dist
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: server-linux
           path: dist/*
@@ -132,12 +132,12 @@ jobs:
             arch: arm64
     runs-on: ${{ matrix.runner }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v7
         with:
           name: web-dist
           path: web/dist
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
       - name: Install GTK / WebKitGTK 4.1 dev packages
@@ -158,7 +158,7 @@ jobs:
           "${stage}/bin/snp-desktop" -version
           tar -C build -czf "dist/${name}.tar.gz" "${name}"
           ls -l dist
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: desktop-linux-${{ matrix.arch }}
           path: dist/*
@@ -178,12 +178,12 @@ jobs:
             arch: x86_64
     runs-on: ${{ matrix.runner }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v7
         with:
           name: web-dist
           path: web/dist
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
       - name: Build slice
@@ -194,7 +194,7 @@ jobs:
           mkdir -p slice
           go build -trimpath -ldflags "${LDFLAGS}" -tags production -o "slice/snp-desktop-${{ matrix.arch }}" ./cmd/snp-desktop
           "slice/snp-desktop-${{ matrix.arch }}" -version
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: desktop-macos-${{ matrix.arch }}
           path: slice/*
@@ -210,17 +210,17 @@ jobs:
       HAVE_APPLE_CERT: ${{ secrets.SIGNING_CERT_P12_BASE64 != '' }}
       HAVE_APPLE_NOTARY: ${{ secrets.APPLE_ID != '' && secrets.APPLE_APP_SPECIFIC_PASSWORD != '' && secrets.APPLE_TEAM_ID != '' }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v7
         with:
           name: web-dist
           path: web/dist
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v7
         with:
           pattern: desktop-macos-*
           path: slices
           merge-multiple: true
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
 
@@ -261,7 +261,7 @@ jobs:
           echo "password=$pw" >> "$GITHUB_OUTPUT"
       - name: Import macOS signing certificate
         if: env.HAVE_APPLE_CERT == 'true'
-        uses: apple-actions/import-codesign-certs@v3
+        uses: apple-actions/import-codesign-certs@v6
         with:
           p12-file-base64: ${{ secrets.SIGNING_CERT_P12_BASE64 }}
           p12-password: ${{ secrets.SIGNING_CERT_PASSWORD }}
@@ -291,7 +291,7 @@ jobs:
           ditto -c -k --keepParent build/snp.app "dist/snp-desktop_${ver}_macos_universal.zip"
           ls -l dist
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: macos
           path: dist/*
@@ -303,7 +303,7 @@ jobs:
     needs: [server-linux, desktop-linux, macos-package]
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v7
         with:
           pattern: '{server-linux,desktop-linux-*,macos}'
           path: dist

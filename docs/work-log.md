@@ -16,7 +16,7 @@ Spec: `docs/snp-design.md` · Plan: `docs/snp-implementation-plan.md`
 
 - Updated: 2026-09-12 01:20
 - Phase: review fixes + desktop app (macOS **and Linux** builds) + appearance + AI generation (command/script/function kinds) + tag filter + .app bundle + **bundled starter pack** merged to main; **Markdown notes**, **read-view syntax highlighting**, **notarization in `make app`**, the **Linux desktop build/launcher** and **`snp seed`** landed; the **GitHub release workflows** and the **header version chip** (`GET /api/version`) landed; **v0.1.0 shipped** (signed + notarized macOS bundle, 7 assets, verified after publish); **draggable pane dividers** landed (spec §6, `web/src/lib/panes.ts`) and **Explain now replaces Notes** with an undo (spec §13); **Phase 10, the UI refinement pass**, is on branch `feat/ui-refinements` (**pushed**, and deployed to the tailnet from a dirty tree — `/api/version` reports `v0.1.0-14-g8e82a64-dirty`): explicit copy actions, distinct create labels, simplified timestamps, the search keyboard workflow, visible saved-default state, two-line titles, and the **Favorites** list on a new `pinned` column; plus the **service-worker update check** and **create/cancel test coverage** added while chasing a stale-shell report; `make test` green (go test + vet + 298 Vitest + svelte-check 0 errors / 0 warnings). The Linux desktop binary **build was verified on an ARM Ubuntu 24 host** (git bundle → `make desktop`), after a first attempt failed because that work was still uncommitted and the bundle therefore carried the old darwin-only tree.
-- Next: **merge `feat/ui-refinements`** to main (pushed; nothing in it is released yet); then **bump the Node-20 GitHub Actions** (`checkout`, `setup-node`, `setup-go`, `upload-artifact`, `download-artifact` — all still work but are force-run on Node 24 and annotate the run) **to their Node-24 majors** before the next release; then **Linux desktop container build + verification** (podman; `libgtk-3-dev` + `libwebkit2gtk-4.1-dev` + Go, `make web` then the desktop build, and exercise `install-desktop.sh` with a scratch `PREFIX=`); then the Windows port, desktop follow-ons (real app icon, startup-error surfacing in the window); then remaining v1 follow-ons (CLI client, SnippetsLab converter, named variable presets per machine — the follow-on named in Phase 10 T5)
+- Next: **merge `feat/ui-refinements`** to main (pushed; nothing in it is released yet); then **verify the GitHub Actions bump on the next workflow run** (the Node-24 majors are committed but the only way to exercise these workflows is a beta/release run, so the first `v0.2.0-beta.2` or `v0.2.0` proves it); then **Linux desktop container build + verification** (podman; `libgtk-3-dev` + `libwebkit2gtk-4.1-dev` + Go, `make web` then the desktop build, and exercise `install-desktop.sh` with a scratch `PREFIX=`); then the Windows port, desktop follow-ons (real app icon, startup-error surfacing in the window); then remaining v1 follow-ons (CLI client, SnippetsLab converter, named variable presets per machine — the follow-on named in Phase 10 T5)
 
 ## Log
 
@@ -1244,3 +1244,38 @@ Spec: `docs/snp-design.md` · Plan: `docs/snp-implementation-plan.md`
     set — not the ranking — is shared.
   - `make test` green: go vet, `go test ./...`, 300 Vitest, svelte-check 0
     errors / 0 warnings.
+- 2026-09-12 — **CI: the Node-20 GitHub Actions bump**, plus the first beta
+  since the Phase 10 pass.
+
+  - Beta `v0.2.0-beta.1` dispatched from `beta.yml` (run 34707463570) against
+    `main` at `340f0e0`; it publishes as a prerelease and the tag is created
+    by the release, pointing at the commit the run started from. Same 7-asset
+    set as a real release.
+  - **Why not just take the latest majors**: the newest tags are `v7` (and
+    `v8` for download-artifact), but the goal is the smallest bump that
+    leaves Node 20. The `runs.using` field at each major says which ones
+    actually moved to node24, and two traps are invisible from the tag
+    numbers — `upload-artifact@v5` and `download-artifact@v5`/`v6` are
+    *still* node20. The minimal Node-24 majors: checkout `v4→v5`,
+    setup-node `v4→v5`, setup-go `v5→v6`, upload-artifact `v4→v6`,
+    download-artifact `v4→v7`, and `apple-actions/import-codesign-certs`
+    `v3→v6`.
+  - Each jump was checked rather than assumed: the `inputs:` blocks were
+    diffed across the bump. checkout/upload-artifact/download-artifact are
+    unchanged; setup-node adds `package-manager-cache` (the workflow sets
+    `cache: npm` explicitly) and setup-go adds `go-download-base-url` plus
+    description edits; the codesign action's inputs are byte-identical, and
+    it gains a `post` step (temp-keychain cleanup). The workflows were then
+    re-parsed to confirm all six jobs still resolve.
+  - **Not yet exercised**: these workflows only run on a beta/release, so the
+    bump is committed but unproven until the next run. The in-flight beta
+    used the old refs, having already captured its workflow definition.
+  - Gotcha — **GitHub's Node-20 annotation covers first-party actions only**.
+    The macOS job ran `apple-actions/import-codesign-certs@v3` (also node20)
+    without it being listed anywhere in the annotations, so treating that
+    warning as an inventory of what needs bumping misses third-party actions.
+    Grepping `uses:` and reading each action's `runs.using` is the reliable
+    way. (Relatedly: the earlier guess that the signing step must be skipped
+    because it was unannotated was wrong — the beta's macOS job imported the
+    certificate and notarized successfully, so the Apple secrets are live.)
+  - `make test` unaffected (the change is `.github/` only).
