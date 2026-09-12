@@ -882,20 +882,35 @@
 <div class="app" class:compact>
   <div class="chrome">
     <header class="topbar">
+      {#if compact}
+        <!-- One control at the left: Back whenever there is a level to
+             pop (the drawer, or the detail screen), else the drawer toggle.
+             Both go through the stack so the OS gesture and this button
+             agree (lib/layout.ts). -->
+        {#if navState.depth > 0}
+          <button class="nav" aria-label="Back" onclick={() => nav.back()}>←</button>
+        {:else}
+          <button
+            class="nav"
+            aria-label="Folders"
+            aria-expanded={navState.drawerOpen}
+            onclick={() => nav.openDrawer()}
+          >
+            ☰
+          </button>
+        {/if}
+      {/if}
       <span class="brand">snp</span>
-      {#if version !== null}<span class="version">{version}</span>{/if}
-      <span class="conn" class:offline={!online}>{online ? 'online' : 'offline'}</span>
+      {#if !compact}
+        {#if version !== null}<span class="version">{version}</span>{/if}
+        <span class="conn" class:offline={!online}>{online ? 'online' : 'offline'}</span>
+      {/if}
       <span class="spacer"></span>
       {#if error !== null}<span class="error" title={error}>{error}</span>{/if}
       {#if notice !== null}<span class="notice" role="status">{notice}</span>{/if}
-      {#if syncedAt !== null}
-        <span class="synced" title={formatAbsolute(syncedAt)}>
-          Synced {formatRelative(syncedAt, now)}
-        </span>
+      {#if !compact}
+        {@render syncStatus()}
       {/if}
-      <button onclick={() => tick()} disabled={busy || !online || !ready}>
-        Resync
-      </button>
       <div class="settings">
         <button
           aria-label="Settings"
@@ -907,6 +922,16 @@
         </button>
         {#if settingsOpen}
           <div class="panel">
+            {#if compact}
+              <!-- The bar has no room for these in compact mode, so the
+                   status line and Resync live here instead. -->
+              <div class="status">
+                {#if version !== null}<span class="version">{version}</span>{/if}
+                <span class="conn" class:offline={!online}>{online ? 'online' : 'offline'}</span>
+                {@render syncStatus()}
+              </div>
+              <hr />
+            {/if}
             <label class="field">
               <span>Theme</span>
               <select aria-label="Theme" bind:value={theme}>
@@ -960,6 +985,17 @@
       <OfflineBanner />
     {/if}
   </div>
+
+  <!-- The sync age and the Resync button: in the bar in wide mode, in the
+       settings sheet in compact mode. -->
+  {#snippet syncStatus()}
+    {#if syncedAt !== null}
+      <span class="synced" title={formatAbsolute(syncedAt)}>
+        Synced {formatRelative(syncedAt, now)}
+      </span>
+    {/if}
+    <button onclick={() => tick()} disabled={busy || !online || !ready}>Resync</button>
+  {/snippet}
 
   <!-- Drag handle between two panes. The folders divider trades width with
        the list pane; the list divider is absorbed by the flexible detail
@@ -1065,6 +1101,7 @@
         onselect={selectSnippet}
         onsearch={(q) => (query = q)}
         oncreate={startCreate}
+        onfolders={compact ? () => nav.openDrawer() : undefined}
       />
     </section>
 

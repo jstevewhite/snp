@@ -13,6 +13,7 @@
     onselect,
     onsearch,
     oncreate,
+    onfolders,
   }: {
     snippets: Snippet[]
     selectedId?: string | null
@@ -29,6 +30,11 @@
     onselect: (id: string) => void
     onsearch: (q: string) => void
     oncreate: () => void
+    /**
+     * Opens the folders drawer (compact layout, spec §6); when absent the
+     * folders pane is on screen and no button is shown.
+     */
+    onfolders?: () => void
   } = $props()
 
   let listEl = $state<HTMLElement | undefined>()
@@ -60,6 +66,9 @@
            hint only repeats what the keydown handler accepts. -->
       <kbd class="hint" aria-hidden="true">{searchShortcutLabel()}</kbd>
     </div>
+    {#if onfolders !== undefined}
+      <button class="folders" onclick={onfolders}>Folders</button>
+    {/if}
     <button class="new" disabled={offline} onclick={oncreate}>New snippet</button>
   </div>
   <ul class="items" bind:this={listEl}>
