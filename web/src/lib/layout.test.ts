@@ -30,10 +30,16 @@ function fakeHistory() {
     get index() {
       return index
     },
+    get state() {
+      return entries[index]
+    },
     pushState: vi.fn((state: unknown) => {
       entries.splice(index + 1)
       entries.push(state)
       index = entries.length - 1
+    }),
+    replaceState: vi.fn((state: unknown) => {
+      entries[index] = state
     }),
     back: vi.fn(() => {
       pending.push(-1)
@@ -128,7 +134,7 @@ describe('compact nav', () => {
     nav.openDetail()
     nav.openDetail() // repeated: no second entry
     expect(history.pushState).toHaveBeenCalledTimes(1)
-    expect(history.entries[1]).toEqual({ snp: 1 })
+    expect(history.entries[1]).toEqual(expect.objectContaining({ snp: 1 }))
     expect(nav.state).toEqual({ screen: 'detail', drawerOpen: false, depth: 1 })
     nav.back()
     // State changes only once the browser reports the pop.
@@ -176,18 +182,20 @@ describe('compact nav', () => {
   })
 
   it('ignores a popstate that is not the level below', () => {
-    const { nav } = setup()
+    const { nav, history } = setup()
     nav.openDetail()
     nav.openDrawer()
-    nav.onPopState({ snp: 5 }) // stale entry from another page load
+    const ours = history.entries[1] as { snp: number; ses: number }
+    nav.onPopState({ snp: 1, ses: ours.ses + 1 }) // another session's entry
+    nav.onPopState({ snp: 5, ses: ours.ses }) // not the level below
     nav.onPopState(null) // two levels down: not the level below
     expect(nav.state.depth).toBe(2)
-    nav.onPopState({ snp: 1 })
+    nav.onPopState(ours)
     expect(nav.state).toEqual({ screen: 'detail', drawerOpen: false, depth: 1 })
     // Below depth 1 sits the page's own entry, whatever state it carries.
     nav.onPopState({ foreign: true })
     expect(nav.state).toEqual({ screen: 'list', drawerOpen: false, depth: 0 })
-    nav.onPopState({ snp: 1 }) // forward into a stale entry at the root
+    nav.onPopState(ours) // forward into a stale entry at the root
     expect(nav.state.depth).toBe(0)
   })
 
@@ -219,6 +227,40 @@ describe('compact nav', () => {
     nav.enter(false)
     expect(nav.state.screen).toBe('list')
     expect(history.pushState).toHaveBeenCalledTimes(1)
+  })
+
+  it('re-entering onto a stale detail entry reuses it, so Back still reaches the root', () => {
+    // wide → compact (detail) → wide → compact: the first spell's entry is
+    // still the current one when the second spell begins.
+    const { nav, history } = setup()
+    nav.enter(true)
+    const first = history.state as { ses: number }
+    nav.leave()
+    nav.enter(true)
+    expect(history.pushState).toHaveBeenCalledTimes(1)
+    expect(history.replaceState).toHaveBeenCalledTimes(1)
+    expect(history.entries).toHaveLength(2)
+    expect((history.state as { ses: number }).ses).not.toBe(first.ses)
+    expect(nav.state).toEqual({ screen: 'detail', drawerOpen: false, depth: 1 })
+    nav.back()
+    history.flush()
+    expect(nav.state).toEqual({ screen: 'list', drawerOpen: false, depth: 0 })
+    expect(history.index).toBe(0)
+  })
+
+  it('a stale entry under a new push is the root, not a level', () => {
+    // A previous compact spell ended at depth 1 without popping; the next
+    // spell starts at the root (nothing selected) and pushes on top.
+    const { nav, history } = setup()
+    nav.enter(true)
+    nav.leave()
+    nav.enter(false)
+    nav.openDetail()
+    expect(history.entries).toHaveLength(3)
+    nav.back()
+    history.flush() // lands on the stale entry
+    expect(nav.state.depth).toBe(0)
+    expect(nav.state.screen).toBe('list')
   })
 })
 

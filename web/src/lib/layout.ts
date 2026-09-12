@@ -62,22 +62,34 @@ export interface NavState {
  * and the app passes the real one (see `browserHistory`).
  */
 export interface NavHistory {
+  /** State of the current entry (what a popstate would report for it). */
+  readonly state: unknown
   pushState(state: unknown, unused: string): void
+  replaceState(state: unknown, unused: string): void
   back(): void
   go(delta: number): void
 }
 
-/** History state written by every push; anything else is not ours. */
+/**
+ * History state written by every push. `snp` is the depth; `ses` names
+ * the stack session (fresh on every `enter()`), so an entry left behind by
+ * an earlier compact spell — after a wide interlude, or from a previous
+ * page load — is never mistaken for a level of the current stack.
+ */
 interface NavEntry {
   snp: number
+  ses: number
 }
 
 function isNavEntry(state: unknown): state is NavEntry {
-  return (
-    typeof state === 'object' &&
-    state !== null &&
-    typeof (state as { snp?: unknown }).snp === 'number'
-  )
+  if (typeof state !== 'object' || state === null) return false
+  const e = state as { snp?: unknown; ses?: unknown }
+  return typeof e.snp === 'number' && typeof e.ses === 'number'
+}
+
+/** A session id unlikely to collide with one from a previous page load. */
+function newSession(): number {
+  return Math.floor(Math.random() * 0x7fffffff)
 }
 
 export interface CompactNav {
@@ -109,6 +121,7 @@ export function createCompactNav(
   onChange: (state: NavState) => void = () => {},
 ): CompactNav {
   let state: NavState = { screen: 'list', drawerOpen: false, depth: 0 }
+  let session = newSession()
 
   function set(next: NavState): void {
     state = next
@@ -117,8 +130,13 @@ export function createCompactNav(
 
   function push(next: Omit<NavState, 'depth'>): void {
     const depth = state.depth + 1
-    history.pushState({ snp: depth } satisfies NavEntry, '')
+    history.pushState({ snp: depth, ses: session } satisfies NavEntry, '')
     set({ ...next, depth })
+  }
+
+  /** The depth an entry stands for in this session; anything else is 0. */
+  function depthOf(entry: unknown): number {
+    return isNavEntry(entry) && entry.ses === session ? entry.snp : 0
   }
 
   /** The state one level below the current one. */
@@ -160,18 +178,29 @@ export function createCompactNav(
       history.go(-depth)
     },
     enter(hasDetail) {
+      session = newSession()
       set({ screen: 'list', drawerOpen: false, depth: 0 })
-      if (hasDetail) push({ screen: 'detail', drawerOpen: false })
+      if (!hasDetail) return
+      const current = history.state
+      if (isNavEntry(current) && current.snp === 1) {
+        // Re-entering onto the detail entry an earlier compact spell left
+        // behind (wide → compact → wide → compact): reuse it rather than
+        // stacking a second one, so one Back still reaches the root.
+        history.replaceState({ snp: 1, ses: session } satisfies NavEntry, '')
+        set({ screen: 'detail', drawerOpen: false, depth: 1 })
+        return
+      }
+      push({ screen: 'detail', drawerOpen: false })
     },
     leave() {
       set({ screen: 'list', drawerOpen: false, depth: 0 })
     },
     onPopState(entry) {
       if (state.depth === 0) return
-      // Ours only if it is exactly the level below; the root has no entry
-      // of ours, so a null/foreign state counts as the root when at depth 1.
-      const target = isNavEntry(entry) ? entry.snp : 0
-      if (target !== state.depth - 1) return
+      // Ours only if it is exactly the level below. The root has no entry
+      // of ours, so at depth 1 anything that is not this session's counts
+      // as the root: the page's own entry, or a stale one of ours.
+      if (depthOf(entry) !== state.depth - 1) return
       set(popped())
     },
   }
@@ -182,7 +211,11 @@ export function browserHistory(): NavHistory | null {
   if (typeof window === 'undefined' || !window.history) return null
   const h = window.history
   return {
+    get state() {
+      return h.state
+    },
     pushState: (state, unused) => h.pushState(state, unused),
+    replaceState: (state, unused) => h.replaceState(state, unused),
     back: () => h.back(),
     go: (delta) => h.go(delta),
   }
