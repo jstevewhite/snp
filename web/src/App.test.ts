@@ -931,6 +931,50 @@ describe('App', () => {
     unmount()
   })
 
+  it('creates a snippet from the form and closes it', async () => {
+    const posts: Record<string, unknown>[] = []
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      const json = { 'Content-Type': 'application/json' }
+      if (url.includes('/api/sync')) {
+        return new Response(JSON.stringify(syncPayload()), { status: 200, headers: json })
+      }
+      if (url.includes('/api/snippets') && init?.method === 'POST') {
+        const body = JSON.parse(String(init.body)) as Record<string, unknown>
+        posts.push(body)
+        const created = { ...body, id: 'new1', created_at: T0, updated_at: T0 }
+        return new Response(JSON.stringify(created), { status: 201, headers: json })
+      }
+      return new Response('null', { status: 200, headers: json })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const { unmount } = render(App)
+    await waitFor(() => expect(screen.getByText('Caddyfile')).toBeDefined())
+
+    await fireEvent.click(screen.getByText('New snippet'))
+    const title = await waitFor(() => screen.getByLabelText('Title'))
+    await fireEvent.input(title, { target: { value: 'Brand new' } })
+    await fireEvent.click(screen.getByText('Create'))
+
+    await waitFor(() => expect(posts).toHaveLength(1))
+    // The form closes and the created snippet is selected.
+    await waitFor(() => expect(screen.queryByLabelText('Title')).toBeNull())
+    expect(screen.getByRole('heading', { name: 'Brand new' })).toBeDefined()
+    unmount()
+  })
+
+  it('cancels out of the create form', async () => {
+    stubFetch()
+    const { unmount } = render(App)
+    await waitFor(() => expect(screen.getByText('Caddyfile')).toBeDefined())
+
+    await fireEvent.click(screen.getByText('New snippet'))
+    await waitFor(() => expect(screen.getByLabelText('Title')).toBeDefined())
+    await fireEvent.click(screen.getByText('Cancel'))
+    await waitFor(() => expect(screen.queryByLabelText('Title')).toBeNull())
+    unmount()
+  })
+
   it('toggles two-line list titles from the settings panel', async () => {
     stubFetch()
     const { container, unmount } = render(App)
