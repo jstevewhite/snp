@@ -734,6 +734,27 @@ Note: deleting `state_dir/tsnet` discards the node's tailnet membership;
 the next start must join again and will need `TS_AUTHKEY` once more. The
 README says not to delete it casually.
 
+### Auto-deploy from a checkout
+
+For a host that builds from a checkout, `deploy/install-autoupdate.sh`
+renders `deploy/user/{snp.service,snp-update.service,snp-update.timer}`
+into `~/.config/systemd/user/` with the checkout path baked in. The
+server runs from `bin/snp` as a user unit; the timer runs
+`deploy/autoupdate.sh`, which fetches and hands off to `deploy/update.sh`
+only when `origin/main` is strictly ahead of a clean checkout on `main`.
+
+`update.sh` keeps the old binary, fast-forwards and builds first, then
+backs up the database **with the old binary** (a new binary migrates on
+open) into `state_dir/pre-deploy/`, restarts the unit, and polls
+`https://<node>.<tailnet>/api/me` for up to 60s from the owner's
+identity. On failure it restores the old binary, restores the backup only
+if `schema_version` changed (the failed database is kept alongside),
+resets the checkout, restarts, and writes the bad commit to
+`deploy/.last-failed`, which `autoupdate.sh` skips (exit 1, so the
+oneshot stays failed and visible) until `origin/main` moves. Migrations
+are forward-only, so a rolled-back binary would otherwise run against a
+newer schema.
+
 ### Backup
 
 `deploy/backup.sh DEST_DIR` runs `snp backup` into

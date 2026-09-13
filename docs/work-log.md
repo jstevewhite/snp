@@ -14,7 +14,7 @@ Spec: `docs/snp-design.md` · Plan: `docs/snp-implementation-plan.md`
 
 ## Current status
 
-- Updated: 2026-09-12 (compact layout built)
+- Updated: 2026-09-13 (auto-deploy from the checkout on the dev box)
 - Phase: review fixes + desktop app (macOS **and Linux** builds) + appearance + AI generation (command/script/function kinds) + tag filter + .app bundle + **bundled starter pack** merged to main; **Markdown notes**, **read-view syntax highlighting**, **notarization in `make app`**, the **Linux desktop build/launcher** and **`snp seed`** landed; the **GitHub release workflows** and the **header version chip** (`GET /api/version`) landed; **v0.1.0 shipped** (signed + notarized macOS bundle, 7 assets, verified after publish); **draggable pane dividers** landed (spec §6, `web/src/lib/panes.ts`) and **Explain now replaces Notes** with an undo (spec §13); **Phase 10, the UI refinement pass**, is on branch `feat/ui-refinements` (**pushed**, and deployed to the tailnet from a dirty tree — `/api/version` reports `v0.1.0-14-g8e82a64-dirty`): explicit copy actions, distinct create labels, simplified timestamps, the search keyboard workflow, visible saved-default state, two-line titles, and the **Favorites** list on a new `pinned` column; plus the **service-worker update check** and **create/cancel test coverage** added while chasing a stale-shell report; `make test` green (go test + vet + 298 Vitest + svelte-check 0 errors / 0 warnings). The Linux desktop binary **build was verified on an ARM Ubuntu 24 host** (git bundle → `make desktop`), after a first attempt failed because that work was still uncommitted and the bundle therefore carried the old darwin-only tree.
 - Next: **Phase 11 on-device checklist** (plan Phase 11 T7; branch `claude/eloquent-maxwell-bcugjn`, T1–T6 built and green): iOS Safari as a tab and as the installed PWA (swipe-back at each depth), Android Chrome hardware back (drawer → detail → leaves the app), the wails app with Settings → Layout = Compact; then merge. After that, as before: **Linux desktop container build + verification** (podman; `libgtk-3-dev` + `libwebkit2gtk-4.1-dev` + Go, `make web` then the desktop build, and exercise `install-desktop.sh` with a scratch `PREFIX=`); then the Windows port, desktop follow-ons (real app icon, startup-error surfacing in the window); then remaining v1 follow-ons (CLI client, SnippetsLab converter, named variable presets per machine — the follow-on named in Phase 10 T5). `feat/ui-refinements` is merged to main and two betas are published (`v0.2.0-beta.1`, and `v0.2.0-beta.2` as the CI validation build); cutting `v0.2.0` is the next release step whenever wanted
 
@@ -1404,3 +1404,37 @@ Spec: `docs/snp-design.md` · Plan: `docs/snp-implementation-plan.md`
   - **Not done:** the on-device checklist (iOS tab + installed PWA,
     Android hardware back, wails forced Compact). Recorded as the next
     step above.
+
+### 2026-09-13
+
+- 01:05 — **Auto-deploy on the dev box** (spec §7, "Auto-deploy from a
+  checkout"), on `main`. The tailnet server on this host now runs as a
+  systemd *user* unit from the checkout's `bin/snp` instead of the
+  nohup + `.pid` script, and `snp-update.timer` (5 min) redeploys when
+  `origin/main` moves: `deploy/update.sh` (keep old binary → ff → build →
+  backup with the **old** binary → restart → poll `/api/me` ≤60s →
+  rollback + `deploy/.last-failed`), `deploy/autoupdate.sh` (the timer
+  target), `deploy/user/` templates and `deploy/install-autoupdate.sh`.
+  README and CLAUDE.md updated.
+  - Verified on this host: install retired the nohup instance and the
+    unit came up healthy in ~4s; the first timer tick deployed end to end
+    in 16s CPU; a forced deploy against a 404 health URL rolled back
+    (binary swapped, schema version 4 unchanged so the live database was
+    kept, marker written, server active) in 25s wall including two 10s
+    waits.
+  - **Gotchas:** (1) a local `main` merely *ahead* of origin counted as
+    "moved" and triggered a deploy that reported origin's commit —
+    both scripts now require HEAD to be an ancestor of `origin/main`.
+    (2) `snp backup` opens the store and therefore runs migrations, so
+    the pre-deploy backup must be taken with the previous binary
+    (`bin/snp.prev`), after the build. (3) Every build rewrites the
+    tracked `web/dist/index.html`; `update.sh` resets it before the
+    clean-tree check and after the build, or `--ff-only` refuses.
+    (4) `git fetch` over SSH works inside a user service here (key
+    without passphrase), so no remote change was needed. (5) User
+    services start with a bare PATH; the oneshot sets one that includes
+    `~/go/bin`.
+  - **Caveat:** this checkout is also the working tree, so a feature
+    branch or uncommitted change pauses deploys until it is back on a
+    clean `main`; a dedicated clone would decouple that.
+

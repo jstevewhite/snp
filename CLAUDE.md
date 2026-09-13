@@ -72,7 +72,9 @@ internal/desktop/ desktop API bridge (spec §12; deliberately no wails import)
 internal/ai/     one-shot OpenAI-compatible snippet generator (spec §13)
 internal/starter/ bundled starter snippet pack, applied on demand (spec §5)
 web/             Svelte 5 SPA; web/dist is go:embed-ed by web/embed.go
-deploy/          systemd unit, install.sh, backup.sh (phase 8)
+deploy/          systemd unit, install.sh, backup.sh (phase 8); user-unit
+                 auto-deploy: update.sh, autoupdate.sh, install-autoupdate.sh,
+                 user/*.{service,timer} templates (spec §7)
 ```
 
 Dependency direction is one way: `cmd` → `server` → {`store`, `tsauth`};

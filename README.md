@@ -193,6 +193,50 @@ curl https://snp.<your-tailnet>.ts.net/api/me
 
 Open `https://snp.<your-tailnet>.ts.net` in a browser.
 
+## Auto-deploy from a checkout (developer box)
+
+For a machine that has the repository checked out and builds it locally,
+`deploy/install-autoupdate.sh` runs the server as a **systemd user unit**
+straight from `bin/snp` and redeploys whenever `origin/main` moves:
+
+```sh
+make build
+deploy/install-autoupdate.sh -n snip        # node name; default snp
+```
+
+The owner and other settings come from `~/.config/snp/config.toml`; an
+optional `deploy/.authkey` (`TS_AUTHKEY=tskey-...`) is read for the first
+join. Lingering must be on (`sudo loginctl enable-linger $USER`) so the
+units outlive the login session.
+
+Every five minutes (`-i` changes the interval) `snp-update.timer` fetches
+`origin/main`. When it is strictly ahead of the checkout, and the checkout
+is on `main` with a clean tree, `deploy/update.sh`:
+
+1. keeps the current binary as `bin/snp.prev`, fast-forwards, and runs
+   `make build` — the running server is untouched until both succeed;
+2. backs up the database with the *previous* binary into
+   `~/.local/share/snp/pre-deploy/` (last five kept);
+3. restarts `snp.service` and polls `https://<node>.<tailnet>.ts.net/api/me`
+   for up to 60 seconds — that endpoint answers 200 only to the owner, so
+   the check proves the tailnet join and the auth path, not just the port;
+4. on failure, puts the previous binary back, restores the backup if the
+   schema version changed (the failed database is kept alongside), resets
+   the checkout, restarts, and records the bad commit in
+   `deploy/.last-failed`. That commit is skipped until `origin/main` moves
+   on, and `snp-update.service` stays failed so it shows in
+   `systemctl --user --failed`.
+
+A checkout on another branch, with local commits ahead of origin, or with
+uncommitted changes is left alone. Point the installer at a dedicated
+clone if you edit in this one and want deploys to keep flowing.
+
+```sh
+deploy/update.sh -n snip -f          # deploy by hand (rebuild + restart)
+journalctl --user -u snp-update      # deploy history
+journalctl --user -u snp -f          # the server
+```
+
 ## Everyday use
 
 Create a snippet with a title and body, then add a language, folder, tags,
@@ -476,7 +520,8 @@ internal/desktop/        in-process API bridge (no wails import)
 internal/ai/             one-shot snippet generator
 internal/starter/        bundled starter snippet pack
 web/                     svelte app; web/dist is embedded
-deploy/                  snp.service, install.sh, backup.sh
+deploy/                  snp.service, install.sh, backup.sh; user-unit
+                         auto-deploy (update.sh, autoupdate.sh, user/)
 docs/                    design, plan, work log, screenshots
 Makefile                 build web, build binary, test
 ```
