@@ -1,68 +1,190 @@
 #!/usr/bin/env bash
-# snp — pull main, rebuild, and restart the running server.
+# snp — deploy origin/main to this host, with rollback.
 #
-# usage: deploy/update.sh
+# usage: deploy/update.sh [-n hostname] [-U health-url] [-t seconds]
+#                         [-s unit] [-k keep] [-f]
 #
-# The tailscale auth key comes from $TS_AUTHKEY, or from the gitignored
-# deploy/.authkey file (keep it chmod 600). The previous instance, if
-# .pid names a live process, gets SIGTERM and is waited for: tsnet holds
-# the state dir open while alive, so starting the new instance too early
-# just stalls it on startup. The new pid is written to .pid and the
-# server's output is appended to snp.out.
+#   -n hostname   tailnet node name; the health URL defaults to
+#                 https://<hostname>.<MagicDNS suffix>/api/me (default: snp)
+#   -U url        health URL to poll instead of the derived one
+#   -t seconds    how long to wait for the health check (default: 60)
+#   -s unit       systemd user unit that runs the server (default: snp.service)
+#   -k keep       pre-deploy database backups to keep (default: 5)
+#   -f            deploy even when HEAD already equals origin/main
+#                 (rebuild and restart)
+#
+# Runs from a checkout on `main` with a clean tree; the server is the
+# systemd user unit installed by deploy/install-autoupdate.sh, and the
+# health check must run from a device logged in as the owner, because
+# /api/me answers 200 only to the owner.
+#
+# Sequence:
+#   1. fetch; stop if HEAD == origin/main (unless -f)
+#   2. keep the current binary as bin/snp.prev
+#   3. fast-forward main and `make build` — the running server is not
+#      touched until both have succeeded
+#   4. back up the database with the *previous* binary (the new one
+#      would migrate the schema on open) into
+#      $SNP_STATE_DIR/pre-deploy/ (default ~/.local/share/snp/pre-deploy)
+#   5. restart the unit and poll the health URL
+#   6. on failure: stop the unit, put the previous binary back, restore
+#      the backup if the schema version changed (the failed database is
+#      kept alongside as snp.db.failed-<stamp>), reset the checkout to
+#      the previous commit, start again, and record the bad commit in
+#      deploy/.last-failed so deploy/autoupdate.sh skips it until
+#      origin/main moves on
+#
+# Exit status: 0 deployed (or nothing to do), 1 rolled back, 2 rollback
+# itself failed and the server needs manual attention.
 set -euo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
-PID_FILE=.pid
-LOG_FILE=snp.out
-HOSTNAME_=snip
-OWNER=jstevewhite@gmail.com
+HOSTNAME_=snp
+HEALTH_URL=""
+TIMEOUT=60
+UNIT=snp.service
+KEEP=5
+FORCE=0
 
-if [[ -z "${TS_AUTHKEY:-}" ]]; then
-  if [[ -f deploy/.authkey ]]; then
-    TS_AUTHKEY=$(<deploy/.authkey)
-  else
-    echo "update.sh: no auth key; set TS_AUTHKEY or create deploy/.authkey" >&2
-    exit 1
+usage() {
+  sed -n '2,/^set -euo/p' "${BASH_SOURCE[0]}" | sed '$d' | sed 's/^# \{0,1\}//'
+}
+
+while getopts 'n:U:t:s:k:fh' opt; do
+  case $opt in
+    n) HOSTNAME_=$OPTARG ;;
+    U) HEALTH_URL=$OPTARG ;;
+    t) TIMEOUT=$OPTARG ;;
+    s) UNIT=$OPTARG ;;
+    k) KEEP=$OPTARG ;;
+    f) FORCE=1 ;;
+    h) usage; exit 0 ;;
+    *) usage >&2; exit 2 ;;
+  esac
+done
+
+STATE_DIR=${SNP_STATE_DIR:-$HOME/.local/share/snp}
+BACKUP_DIR=$STATE_DIR/pre-deploy
+DB=$STATE_DIR/snp.db
+FAILED_MARK=deploy/.last-failed
+STUB=web/dist/index.html
+
+log()  { printf '==> %s\n' "$*"; }
+warn() { printf 'update.sh: %s\n' "$*" >&2; }
+die()  { warn "$@"; exit 2; }
+
+health_url() {
+  if [[ -n $HEALTH_URL ]]; then
+    printf '%s' "$HEALTH_URL"
+    return
   fi
-fi
-export TS_AUTHKEY
+  command -v tailscale >/dev/null ||
+    die "no -U and no tailscale CLI to derive the health URL from"
+  local suffix
+  suffix=$(tailscale status --json 2>/dev/null |
+    sed -n 's/.*"MagicDNSSuffix": *"\([^"]*\)".*/\1/p' | head -n 1)
+  [[ -n $suffix ]] || die "could not read the MagicDNS suffix from tailscale status"
+  printf 'https://%s.%s/api/me' "$HOSTNAME_" "$suffix"
+}
 
-echo "==> git pull"
-git pull --ff-only
-
-echo "==> make build"
-make build
-
-echo "==> stop previous instance"
-if [[ -f $PID_FILE ]]; then
-  pid=$(cat "$PID_FILE")
-  if kill -0 "$pid" 2>/dev/null; then
-    kill "$pid"
-    for _ in {1..120}; do
-      kill -0 "$pid" 2>/dev/null || break
-      sleep 0.5
-    done
-    if kill -0 "$pid" 2>/dev/null; then
-      echo "update.sh: pid $pid ignored SIGTERM for 60s, sending SIGKILL" >&2
-      kill -9 "$pid"
-      sleep 1
+# wait_healthy URL — poll until the URL answers 2xx or TIMEOUT elapses.
+wait_healthy() {
+  local deadline=$((SECONDS + TIMEOUT))
+  while (( SECONDS < deadline )); do
+    if curl -fsS -m 5 -o /dev/null "$1" 2>/dev/null; then
+      return 0
     fi
-  fi
-  rm -f "$PID_FILE"
+    sleep 2
+  done
+  return 1
+}
+
+# schema_version FILE — the store's schema version, or "" when sqlite3
+# is not installed (the caller then restores unconditionally).
+schema_version() {
+  command -v sqlite3 >/dev/null || return 0
+  sqlite3 -readonly "$1" \
+    'SELECT COALESCE(MAX(version), 0) FROM schema_version' 2>/dev/null || true
+}
+
+URL=$(health_url)
+
+# --- 1. sanity + fetch ------------------------------------------------
+branch=$(git symbolic-ref --short -q HEAD || true)
+[[ $branch == main ]] ||
+  die "checkout is on '${branch:-detached HEAD}', not main; refusing to deploy from it"
+git checkout -q -- "$STUB"   # every build rewrites the stub; that is not a change
+if [[ -n $(git status --porcelain --untracked-files=no) ]]; then
+  die "working tree has uncommitted changes; commit or stash them first"
+fi
+[[ -x bin/snp ]] || die "bin/snp is missing; run make build once first"
+
+prev=$(git rev-parse HEAD)
+log "git fetch origin main"
+git fetch -q origin main
+target=$(git rev-parse origin/main)
+if [[ $prev == "$target" && $FORCE == 0 ]]; then
+  log "already at ${prev:0:7}; nothing to deploy (use -f to rebuild anyway)"
+  exit 0
 fi
 
-echo "==> start new instance"
-nohup ./bin/snp serve --hostname "$HOSTNAME_" --owner "$OWNER" >>"$LOG_FILE" 2>&1 &
-echo $! >"$PID_FILE"
+# --- 2–3. keep the old binary, fast-forward, build --------------------
+cp -p bin/snp bin/snp.prev
+log "git merge --ff-only ${prev:0:7} → ${target:0:7}"
+git merge -q --ff-only origin/main
+log "make build"
+make build
+git checkout -q -- "$STUB"
 
-sleep 1
-pid=$(cat "$PID_FILE")
-if kill -0 "$pid" 2>/dev/null; then
-  echo "snp running: pid $pid (see $LOG_FILE)"
-else
-  echo "update.sh: snp exited immediately; last log lines:" >&2
-  tail -n 20 "$LOG_FILE" >&2
-  rm -f "$PID_FILE"
+# --- 4. back up the database with the previous binary -----------------
+stamp=$(date -u +%Y%m%dT%H%M%SZ)
+backup=$BACKUP_DIR/snp-$stamp-${prev:0:7}.db
+mkdir -p "$BACKUP_DIR"
+log "backup → $backup"
+./bin/snp.prev backup "$backup"
+ls -1t "$BACKUP_DIR"/snp-*.db 2>/dev/null | tail -n +"$((KEEP + 1))" | xargs -r rm -f
+
+# --- 5. restart and watch ---------------------------------------------
+log "systemctl --user restart $UNIT"
+systemctl --user restart "$UNIT"
+log "waiting up to ${TIMEOUT}s for $URL"
+if wait_healthy "$URL"; then
+  rm -f "$FAILED_MARK" bin/snp.prev
+  log "deployed ${target:0:7} ($(./bin/snp version 2>/dev/null || echo 'version unknown')); $URL healthy"
+  exit 0
+fi
+
+# --- 6. roll back -----------------------------------------------------
+warn "$URL not healthy within ${TIMEOUT}s; rolling back ${target:0:7} → ${prev:0:7}"
+printf '%s\n%s\n' "$target" "$stamp" >"$FAILED_MARK"
+systemctl --user stop "$UNIT" || true
+journalctl --user -u "$UNIT" -n 20 --no-pager >&2 || true
+
+mv -f bin/snp bin/snp.failed
+mv -f bin/snp.prev bin/snp
+
+if [[ -f $DB ]]; then
+  live=$(schema_version "$DB")
+  saved=$(schema_version "$backup")
+  if [[ -n $live && $live == "$saved" ]]; then
+    warn "schema version $live unchanged; keeping the live database"
+  else
+    warn "restoring $backup (live schema '${live:-?}', backup '${saved:-?}'); failed database kept as $DB.failed-$stamp"
+    mv -f "$DB" "$DB.failed-$stamp"
+    [[ -f $DB-wal ]] && mv -f "$DB-wal" "$DB.failed-$stamp-wal"
+    [[ -f $DB-shm ]] && mv -f "$DB-shm" "$DB.failed-$stamp-shm"
+    cp -p "$backup" "$DB"
+  fi
+fi
+
+git reset -q --keep "$prev" || warn "git reset --keep $prev failed; checkout left at ${target:0:7}"
+git checkout -q -- "$STUB"
+
+systemctl --user start "$UNIT"
+if wait_healthy "$URL"; then
+  warn "rolled back to ${prev:0:7}; ${target:0:7} is recorded in $FAILED_MARK and will be skipped until origin/main moves"
   exit 1
 fi
+warn "ROLLBACK FAILED: $URL still unhealthy on ${prev:0:7}; the server needs manual attention"
+exit 2

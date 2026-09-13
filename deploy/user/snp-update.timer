@@ -1,0 +1,12 @@
+# snp — polls origin/main via snp-update.service.
+# Template: deploy/install-autoupdate.sh substitutes @INTERVAL@.
+[Unit]
+Description=snp — check origin/main every @INTERVAL@
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=@INTERVAL@
+AccuracySec=30s
+
+[Install]
+WantedBy=timers.target

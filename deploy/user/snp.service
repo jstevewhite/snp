@@ -1,0 +1,27 @@
+# snp — systemd *user* unit, running the server straight from a checkout.
+# Template: deploy/install-autoupdate.sh substitutes @REPO@ and
+# @HOSTNAME@ and installs it under ~/.config/systemd/user/.
+#
+# This is the developer-box counterpart of deploy/snp.service (which
+# runs as a dedicated system user from /var/lib/snp). Owner and any other
+# settings come from ~/.config/snp/config.toml; TS_AUTHKEY comes from
+# the optional deploy/.authkey (TS_AUTHKEY=tskey-... form) and is only
+# needed for the first join.
+[Unit]
+Description=snp snippet manager (checkout at @REPO@)
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+WorkingDirectory=@REPO@
+EnvironmentFile=-@REPO@/deploy/.authkey
+ExecStart=@REPO@/bin/snp serve --hostname @HOSTNAME@
+Restart=on-failure
+RestartSec=5
+# The first start blocks in ts.Listen until the auth key is consumed or
+# the printed auth URL is approved; see deploy/snp.service.
+TimeoutStartSec=600
+TimeoutStopSec=60
+
+[Install]
+WantedBy=default.target

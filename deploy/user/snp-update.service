@@ -1,0 +1,14 @@
+# snp — oneshot run by snp-update.timer: deploy origin/main when it moves.
+# Template: deploy/install-autoupdate.sh substitutes @REPO@, @HOSTNAME@
+# and @HEALTH_ARG@ (empty, or "-U <url>").
+[Unit]
+Description=snp — deploy origin/main when it has moved
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=@REPO@
+# make build needs go, node and npm; user services start with a bare PATH.
+Environment=PATH=%h/go/bin:/usr/local/go/bin:/usr/local/bin:/usr/bin:/bin
+ExecStart=@REPO@/deploy/autoupdate.sh -n @HOSTNAME@ @HEALTH_ARG@

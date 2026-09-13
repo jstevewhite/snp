@@ -32,12 +32,11 @@ web/dist/*
 # only committed refs, so these are transport, not source)
 *.bundle
 
-# Runtime state from deploy/update.sh: server pid + log (snp.out is also
-# covered by *.out above)
-.pid
-snp.out
+# Deploy state: the commit a rolled-back deploy recorded (deploy/update.sh)
+deploy/.last-failed
 
-# Tailscale auth key for deploy/update.sh — secret, never commit
+# Tailscale auth key read by the snp user unit (deploy/user/snp.service)
+# — secret, never commit
 deploy/.authkey
 
 # macOS
