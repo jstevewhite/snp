@@ -27,6 +27,10 @@ remote=$(git rev-parse origin/main)
 if [[ $head == "$remote" ]]; then
   exit 0
 fi
+if ! git merge-base --is-ancestor "$head" "$remote"; then
+  echo "autoupdate: local main ${head:0:7} is ahead of or diverged from origin/main ${remote:0:7}; skipping"
+  exit 0
+fi
 
 if [[ -f $FAILED_MARK && $(head -n 1 "$FAILED_MARK") == "$remote" ]]; then
   echo "autoupdate: origin/main ${remote:0:7} failed its last deploy (see $FAILED_MARK); skipping until it moves" >&2

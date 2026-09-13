@@ -124,9 +124,13 @@ prev=$(git rev-parse HEAD)
 log "git fetch origin main"
 git fetch -q origin main
 target=$(git rev-parse origin/main)
-if [[ $prev == "$target" && $FORCE == 0 ]]; then
-  log "already at ${prev:0:7}; nothing to deploy (use -f to rebuild anyway)"
-  exit 0
+if [[ $prev == "$target" ]]; then
+  if [[ $FORCE == 0 ]]; then
+    log "already at ${prev:0:7}; nothing to deploy (use -f to rebuild anyway)"
+    exit 0
+  fi
+elif ! git merge-base --is-ancestor "$prev" "$target"; then
+  die "HEAD ${prev:0:7} is not behind origin/main ${target:0:7} (local commits ahead, or diverged); refusing to deploy"
 fi
 
 # --- 2–3. keep the old binary, fast-forward, build --------------------
@@ -151,7 +155,7 @@ systemctl --user restart "$UNIT"
 log "waiting up to ${TIMEOUT}s for $URL"
 if wait_healthy "$URL"; then
   rm -f "$FAILED_MARK" bin/snp.prev
-  log "deployed ${target:0:7} ($(./bin/snp version 2>/dev/null || echo 'version unknown')); $URL healthy"
+  log "deployed $(git rev-parse --short HEAD) ($(./bin/snp version 2>/dev/null || echo 'version unknown')); $URL healthy"
   exit 0
 fi
 
