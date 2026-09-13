@@ -1118,3 +1118,43 @@ func TestAIExplain(t *testing.T) {
 		t.Errorf("unconfigured: %d", w.Code)
 	}
 }
+
+// TestRequestLogCarriesLogin: the request log line names the caller.
+// The logging middleware sits outside authMW, and a context value set
+// downstream never reaches the outer request, so the login has to be
+// handed back through a holder the logger plants first. Rejected
+// logins are logged too, since that is when the field matters most.
+func TestRequestLogCarriesLogin(t *testing.T) {
+	const owner = "alice@example.com"
+	for _, tc := range []struct {
+		name, login, want string
+		code              int
+	}{
+		{"owner", owner, `login=alice@example.com`, http.StatusOK},
+		{"rejected", "bob@example.com", `login=bob@example.com`, http.StatusForbidden},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			s := newTestServer(t, owner, &fakeResolver{id: tsauth.Identity{Login: tc.login}})
+			s.log = slog.New(slog.NewTextHandler(&buf, nil))
+			w := doReq(t, s.Handler(), "GET", "/api/me", nil, "")
+			if w.Code != tc.code {
+				t.Fatalf("got %d, want %d", w.Code, tc.code)
+			}
+			line := buf.String()
+			if !strings.Contains(line, "msg=request") || !strings.Contains(line, tc.want) {
+				t.Errorf("request log %q should contain %q", line, tc.want)
+			}
+		})
+	}
+
+	// The SPA is served outside authMW: no identity, and the field stays
+	// empty rather than crashing.
+	var buf bytes.Buffer
+	s := newTestServer(t, owner, &fakeResolver{id: tsauth.Identity{Login: owner}})
+	s.log = slog.New(slog.NewTextHandler(&buf, nil))
+	doReq(t, s.Handler(), "GET", "/", nil, "")
+	if line := buf.String(); !strings.Contains(line, `login=""`) {
+		t.Errorf("static request log %q should have an empty login", line)
+	}
+}

@@ -34,7 +34,18 @@ var stateChanging = map[string]bool{"POST": true, "PUT": true, "DELETE": true}
 
 type ctxKey int
 
-const identityKey ctxKey = iota
+const (
+	identityKey ctxKey = iota
+	requestInfoKey
+)
+
+// requestInfo is planted in the context by loggingMW and filled in by
+// authMW. Context values only flow inward: authMW's r.WithContext copy
+// never reaches the logger, which holds the original request, so the
+// login has to travel back through a pointer the logger owns.
+type requestInfo struct {
+	login string
+}
 
 // Server serves the snp API and the embedded SPA.
 type Server struct {
@@ -106,13 +117,15 @@ func (s *Server) loggingMW(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 		rec := &statusRecorder{ResponseWriter: w}
+		info := &requestInfo{}
+		r = r.WithContext(context.WithValue(r.Context(), requestInfoKey, info))
 		next.ServeHTTP(rec, r)
 		s.log.Info("request",
 			"method", r.Method,
 			"path", r.URL.Path,
 			"status", rec.status,
 			"duration_ms", int(time.Since(start).Milliseconds()),
-			"login", identityFrom(r.Context()).Login,
+			"login", info.login,
 		)
 	})
 }
@@ -126,6 +139,11 @@ func (s *Server) authMW(next http.Handler) http.Handler {
 			s.log.Error("whois failed", "err", err, "remote", r.RemoteAddr)
 			writeError(w, http.StatusInternalServerError, "internal error")
 			return
+		}
+		// Record the login for the request log before the owner check,
+		// so a rejected caller is logged too.
+		if info, ok := r.Context().Value(requestInfoKey).(*requestInfo); ok {
+			info.login = id.Login
 		}
 		if s.owner != "" && id.Login != s.owner {
 			writeError(w, http.StatusForbidden, "forbidden")
