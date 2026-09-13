@@ -192,7 +192,9 @@ present — see `desktop.ts`; throws `ApiError`), `query.ts` (the `tag:` /
 (MiniSearch, updated incrementally on merge), `online.ts`, `desktop.ts`
 (desktop-shell detection + bridge access; inert in browsers), `time.ts`
 (display formatting for the stored timestamps), `keys.ts` (platform-aware
-shortcut labels), `clipboard.ts` (clipboard write with a webview fallback),
+shortcut labels and matchers), `commands.ts` (the command-palette `Command`
+shape and its pure filter; `App.svelte` builds the list, `CommandPalette.svelte`
+shows it), `clipboard.ts` (clipboard write with a webview fallback),
 `sw.ts` (service-worker update check).
 Components are `.svelte` files alongside them. Each module has a colocated
 `*.test.ts` run by Vitest under jsdom.

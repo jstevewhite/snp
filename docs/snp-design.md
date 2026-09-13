@@ -659,6 +659,25 @@ model** instead: one screen at a time, with the list as the root.
   cursor to change its label. The folder-rename inline input answers Enter
   (commit) and Esc (cancel), the pane dividers take focus and answer the
   arrow keys, and forms save through their buttons.
+- **Command palette**: `Cmd/Ctrl+Shift+P` (matched on the physical P key,
+  so Shift-altered layouts still work) toggles a commands-only palette
+  over the app; snippet *finding* stays in the search box. It is a
+  filter field over a list: arrows move with wrapping, `Enter` runs,
+  `Escape` or the scrim closes. The list is built from the app's existing
+  actions — New / Edit / Copy / Favorite / Delete / Show body for the
+  selected snippet, New folder, Focus search, Resync, Full resync, Add
+  starter snippets, and one entry per Layout mode. Every command stays
+  listed; one that cannot run now is greyed with the reason where its
+  shortcut hint would be (`Offline`, `Select a snippet first`, `Body
+  hidden`, `Current`), so the palette also explains itself. Snippet
+  commands are dropped while the editor is open so nothing can clobber an
+  unsaved edit from the keyboard. Delete and Full resync go through the
+  usual confirm dialogs. The shortcut is ignored while a dialog is open,
+  and while the palette is open the global handler sees no keys, so
+  Escape there never reaches the search workflow. `lib/commands.ts`
+  holds the `Command` shape and the pure filter (every token must match,
+  word-prefix matches rank first); `lib/CommandPalette.svelte` is the
+  overlay; `App.svelte` assembles the list.
 - **Timestamps** are simplified, with the exact value on hover: the header
   reads "Synced 2 minutes ago" and each list row and the detail footer a
   short calendar date ("Sep 11", with the year when it is not the current

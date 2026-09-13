@@ -26,3 +26,17 @@ export function searchShortcutLabel(): string {
 export function isSearchShortcut(e: KeyboardEvent): boolean {
   return (e.metaKey || e.ctrlKey) && !e.altKey && e.key.toLowerCase() === 'k'
 }
+
+/** The command-palette shortcut as it should be shown to the user. */
+export function paletteShortcutLabel(): string {
+  return isMac() ? '⇧⌘P' : 'Ctrl Shift P'
+}
+
+/**
+ * True when the event is the command-palette shortcut (Cmd+Shift+P on
+ * macOS, Ctrl+Shift+P elsewhere). Matched on the physical key, since
+ * Shift changes `key` on some layouts; Alt is excluded as for search.
+ */
+export function isPaletteShortcut(e: KeyboardEvent): boolean {
+  return (e.metaKey || e.ctrlKey) && e.shiftKey && !e.altKey && e.code === 'KeyP'
+}

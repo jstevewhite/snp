@@ -1262,3 +1262,97 @@ describe('App (compact layout)', () => {
     unmount()
   })
 })
+
+/**
+ * Command palette (spec §6 "Keyboard"): Cmd/Ctrl+Shift+P lists the
+ * app's actions; disabled ones stay visible with the reason.
+ */
+describe('App (command palette)', () => {
+  beforeEach(async () => {
+    await indexedDB.deleteDatabase('snp')
+    localStorage.removeItem('snp.version')
+    localStorage.removeItem(LAYOUT_STORAGE_KEY)
+  })
+
+  afterEach(() => {
+    cleanup()
+    Reflect.deleteProperty(navigator, 'clipboard')
+    Reflect.deleteProperty(window.history, 'state')
+    vi.restoreAllMocks()
+    vi.unstubAllGlobals()
+  })
+
+
+  const paletteKey = { key: 'P', code: 'KeyP', ctrlKey: true, shiftKey: true }
+  const palette = (): HTMLElement | null => screen.queryByRole('dialog', { name: 'Commands' })
+  const command = (label: string): HTMLElement =>
+    screen.getByText(label, { selector: '.palette .label' }).closest('[role="option"]') as HTMLElement
+
+  it('opens the command palette on the shortcut and closes it on Escape', async () => {
+    stubFetch()
+    const { unmount } = render(App)
+    await waitFor(() => expect(screen.getByText('Caddyfile')).toBeDefined())
+    expect(palette()).toBeNull()
+
+    await fireEvent.keyDown(window, paletteKey)
+    expect(palette()).not.toBeNull()
+    expect(document.activeElement).toBe(screen.getByRole('combobox', { name: 'Command' }))
+
+    await fireEvent.keyDown(screen.getByRole('combobox', { name: 'Command' }), { key: 'Escape' })
+    await waitFor(() => expect(palette()).toBeNull())
+    // Escape did not leak into the search workflow: the query is untouched.
+    expect((screen.getByLabelText('Search snippets') as HTMLInputElement).value).toBe('')
+    unmount()
+  })
+
+  it('runs New snippet from the palette', async () => {
+    stubFetch()
+    const { unmount } = render(App)
+    await waitFor(() => expect(screen.getByText('Caddyfile')).toBeDefined())
+
+    await fireEvent.keyDown(window, paletteKey)
+    const input = screen.getByRole('combobox', { name: 'Command' })
+    await fireEvent.input(input, { target: { value: 'new snip' } })
+    await fireEvent.keyDown(input, { key: 'Enter' })
+    await waitFor(() => expect(screen.getByLabelText('Title')).toBeDefined())
+    expect(palette()).toBeNull()
+    unmount()
+  })
+
+  it('disables snippet commands without a selection and copies once one is made', async () => {
+    stubFetch()
+    const writeText = stubClipboard()
+    const { unmount } = render(App)
+    await waitFor(() => expect(screen.getByText('Caddyfile')).toBeDefined())
+
+    await fireEvent.keyDown(window, paletteKey)
+    expect(command('Copy snippet').getAttribute('aria-disabled')).toBe('true')
+    expect(screen.getAllByText('Select a snippet first').length).toBeGreaterThan(0)
+    await fireEvent.keyDown(screen.getByRole('combobox', { name: 'Command' }), { key: 'Escape' })
+    await waitFor(() => expect(palette()).toBeNull())
+
+    await fireEvent.click(screen.getByText('Caddyfile'))
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Caddyfile' })).toBeDefined())
+    await fireEvent.keyDown(window, paletteKey)
+    await fireEvent.click(command('Copy snippet'))
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith('http://localhost:8080'))
+    expect(palette()).toBeNull()
+    unmount()
+  })
+
+  it('greys out the writes in the palette while offline', async () => {
+    stubFetch()
+    const { unmount } = render(App)
+    await waitFor(() => expect(screen.getByText('Caddyfile')).toBeDefined())
+    window.dispatchEvent(new Event('offline'))
+    await waitFor(() => expect(screen.getByText('offline')).toBeDefined())
+
+    await fireEvent.keyDown(window, paletteKey)
+    expect(command('New snippet').getAttribute('aria-disabled')).toBe('true')
+    expect(command('New folder').getAttribute('aria-disabled')).toBe('true')
+    expect(screen.getAllByText('Offline').length).toBeGreaterThan(0)
+    // Focusing search is not a write, so it stays runnable.
+    expect(command('Focus search').getAttribute('aria-disabled')).toBeNull()
+    unmount()
+  })
+})

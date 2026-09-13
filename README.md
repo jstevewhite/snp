@@ -269,6 +269,14 @@ snippet's title; they collect under **Favorites**, above the folders.
 arrow keys move through the results, `Enter` copies the selected snippet,
 and `Escape` clears the query.
 
+`Cmd/Ctrl+Shift+P` opens the **command palette**: type to filter, arrows
+to move, `Enter` to run. It lists everything the app can do from the
+keyboard — new, edit, copy, favorite, delete and reveal for the selected
+snippet, new folder, focus search, resync, full resync, the starter pack,
+and the layout modes. Commands that cannot run right now stay listed,
+greyed, with the reason beside them (offline, nothing selected). The
+settings sheet shows both shortcuts.
+
 **Settings → Add starter snippets** adds a sample config, a template, and
 some everyday commands. Applying the starter pack again overwrites edits
 to its bundled snippets and restores any you deleted.

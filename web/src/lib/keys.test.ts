@@ -1,5 +1,11 @@
 import { afterEach, describe, expect, it } from 'vitest'
-import { isMac, isSearchShortcut, searchShortcutLabel } from './keys'
+import {
+  isMac,
+  isPaletteShortcut,
+  isSearchShortcut,
+  paletteShortcutLabel,
+  searchShortcutLabel,
+} from './keys'
 
 function stubPlatform(value: string): void {
   Object.defineProperty(navigator, 'platform', { value, configurable: true })
@@ -47,5 +53,27 @@ describe('isSearchShortcut', () => {
     expect(isSearchShortcut(key({ key: 'k' }))).toBe(false)
     expect(isSearchShortcut(key({ key: 'j', ctrlKey: true }))).toBe(false)
     expect(isSearchShortcut(key({ key: 'k', ctrlKey: true, altKey: true }))).toBe(false)
+  })
+})
+
+describe('isPaletteShortcut', () => {
+  it('matches Cmd+Shift+P and Ctrl+Shift+P by physical key', () => {
+    expect(isPaletteShortcut(key({ metaKey: true, shiftKey: true, code: 'KeyP', key: 'P' }))).toBe(true)
+    expect(isPaletteShortcut(key({ ctrlKey: true, shiftKey: true, code: 'KeyP', key: 'p' }))).toBe(true)
+  })
+
+  it('needs Shift and rejects Alt and other keys', () => {
+    expect(isPaletteShortcut(key({ ctrlKey: true, code: 'KeyP', key: 'p' }))).toBe(false)
+    expect(isPaletteShortcut(key({ ctrlKey: true, shiftKey: true, altKey: true, code: 'KeyP', key: 'P' }))).toBe(false)
+    expect(isPaletteShortcut(key({ ctrlKey: true, shiftKey: true, code: 'KeyK', key: 'K' }))).toBe(false)
+  })
+})
+
+describe('paletteShortcutLabel', () => {
+  it('names the platform modifier', () => {
+    stubPlatform('Linux x86_64')
+    expect(paletteShortcutLabel()).toBe('Ctrl Shift P')
+    stubPlatform('MacIntel')
+    expect(paletteShortcutLabel()).toBe('⇧⌘P')
   })
 })

@@ -1305,6 +1305,94 @@ button.danger {
   cursor: default;
 }
 
+/* Command palette (spec §6 keyboard): the dialog shell, wider, with a
+   filter field and a keyboard-driven list. Rows the app cannot run right
+   now stay listed, greyed, with the reason where the shortcut would be. */
+/* Specific enough to beat the app-wide button styling: the scrim must
+   stay transparent or it hides the dimmed page behind the panel. */
+.modal-backdrop > button.palette-scrim {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  box-shadow: none;
+  cursor: default;
+}
+
+.modal.palette {
+  position: relative;
+  width: min(520px, calc(100vw - 48px));
+  padding: 10px 10px 8px;
+  gap: 8px;
+}
+
+.palette input {
+  width: 100%;
+  box-sizing: border-box;
+  font-size: calc(15px * var(--text-scale, 1));
+}
+
+.palette-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: min(50vh, 420px);
+  overflow-y: auto;
+}
+
+.palette-list li {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 7px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  color: var(--text-h);
+}
+
+.palette-list li .label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.palette-list li.active {
+  background: var(--bg-alt);
+}
+
+.palette-list li.disabled {
+  color: var(--text);
+  opacity: 0.55;
+  cursor: default;
+}
+
+.palette-list li .reason {
+  font-size: calc(12px * var(--text-scale, 1));
+  color: var(--text);
+}
+
+.palette-list kbd,
+.settings .panel .keys kbd {
+  font: inherit;
+  font-size: calc(11px * var(--text-scale, 1));
+  padding: 1px 6px;
+  border: 1px solid var(--border);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  background: var(--bg-alt);
+  color: var(--text);
+  white-space: nowrap;
+}
+
+.palette-empty {
+  margin: 0;
+  padding: 8px 10px;
+  color: var(--text);
+}
+
 /* ---- form: Ask-AI (spec §13) ---- */
 
 .form .ai {

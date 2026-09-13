@@ -14,7 +14,8 @@
     removeSnippet,
     type SnpDB,
   } from './lib/db'
-  import { isSearchShortcut } from './lib/keys'
+  import type { Command } from './lib/commands'
+  import { isPaletteShortcut, isSearchShortcut, paletteShortcutLabel, searchShortcutLabel } from './lib/keys'
   import {
     browserHistory,
     createCompactNav,
@@ -68,6 +69,7 @@
   import SnippetForm from './lib/SnippetForm.svelte'
   import SnippetList from './lib/SnippetList.svelte'
   import TagList from './lib/TagList.svelte'
+  import CommandPalette from './lib/CommandPalette.svelte'
 
   /** Sync cadence (spec §6): every 5 minutes while open. */
   const SYNC_INTERVAL_MS = 300_000
@@ -855,6 +857,126 @@
   $effect(() => () => clearTimeout(noticeTimer))
 
   /**
+   * Jump to the search field from anywhere. In compact mode that means
+   * back to the list in one history move first, then focus once the list
+   * is visible again (a hidden field cannot take focus).
+   */
+  function jumpToSearch(): void {
+    if (compact && navState.depth > 0) {
+      nav.toRoot()
+      void settle().then(focusSearch)
+    } else {
+      focusSearch()
+    }
+  }
+
+  // --- Command palette (spec §6 keyboard) ---
+
+  let paletteOpen = $state(false)
+
+  /**
+   * The palette's commands, built from the actions above. Every command
+   * stays listed; the ones that cannot run right now carry the reason
+   * (offline, nothing selected), so the palette also answers "why is this
+   * greyed out". Snippet commands are dropped while the editor is open so
+   * nothing can clobber an unsaved edit from the keyboard.
+   */
+  const commands = $derived.by((): Command[] => {
+    const s = selectedSnippet
+    const offline = online ? undefined : 'Offline'
+    const needSelection = s === null ? 'Select a snippet first' : undefined
+    const list: Command[] = []
+    if (!editing) {
+      list.push(
+        { id: 'new', label: 'New snippet', group: 'snippet', disabled: offline, run: startCreate },
+        {
+          id: 'edit',
+          label: 'Edit snippet',
+          group: 'snippet',
+          disabled: needSelection ?? offline,
+          run: () => void startEdit(),
+        },
+        {
+          id: 'copy',
+          label: 'Copy snippet',
+          group: 'snippet',
+          disabled:
+            needSelection ?? (copyTextForSelection() === null ? 'Body hidden' : undefined),
+          run: () => void copyCurrentSelection(),
+        },
+        {
+          id: 'pin',
+          label: s?.pinned === true ? 'Unfavorite snippet' : 'Favorite snippet',
+          group: 'snippet',
+          disabled: needSelection ?? offline,
+          run: () => {
+            if (s !== null) void setPinned(s.id, s.pinned !== true)
+          },
+        },
+        {
+          id: 'delete',
+          label: 'Delete snippet',
+          group: 'snippet',
+          disabled: needSelection ?? offline,
+          run: () => {
+            if (s !== null) dialog = { kind: 'snippetDelete', id: s.id }
+          },
+        },
+      )
+      if (s !== null && s.is_sensitive && revealed[s.id] === undefined) {
+        list.push({
+          id: 'reveal',
+          label: 'Show body',
+          group: 'snippet',
+          disabled: offline,
+          run: () => void reveal(s.id),
+        })
+      }
+    }
+    list.push(
+      {
+        id: 'folder',
+        label: 'New folder',
+        group: 'folder',
+        disabled: offline,
+        run: () => promptFolder(selectedFolderId),
+      },
+      {
+        id: 'search',
+        label: 'Focus search',
+        group: 'app',
+        shortcut: searchShortcutLabel(),
+        run: jumpToSearch,
+      },
+      {
+        id: 'resync',
+        label: 'Resync',
+        group: 'app',
+        disabled: offline ?? (busy ? 'Sync in progress' : undefined),
+        run: tick,
+      },
+      { id: 'full-resync', label: 'Full resync', group: 'app', run: promptResync },
+      {
+        id: 'starter',
+        label: 'Add starter snippets',
+        group: 'app',
+        disabled: offline ?? (seedBusy ? 'Adding…' : undefined),
+        run: () => void addStarterSnippets(),
+      },
+    )
+    for (const l of LAYOUTS) {
+      list.push({
+        id: `layout-${l.id}`,
+        label: `Layout: ${l.label}`,
+        group: 'app',
+        disabled: layout === l.id ? 'Current' : undefined,
+        run: () => (layout = l.id),
+      })
+    }
+    return list
+  })
+
+  /**
    * Global keydown: the dialog shortcuts while a dialog is open, otherwise
    * the search workflow. Arrows and Enter are handled only while the search
    * field holds focus, so Enter in the snippet editor is never hijacked
@@ -866,17 +988,18 @@
       else if (e.key === 'Enter' && dialog.kind === 'resync') confirmDialog()
       return
     }
+    if (isPaletteShortcut(e)) {
+      e.preventDefault()
+      paletteOpen = !paletteOpen
+      return
+    }
+    // The palette owns the keyboard while open (its own handler answers
+    // the arrows, Enter and Escape); nothing below may see those keys.
+    if (paletteOpen) return
     if (isSearchShortcut(e)) {
       // Also stops Firefox focusing its own search bar on Ctrl+K.
       e.preventDefault()
-      if (compact && navState.depth > 0) {
-        // Back to the list in one history move, then focus once the list
-        // is visible again (a hidden field cannot take focus).
-        nav.toRoot()
-        void settle().then(focusSearch)
-      } else {
-        focusSearch()
-      }
+      jumpToSearch()
       return
     }
     if (compact && e.key === 'Escape' && document.activeElement !== searchEl) {
@@ -1032,6 +1155,9 @@
               <span>Two-line titles in the list</span>
             </label>
             <hr />
+            <p class="note keys">
+              <kbd>{searchShortcutLabel()}</kbd> search · <kbd>{paletteShortcutLabel()}</kbd> commands
+            </p>
             <div class="actions">
               <button onclick={() => void addStarterSnippets()} disabled={!online || seedBusy}>
                 {seedBusy ? 'Adding…' : 'Add starter snippets'}
@@ -1269,5 +1395,9 @@
         </div>
       </div>
     </div>
+  {/if}
+
+  {#if paletteOpen}
+    <CommandPalette {commands} onclose={() => (paletteOpen = false)} />
   {/if}
 </div>
