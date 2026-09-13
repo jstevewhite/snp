@@ -32,5 +32,13 @@ web/dist/*
 # only committed refs, so these are transport, not source)
 *.bundle
 
+# Runtime state from deploy/update.sh: server pid + log (snp.out is also
+# covered by *.out above)
+.pid
+snp.out
+
+# Tailscale auth key for deploy/update.sh — secret, never commit
+deploy/.authkey
+
 # macOS
 .DS_Store
