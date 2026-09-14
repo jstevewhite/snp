@@ -513,9 +513,9 @@ model** instead: one screen at a time, with the list as the root.
   rotation switches without a reload) and to wide otherwise. Wide and
   Compact are plain overrides that ignore the viewport entirely; there is
   no "compact unless the window is huge" middle ground. The wails desktop
-  window enforces a 900px minimum width, so Auto never trips there, but a
-  manual Compact applies to it like anywhere else — same SPA, same code,
-  no per-platform special case.
+  window's minimum width is 400px — below the breakpoint — so narrowing
+  it switches to compact under Auto, and a manual Compact applies to it
+  like anywhere else — same SPA, same code, no per-platform special case.
 - **Screens.** The **list** is the root: the search box and *New snippet*
   at the top, the result list below, full width. Tapping a result pushes
   the **detail** screen — the same snippet view, or the editor for

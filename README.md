@@ -328,7 +328,7 @@ The desktop app does not sync with a remote tailnet server.
 - **Configuration matches the CLI** (`--config`, `--state-dir`,
   `--ai-key`, `SNP_*`, …), except that no `owner` is required;
   `--hostname` and `--owner` are accepted and ignored.
-- **A plain native window.** 1150×760 by default (minimum 900×560),
+- **A plain native window.** 1150×760 by default (minimum 400×560, narrow enough for the compact layout),
   themed before the first paint, with in-app dialogs where the webview
   has no `prompt`/`confirm`.
 

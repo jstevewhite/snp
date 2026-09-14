@@ -167,10 +167,12 @@ func run(cfg config.Config, log *slog.Logger) error {
 
 	app := desktop.NewApp(handler, log)
 	opts := &options.App{
-		Title:     "snp",
-		Width:     1150,
-		Height:    760,
-		MinWidth:  900,
+		Title:  "snp",
+		Width:  1150,
+		Height: 760,
+		// Below the SPA's 720px compact breakpoint (web/src/lib/layout.ts),
+		// so a narrowed window gets the compact layout under Auto (spec §6).
+		MinWidth:  400,
 		MinHeight: 560,
 		// The SPA theme background (#0f172a) behind the first paint.
 		BackgroundColour: options.NewRGB(15, 23, 42),

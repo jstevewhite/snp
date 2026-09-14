@@ -1468,3 +1468,14 @@ Spec: `docs/snp-design.md` · Plan: `docs/snp-implementation-plan.md`
     keeps the check at zero. (3) The worktree-isolation guard refuses
     compound shell lines that mention git; keep git invocations plain.
 
+
+### 2026-09-14
+
+- **Desktop minimum width below the compact breakpoint.** v0.2.0's wails
+  window set `MinWidth: 900`, above the SPA's `(max-width: 719px)`
+  compact breakpoint, so Auto could never reach compact on the desktop
+  (spec §6 recorded this as intended; it is not what we want). Now
+  `MinWidth: 400` — the narrowest width the Phase 11 browser check
+  confirmed has no horizontal overflow. Spec §6 and README updated.
+  `make desktop` + `go vet` clean; resizing the window across 720px
+  still needs a by-hand check in the running app.
