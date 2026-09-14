@@ -764,9 +764,14 @@ server runs from `bin/snp` as a user unit; the timer runs
 `deploy/autoupdate.sh`, which fetches and hands off to `deploy/update.sh`
 only when `origin/main` is strictly ahead of a clean checkout on `main`.
 
-`update.sh` keeps the old binary, fast-forwards and builds first, then
-backs up the database **with the old binary** (a new binary migrates on
-open) into `state_dir/pre-deploy/`, restarts the unit, and polls
+`update.sh` takes the node name from the installed unit's `--hostname`
+(a `-n` flag overrides; `snp` only when there is no unit), and before
+touching anything probes the health URL against the server already
+running — a URL that does not answer 200 then is a wrong URL, and the
+script refuses rather than rolling a healthy server back later. It then
+keeps the old binary, fast-forwards and builds first, backs up the
+database **with the old binary** (a new binary migrates on open) into
+`state_dir/pre-deploy/`, restarts the unit, and polls
 `https://<node>.<tailnet>/api/me` for up to 60s from the owner's
 identity. On failure it restores the old binary, restores the backup only
 if `schema_version` changed (the failed database is kept alongside),

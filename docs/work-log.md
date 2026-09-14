@@ -1494,3 +1494,21 @@ Spec: `docs/snp-design.md` · Plan: `docs/snp-implementation-plan.md`
   if it still does not switch, the next thing to verify is that the
   Layout setting is Auto rather than Wide, then whether `resize` fires
   at all in that webview (`--debug` + a `pageLog` on resize).
+- **Auto-deploy: hand runs rolled back healthy servers.** Two of today's
+  four deploys (13:57, 14:24) rolled back although the new server was up
+  in ~2s and serving the browser: the journal shows zero `/api/me`
+  probes reaching either instance, while the two successful deploys
+  each show one right after startup. Cause: `deploy/update.sh` defaulted
+  the node name to `snp` when run without `-n`, so the check polled
+  `https://snp.<tailnet>/api/me` (no such node → curl 000) for 60s and
+  "failed". The timer was unaffected because the installer bakes `-n
+  snip` into its unit. Fix: `update.sh` now reads the node name from the
+  installed unit's `ExecStart --hostname` (flag still overrides, `snp`
+  only with no unit), and preflights the health URL against the server
+  already running — a URL that does not answer 200 before the deploy is
+  a wrong URL, so it refuses up front instead of rolling back later
+  (skipped, with a warning, when the unit is not running). README, spec
+  §7, the installer's hint updated; the stale `deploy/.last-failed` and
+  `bin/snp.failed` removed. Verified: `update.sh -f` with no `-n`
+  derives `snip` and deploys healthy; `-U` with the wrong host is
+  refused before any restart.

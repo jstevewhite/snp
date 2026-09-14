@@ -5,7 +5,8 @@
 #                         [-s unit] [-k keep] [-f]
 #
 #   -n hostname   tailnet node name; the health URL defaults to
-#                 https://<hostname>.<MagicDNS suffix>/api/me (default: snp)
+#                 https://<hostname>.<MagicDNS suffix>/api/me. Default:
+#                 the --hostname the installed unit runs with, else snp
 #   -U url        health URL to poll instead of the derived one
 #   -t seconds    how long to wait for the health check (default: 60)
 #   -s unit       systemd user unit that runs the server (default: snp.service)
@@ -40,7 +41,7 @@ set -euo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
-HOSTNAME_=snp
+HOSTNAME_=""   # resolved by health_url: -n, else the unit's --hostname, else snp
 HEALTH_URL=""
 TIMEOUT=60
 UNIT=snp.service
@@ -74,10 +75,23 @@ log()  { printf '==> %s\n' "$*"; }
 warn() { printf 'update.sh: %s\n' "$*" >&2; }
 die()  { warn "$@"; exit 2; }
 
+# The node name the unit actually runs with (its ExecStart --hostname),
+# so a hand run without -n checks the right host. A wrong default here
+# is not harmless: the probe never reaches the server and a healthy
+# deploy gets rolled back.
+unit_hostname() {
+  systemctl --user show "$UNIT" -p ExecStart --value 2>/dev/null |
+    sed -n 's/.*--hostname[= ]\([^ ;}]*\).*/\1/p' | head -n 1
+}
+
 health_url() {
   if [[ -n $HEALTH_URL ]]; then
     printf '%s' "$HEALTH_URL"
     return
+  fi
+  if [[ -z $HOSTNAME_ ]]; then
+    HOSTNAME_=$(unit_hostname)
+    [[ -n $HOSTNAME_ ]] || HOSTNAME_=snp
   fi
   command -v tailscale >/dev/null ||
     die "no -U and no tailscale CLI to derive the health URL from"
@@ -119,6 +133,18 @@ if [[ -n $(git status --porcelain --untracked-files=no) ]]; then
   die "working tree has uncommitted changes; commit or stash them first"
 fi
 [[ -x bin/snp ]] || die "bin/snp is missing; run make build once first"
+
+# Preflight the health check against the server that is running now. A
+# URL that does not answer 200 before the deploy is a wrong URL, not a
+# broken deploy, and would only turn into a rollback of a healthy
+# server sixty seconds from now. Skipped when the unit is not running,
+# since then there is nothing to compare against.
+if systemctl --user is-active --quiet "$UNIT"; then
+  curl -fsS -m 5 -o /dev/null "$URL" 2>/dev/null ||
+    die "health check $URL does not answer 200 against the running server; fix -n/-U before deploying"
+else
+  warn "$UNIT is not running; skipping the health-check preflight"
+fi
 
 prev=$(git rev-parse HEAD)
 log "git fetch origin main"

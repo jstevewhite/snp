@@ -232,10 +232,16 @@ uncommitted changes is left alone. Point the installer at a dedicated
 clone if you edit in this one and want deploys to keep flowing.
 
 ```sh
-deploy/update.sh -n snip -f          # deploy by hand (rebuild + restart)
+deploy/update.sh -f                  # deploy by hand (rebuild + restart)
 journalctl --user -u snp-update      # deploy history
 journalctl --user -u snp -f          # the server
 ```
+
+A hand run takes the node name from the installed unit, so `-n` is only
+for a checkout with no unit. Before restarting anything, the script
+probes the health URL against the server that is already running and
+refuses to continue if it does not answer 200: a wrong URL would
+otherwise look like a failed deploy and roll a healthy server back.
 
 ## Everyday use
 

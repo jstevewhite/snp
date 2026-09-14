@@ -112,5 +112,6 @@ snp.service and snp-update.timer are enabled for $USER.
   journalctl --user -u snp-update        # deploy history
   systemctl --user --failed              # a rolled-back deploy shows here
 
-Deploy by hand:  $REPO/deploy/update.sh -n $HOSTNAME_ ${health_arg}
+Deploy by hand:  $REPO/deploy/update.sh -f ${health_arg}
+(it reads the node name from the installed unit, so -n is not needed)
 MSG
