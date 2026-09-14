@@ -509,8 +509,10 @@ model** instead: one screen at a time, with the list as the root.
   in localStorage (`snp.layout`; Auto is the absence of the key, like
   `snp.theme`) and is re-applied before first paint. Auto resolves to
   compact when the viewport is narrower than **720px**
-  (`(max-width: 719px)`, tracked live with `matchMedia`, so a resize or a
-  rotation switches without a reload) and to wide otherwise. Wide and
+  (`(max-width: 719px)`, tracked live with `matchMedia` and re-read on
+  every window `resize` and root-element size change, since an embedded
+  webview does not always deliver the media-query change event, so a
+  resize or a rotation switches without a reload) and to wide otherwise. Wide and
   Compact are plain overrides that ignore the viewport entirely; there is
   no "compact unless the window is huge" middle ground. The wails desktop
   window's minimum width is 400px — below the breakpoint — so narrowing

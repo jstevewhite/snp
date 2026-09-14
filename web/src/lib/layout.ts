@@ -35,6 +35,16 @@ export function resolveLayout(setting: Layout, narrow: boolean): LayoutMode {
  * Without matchMedia (jsdom, an old webview) the answer is "not narrow"
  * once, so the wide layout is the default and compact must be forced
  * through the setting. Returns the unsubscribe.
+ *
+ * The MediaQueryList `change` event is the primary signal, but an
+ * embedded webview does not always deliver it on a native window
+ * resize (the wails desktop shell stayed three-pane when dragged under
+ * the breakpoint, while the same bundle in a browser switched). So the
+ * match is also re-read on every window `resize` event and on every
+ * root-element size change seen by a ResizeObserver, and the callback
+ * fires only when the answer actually flips. Reading `matches` evaluates
+ * the query against the current viewport, so whichever signal arrives
+ * first reports the switch and the rest are no-ops.
  */
 export function watchNarrow(cb: (narrow: boolean) => void): () => void {
   if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
@@ -42,10 +52,26 @@ export function watchNarrow(cb: (narrow: boolean) => void): () => void {
     return () => {}
   }
   const mql = window.matchMedia(COMPACT_MEDIA)
-  cb(mql.matches)
-  const onChange = (e: MediaQueryListEvent): void => cb(e.matches)
-  mql.addEventListener('change', onChange)
-  return () => mql.removeEventListener('change', onChange)
+  let last = mql.matches
+  cb(last)
+  const check = (): void => {
+    const now = mql.matches
+    if (now === last) return
+    last = now
+    cb(now)
+  }
+  mql.addEventListener('change', check)
+  window.addEventListener('resize', check)
+  let observer: ResizeObserver | null = null
+  if (typeof ResizeObserver === 'function' && document.documentElement) {
+    observer = new ResizeObserver(check)
+    observer.observe(document.documentElement)
+  }
+  return () => {
+    mql.removeEventListener('change', check)
+    window.removeEventListener('resize', check)
+    observer?.disconnect()
+  }
 }
 
 export type Screen = 'list' | 'detail'

@@ -535,7 +535,10 @@ Decisions fixed up front (spec §6), so they are not re-litigated per task:
     `narrow`.
   - `watchNarrow(cb: (narrow: boolean) => void): () => void` — wraps
     `window.matchMedia(COMPACT_MEDIA)`, calls `cb` once with the current
-    value and again on every `change`, returns an unsubscribe. When
+    value and again whenever it flips — re-read on the `change` event, on
+    every window `resize` and on every root-element `ResizeObserver`
+    notification, because the wails webview did not deliver `change` on
+    a native window resize — and returns an unsubscribe. When
     `matchMedia` is missing (jsdom, the App tests) it calls `cb(false)` and
     returns a no-op, so the wide layout is the test default and compact is
     opted into by forcing the setting.

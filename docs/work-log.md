@@ -1479,3 +1479,18 @@ Spec: `docs/snp-design.md` · Plan: `docs/snp-implementation-plan.md`
   confirmed has no horizontal overflow. Spec §6 and README updated.
   `make desktop` + `go vet` clean; resizing the window across 720px
   still needs a by-hand check in the running app.
+- **Desktop resize did not switch to compact (v0.2.1).** With the
+  400px minimum in place, dragging the wails window under 720px still
+  kept the three panes: `watchNarrow` relied solely on the
+  MediaQueryList `change` event, which the embedded webview did not
+  deliver on a native window resize. The same bundle in headless
+  Chromium (dev server, viewport 1200 → 600 → 1000) switched both ways,
+  so the SPA logic was sound and the signal was the gap. `watchNarrow`
+  now re-reads `mql.matches` on the `change` event, on every window
+  `resize` and on a `ResizeObserver` of `document.documentElement`, and
+  reports only when the answer flips (3 tests). Spec §6 and plan Phase
+  11 T1 updated. `make test` green. **Needs the by-hand check in the
+  wails app** (Settings → Layout = Auto, drag across 720px both ways);
+  if it still does not switch, the next thing to verify is that the
+  Layout setting is Auto rather than Wide, then whether `resize` fires
+  at all in that webview (`--debug` + a `pageLog` on resize).

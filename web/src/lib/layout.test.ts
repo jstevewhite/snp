@@ -95,28 +95,96 @@ describe('watchNarrow', () => {
     stop()
   })
 
-  it('reports the current match and every change until unsubscribed', () => {
+  /** A fake MediaQueryList whose `matches` the test flips at will. */
+  function fakeMql(matches: boolean) {
     let listener: ((e: { matches: boolean }) => void) | null = null
     const mql = {
-      matches: true,
+      matches,
       addEventListener: vi.fn((_: string, fn: (e: { matches: boolean }) => void) => {
         listener = fn
       }),
       removeEventListener: vi.fn(() => {
         listener = null
       }),
+      /** Deliver the change event the way a browser would. */
+      change(next: boolean) {
+        mql.matches = next
+        listener?.({ matches: next })
+      },
+      get listening() {
+        return listener !== null
+      },
     }
-    const matchMedia = vi.fn(() => mql)
-    vi.stubGlobal('matchMedia', matchMedia)
+    vi.stubGlobal('matchMedia', vi.fn(() => mql))
+    return mql
+  }
+
+  it('reports the current match and every change until unsubscribed', () => {
+    const mql = fakeMql(true)
     const cb = vi.fn()
     const stop = watchNarrow(cb)
-    expect(matchMedia).toHaveBeenCalledWith(COMPACT_MEDIA)
+    expect(window.matchMedia).toHaveBeenCalledWith(COMPACT_MEDIA)
     expect(cb).toHaveBeenLastCalledWith(true)
-    listener!({ matches: false })
+    mql.change(false)
     expect(cb).toHaveBeenLastCalledWith(false)
     stop()
     expect(mql.removeEventListener).toHaveBeenCalled()
-    expect(listener).toBeNull()
+    expect(mql.listening).toBe(false)
+  })
+
+  it('re-reads the match on a window resize when the change event never comes', () => {
+    // An embedded webview (the wails desktop shell) can resize the window
+    // without delivering the MediaQueryList change event.
+    const mql = fakeMql(false)
+    const cb = vi.fn()
+    const stop = watchNarrow(cb)
+    expect(cb).toHaveBeenCalledTimes(1)
+    mql.matches = true
+    window.dispatchEvent(new Event('resize'))
+    expect(cb).toHaveBeenCalledTimes(2)
+    expect(cb).toHaveBeenLastCalledWith(true)
+    // Same answer again: no duplicate report.
+    window.dispatchEvent(new Event('resize'))
+    expect(cb).toHaveBeenCalledTimes(2)
+    // The change event after the resize already reported it is a no-op.
+    mql.change(true)
+    expect(cb).toHaveBeenCalledTimes(2)
+    mql.matches = false
+    window.dispatchEvent(new Event('resize'))
+    expect(cb).toHaveBeenLastCalledWith(false)
+    stop()
+    mql.matches = true
+    window.dispatchEvent(new Event('resize'))
+    expect(cb).toHaveBeenCalledTimes(3)
+  })
+
+  it('re-reads the match when the root element changes size', () => {
+    const mql = fakeMql(false)
+    let observed: Element | null = null
+    let fire: (() => void) | null = null
+    const disconnect = vi.fn(() => {
+      fire = null
+    })
+    class FakeResizeObserver {
+      constructor(callback: () => void) {
+        fire = callback
+      }
+      observe(el: Element) {
+        observed = el
+      }
+      disconnect = disconnect
+    }
+    vi.stubGlobal('ResizeObserver', FakeResizeObserver)
+    const cb = vi.fn()
+    const stop = watchNarrow(cb)
+    expect(observed).toBe(document.documentElement)
+    mql.matches = true
+    fire!()
+    expect(cb).toHaveBeenLastCalledWith(true)
+    expect(cb).toHaveBeenCalledTimes(2)
+    stop()
+    expect(disconnect).toHaveBeenCalled()
+    expect(fire).toBeNull()
   })
 })
 
