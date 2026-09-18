@@ -149,6 +149,18 @@
   let detailCopy: { id: string; text: string | null } | null = null
   let ready = $state(false)
   let settingsOpen = $state(false)
+  /** The settings popover behaves like a popover, not a modal: it closes
+   * on a pointer-down outside itself and on Escape, either of which
+   * leaves the click/key free to act on the app underneath. */
+  $effect(() => {
+    if (!settingsOpen) return
+    const onPointerDown = (e: PointerEvent): void => {
+      const t = e.target
+      if (!(t instanceof Element) || t.closest('.settings') === null) settingsOpen = false
+    }
+    document.addEventListener('pointerdown', onPointerDown)
+    return () => document.removeEventListener('pointerdown', onPointerDown)
+  })
   /** Release version, shown next to the wordmark (spec §5). Starts from
    * the cached value so the header renders immediately — offline too. */
   let version: string | null = $state(loadCachedVersion())
@@ -1093,6 +1105,15 @@
     // The palette owns the keyboard while open (its own handler answers
     // the arrows, Enter and Escape); nothing below may see those keys.
     if (paletteOpen) return
+    // Escape closes the settings popover (the gear works too, but
+    // Escape is the reflex every other popover teaches). Other keys
+    // fall through: the popover is not a modal, and e.g. ⌘K still
+    // focuses search with it open.
+    if (settingsOpen && e.key === 'Escape') {
+      e.preventDefault()
+      settingsOpen = false
+      return
+    }
     if (isSearchShortcut(e)) {
       // Also stops Firefox focusing its own search bar on Ctrl+K.
       e.preventDefault()
@@ -1448,7 +1469,11 @@
         {/key}
       {:else}
         <div class="empty">
-          <p>Select a snippet, or create a new one.</p>
+          <h2>Nothing open</h2>
+          <p>Select a snippet from the list, or create a new one.</p>
+          <button class="create" disabled={!online || !ready} onclick={startCreate}>
+            Create a snippet
+          </button>
         </div>
       {/if}
     </section>
