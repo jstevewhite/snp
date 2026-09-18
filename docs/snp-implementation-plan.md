@@ -508,8 +508,8 @@ Decisions fixed up front (spec §6), so they are not re-litigated per task:
   ignore the viewport. Persisted like the theme.
 - Compact is a **screen stack with history entries**, not CSS stacking of
   the three panes. Wide mode pushes no history.
-- Back in the editor **is Cancel**; the dirty-editor guard is a separate
-  follow-on for both layouts.
+- Back in the editor **is Cancel**; the dirty-editor guard now protects
+  both layouts (frontend remediation transfer, 2026-09-17).
 - Folder choice closes the drawer; tag toggles do not.
 
 - **T1 — layout setting** (`web/src/lib/settings.ts`, `settings.test.ts`,
@@ -751,3 +751,18 @@ No browser end-to-end tests in v1 (spec §9).
 - PWA icon set: ship a generated placeholder at M5, real icons as a
   follow-up.
 - Default backup retention: 7 days assumed; confirm with the operator.
+
+## Frontend remediation transfer — 2026-09-17
+
+One integration task: port the reviewed fixes from the older `qwen/snp`
+checkout while retaining Favorites, compact history, pane resizing, AI output
+kind/Explain Undo, clipboard fallback, prefix-AND search and Linux desktop.
+
+- Sensitive body/default state, async reveal invalidation and cache redaction.
+- Dirty-editor, modal focus, native-close and deferred PWA-update guards.
+- Serialized/offline saves with inline errors and sync ordering.
+- Reactive search results, null-folder preservation and full folder labels.
+- Correct the desktop embedded shell path and cover it on darwin/linux.
+
+Done when: transferred regressions and the existing suite pass `make test`,
+web/desktop builds succeed, and compact navigation still preserves drafts.

@@ -570,15 +570,30 @@ model** instead: one screen at a time, with the list as the root.
   and the dividers are not rendered — so a width dragged on a desktop
   never leaks into the phone layout, and it is still there when the
   window is wide again.
-- **Editor and Back.** Back (button, gesture, or Escape outside a text
-  field) while the editor is open behaves as *Cancel*: edits are
-  dropped, as they already are in wide mode when another snippet is
-  selected mid-edit (the 2026-09-11 review noted this). A "discard
-  changes?" guard is a follow-on for both layouts, not part of compact
-  mode, and would sit in front of Cancel rather than in the history
-  handling.
+- **Editor and Back.** Back while editing behaves as Cancel, with an
+  in-app discard confirmation when fields have changed. Keep editing restores
+  the detail history entry and preserves the draft. The same guard protects
+  Cancel, selection (including Favorites and keyboard selection), New,
+  compact Focus search, full resync, and native desktop close. Browser
+  unload uses the browser's confirmation. Navigation waits while a snippet
+  write is pending; failed writes leave the draft and an inline error.
+- **Focus.** Dialogs, the command palette, and the compact folder drawer
+  contain keyboard focus and restore it on close. Dialog backgrounds are
+  inert; destructive confirmations initially focus the cancel control.
 
 ### Behaviors
+
+- **Save lifecycle.** One snippet write at a time; an in-flight sync finishes
+  before a save, and new syncs wait until the write finishes. Offline saves
+  are disabled without clearing the editor. Active search results derive
+  from the current cached rows and refresh after local writes and sync.
+- **Sensitive detail lifecycle.** Reveals keep the body and variable defaults
+  together in view memory, update after saving, and clear on selection or
+  sync. Late reveal responses cannot restore an abandoned selection. Cache
+  writes and local indexing strip sensitive body/default content defensively.
+- **Folder editing.** An existing unfiled snippet stays unfiled regardless
+  of the active folder filter. New snippets inherit that filter. Pickers and
+  detail labels show full ancestor paths.
 
 - **Tags** (left column, under the folders): every tag with its count,
   most-used first. Clicking a tag filters the snippet list to snippets
@@ -713,7 +728,9 @@ model** instead: one screen at a time, with the list as the root.
   The app therefore re-checks for an update whenever the window is focused or
   shown again, and reloads once when a new worker takes over
   (`web/src/lib/sw.ts`); the reload is skipped on a first install, where the
-  worker claiming clients fires the same event.
+  worker claiming clients fires the same event. If a draft is dirty or a
+  snippet write is pending, the reload waits until the draft is saved or
+  discarded and the write finishes.
 - On startup, on `visibilitychange`/`focus`, and every few minutes while
   open, the app calls `/api/sync?since=` and merges folders, snippets, and
   tombstones into IndexedDB (mobile OSes suspend background apps, so the

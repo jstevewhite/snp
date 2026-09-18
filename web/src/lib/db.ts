@@ -56,7 +56,7 @@ export async function allFolders(db: SnpDB): Promise<Folder[]> {
 }
 
 export async function putSnippet(db: SnpDB, snippet: Snippet): Promise<void> {
-  await db.put('snippets', snippet)
+  await db.put('snippets', cacheSnippet(snippet))
 }
 
 export async function removeSnippet(db: SnpDB, id: string): Promise<void> {
@@ -85,4 +85,9 @@ export async function clearLocalData(db: SnpDB): Promise<void> {
     tx.objectStore('meta').clear(),
   ])
   await tx.done
+}
+
+/** Strip decrypted fields at the persistence boundary, regardless of caller. */
+export function cacheSnippet(snippet: Snippet): Snippet {
+  return snippet.is_sensitive ? { ...snippet, body: null, var_defaults: null } : snippet
 }

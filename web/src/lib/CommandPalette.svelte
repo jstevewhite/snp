@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { modal } from './modal'
   import { filterCommands, type Command } from './commands'
 
   let {
@@ -69,8 +70,9 @@
     tabindex="-1"
     onclick={onclose}
   ></button>
-  <div class="modal palette" role="dialog" aria-modal="true" aria-label="Commands" tabindex="-1">
+  <div use:modal class="modal palette" role="dialog" aria-modal="true" aria-label="Commands" tabindex="-1">
     <input
+      data-modal-initial
       bind:this={input}
       bind:value={query}
       type="text"

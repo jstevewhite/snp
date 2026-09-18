@@ -166,6 +166,7 @@ func run(cfg config.Config, log *slog.Logger) error {
 	purgerDone := st.StartPurger(purgerCtx, log)
 
 	app := desktop.NewApp(handler, log)
+	closeGuard := &CloseGuard{}
 	opts := &options.App{
 		Title:  "snp",
 		Width:  1150,
@@ -185,9 +186,11 @@ func run(cfg config.Config, log *slog.Logger) error {
 			Assets:     webembed.FS,
 			Middleware: injectDesktopMarker(),
 		},
-		Logger:   &wailsLogger{log},
-		LogLevel: logLevel(cfg.LogLevel),
-		Bind:     []interface{}{app},
+		Logger:        &wailsLogger{log},
+		LogLevel:      logLevel(cfg.LogLevel),
+		Bind:          []interface{}{app, closeGuard},
+		OnStartup:     func(ctx context.Context) { closeGuard.ctx = ctx },
+		OnBeforeClose: closeGuard.beforeClose,
 		OnShutdown: func(ctx context.Context) {
 			cancelPurger()
 		},
@@ -215,7 +218,7 @@ func injectDesktopMarker() assetserver.Middleware {
 				next.ServeHTTP(w, r)
 				return
 			}
-			raw, err := fs.ReadFile(webembed.FS, "index.html")
+			raw, err := fs.ReadFile(webembed.FS, "dist/index.html")
 			if err != nil {
 				next.ServeHTTP(w, r)
 				return

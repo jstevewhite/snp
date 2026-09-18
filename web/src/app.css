@@ -1749,3 +1749,7 @@ button.danger {
   border-radius: 0 0 8px 8px;
   border-top: 0;
 }
+
+/* Keep native fieldset disabling without changing the editor layout. */
+.form > fieldset { border: 0; padding: 0; margin: 0; min-width: 0; display: contents; }
+.form-error { color: var(--danger, #dc2626); }

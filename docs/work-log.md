@@ -1512,3 +1512,35 @@ Spec: `docs/snp-design.md` · Plan: `docs/snp-implementation-plan.md`
   `bin/snp.failed` removed. Verified: `update.sh -f` with no `-n`
   derives `snip` and deploys healthy; `-U` with the wrong host is
   refused before any restart.
+
+### 2026-09-17 — Frontend remediation transferred to the current repository
+
+- Ported the applicable fixes from the older `~/CODE/qwen/snp` checkout.
+  Kept this repository's Favorites/pinned data, prefix-AND search, compact
+  history navigation, draggable panes, AI output kind and Explain Undo,
+  clipboard fallback/feedback, and darwin/Linux desktop wiring.
+- Sensitive reveals now retain body and defaults together, refresh after
+  saves, and expire on selection/sync; stale async responses are ignored.
+  Cache writes and sync defensively redact sensitive content. Search derives
+  from current rows so unchanged queries refresh after sync and mutations.
+- Dirty drafts are protected across selection, Favorites, New, Cancel,
+  compact Back/search, full resync, browser unload and native close. PWA
+  updates defer reload while a draft is dirty or a write is pending. Dialogs,
+  palette and drawer contain focus; destructive dialogs start on Cancel.
+- Saves are serialized with sync and other snippet writes, disable duplicate
+  submissions and offline writes, and keep drafts with inline errors on
+  failure. Existing null folders remain unfiled; new snippets inherit the
+  active filter; folder labels show ancestor paths. Desktop shell injection
+  now reads the actual embedded `dist/index.html`.
+- Validation: `make test` green (Go vet/tests; 368 Vitest tests, up from 346;
+  svelte-check/TypeScript clean). Production web, server and macOS desktop
+  builds passed. Browser smoke against a disposable database confirmed
+  sensitive create/defaults/edit-save, invalidation on sync, compact Back
+  Keep editing/discard, and no console warnings/errors.
+- Gotchas: broad cherry-picks would regress the newer layout and pin/default
+  replacement path; changes were integrated selectively. Compact Back must
+  restore its history entry before showing the discard dialog. Sync checks
+  must read the save flag untracked to avoid making the sync effect subscribe
+  to writes. Linux build tags are preserved; Linux-native execution and
+  physical mobile/PWA hardware checks remain unverified on this macOS host.
+  Generated web/dist/index.html is restored to its tracked stub after builds.

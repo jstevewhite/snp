@@ -86,6 +86,11 @@ describe('snippets', () => {
     expect(s.is_sensitive).toBe(true)
   })
 
+  it('redacts decrypted sensitive fields at the persistence boundary', async () => {
+    await putSnippet(db, { ...sensitiveSnippet, body: 'secret', var_defaults: { token: 'secret' } })
+    expect((await allSnippets(db))[0]).toMatchObject({ body: null, var_defaults: null })
+  })
+
   it('removeSnippet deletes the row', async () => {
     await putSnippet(db, snippetA)
     await removeSnippet(db, 's1')

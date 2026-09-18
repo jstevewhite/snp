@@ -33,11 +33,19 @@ export function watchServiceWorkerUpdates(
   // very first visit, so only react when a worker was already in charge.
   const hadController = sw.controller !== null
   let reloading = false
+  let pending = false
+  const tryReload = (): void => {
+    if (!pending || reloading) return
+    if (!window.dispatchEvent(new Event('snp:before-reload', { cancelable: true }))) return
+    reloading = true
+    reload()
+  }
+  window.addEventListener('snp:reload-ready', tryReload)
 
   sw.addEventListener('controllerchange', () => {
     if (!hadController || reloading) return
-    reloading = true
-    reload()
+    pending = true
+    tryReload()
   })
 
   const check = (): void => {

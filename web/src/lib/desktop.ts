@@ -67,3 +67,28 @@ export async function desktopCall(
 ): Promise<DesktopCallResult> {
   return app.CallAPI(method, path, body)
 }
+
+interface CloseGuard {
+  Ready(): Promise<void>
+  ConfirmClose(): Promise<void>
+}
+function closeGuard(): CloseGuard | undefined {
+  return (window as unknown as { go?: { main?: { CloseGuard?: CloseGuard } } }).go?.main?.CloseGuard
+}
+
+/** Native close requests use the same in-app dirty-form guard as navigation. */
+export function registerDesktopClose(onclose: () => void): () => void {
+  let active = true
+  window.addEventListener('snp:close-request', onclose)
+  if (isDesktop()) void resolveDesktopApp().then(() => {
+    if (active) void closeGuard()?.Ready()
+  })
+  return () => {
+    active = false
+    window.removeEventListener('snp:close-request', onclose)
+  }
+}
+
+export async function closeDesktop(): Promise<void> {
+  await closeGuard()?.ConfirmClose()
+}

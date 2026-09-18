@@ -49,7 +49,7 @@ function toDoc(s: Snippet): Doc {
     notes: s.notes,
     // Sensitive bodies are null locally (never cached), so they cannot
     // match — consistent with the server, which never indexes them.
-    body: s.body ?? '',
+    body: s.is_sensitive ? '' : s.body ?? '',
     // Space-joined so the default tokenizer yields one term per tag.
     tags: s.tags.join(' '),
   }

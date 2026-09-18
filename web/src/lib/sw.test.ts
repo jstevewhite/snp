@@ -99,3 +99,19 @@ describe('watchServiceWorkerUpdates', () => {
     await flush()
   })
 })
+
+it('defers an update reload until the editor releases its draft guard', () => {
+  const { fire } = stubServiceWorker({})
+  const reload = vi.fn()
+  const block = (e: Event) => e.preventDefault()
+  window.addEventListener('snp:before-reload', block)
+  watchServiceWorkerUpdates(reload)
+  try {
+    fire('controllerchange')
+    expect(reload).not.toHaveBeenCalled()
+  } finally { window.removeEventListener('snp:before-reload', block) }
+  window.dispatchEvent(new Event('snp:reload-ready'))
+  expect(reload).toHaveBeenCalledOnce()
+  window.dispatchEvent(new Event('snp:reload-ready'))
+  expect(reload).toHaveBeenCalledOnce()
+})

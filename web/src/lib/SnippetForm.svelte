@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { folderOptions } from './folders'
   import * as api from './api'
   import type { AIKind } from './api'
   import type { Folder, Snippet, SnippetInput } from './types'
@@ -10,13 +11,21 @@
     defaultFolderId = null,
     onsave,
     oncancel,
+    ondirty = () => {},
+    saving = false,
+    offline = false,
+    error = null,
   }: {
     /** null → create mode; a snippet → edit mode. */
     initial?: Snippet | null
     folders: Folder[]
     defaultFolderId?: string | null
-    onsave: (input: SnippetInput) => void
+    onsave: (input: SnippetInput) => void | Promise<void>
     oncancel: () => void
+    ondirty?: (dirty: boolean) => void
+    saving?: boolean
+    offline?: boolean
+    error?: string | null
   } = $props()
 
   // The form is remounted for each snippet (App.svelte passes `key`), so the
@@ -27,7 +36,7 @@
     title: initial?.title ?? '',
     language: initial?.language ?? '',
     tags: initial?.tags.join(', ') ?? '',
-    folder: initial?.folder_id ?? defaultFolderId ?? '',
+    folder: initial !== null ? initial.folder_id ?? '' : defaultFolderId ?? '',
     body: initial?.body ?? '',
     notes: initial?.notes ?? '',
     sensitive: initial?.is_sensitive ?? false,
@@ -55,6 +64,14 @@
     usesVariables = hasTemplateVars(body)
   })
 
+  const dirty = $derived(
+    title !== seed.title || language !== seed.language || tagsText !== seed.tags ||
+    folderId !== seed.folder || body !== seed.body || notes !== seed.notes ||
+    isSensitive !== seed.sensitive || usesVariables !== hasTemplateVars(seed.body)
+  )
+  $effect(() => { ondirty(dirty) })
+
+  const folderChoices = $derived(folderOptions(folders))
   const isEdit = $derived(initial !== null)
   // '{{' in markup would be parsed as an expression, so these are strings.
   const templateLabel = 'Template — body contains {{var}} placeholders'
@@ -116,7 +133,7 @@
 
   async function askAI(): Promise<void> {
     const prompt = aiPrompt.trim()
-    if (prompt === '' || aiBusy) return
+    if (prompt === '' || aiBusy || tagsBusy || explainBusy || saving || offline) return
     aiBusy = true
     aiError = null
     aiDone = null
@@ -142,7 +159,7 @@
   }
 
   async function suggestTags(): Promise<void> {
-    if (tagsBusy || body.trim() === '') return
+    if (tagsBusy || aiBusy || explainBusy || saving || offline || body.trim() === '') return
     tagsBusy = true
     tagsError = null
     try {
@@ -168,7 +185,7 @@
   }
 
   async function explain(): Promise<void> {
-    if (explainBusy || body.trim() === '') return
+    if (explainBusy || aiBusy || tagsBusy || saving || offline || body.trim() === '') return
     explainBusy = true
     explainError = null
     try {
@@ -193,8 +210,12 @@
     explainUndo = null
   }
 
-  function submit(): void {
-    if (title.trim() === '') return
+  let submitting = $state(false)
+  const aiPending = $derived(aiBusy || tagsBusy || explainBusy)
+
+  async function submit(): Promise<void> {
+    if (title.trim() === '' || saving || submitting || offline || aiPending) return
+    submitting = true
     // A full replace wipes var_defaults (spec §5), so carry the saved
     // defaults forward, pruned to the variables the body still uses (spec
     // §4): editing the body must not silently drop them, and a body with
@@ -204,25 +225,30 @@
     for (const [name, value] of Object.entries(seed.varDefaults)) {
       if (names.has(name) && value !== '') defaults[name] = value
     }
-    onsave({
-      title: title.trim(),
-      body,
-      language: language.trim(),
-      notes: notes.trim(),
-      folder_id: folderId === '' ? null : folderId,
-      tags: tagsText
-        .split(',')
-        .map((t) => t.trim())
-        .filter((t) => t !== ''),
-      is_sensitive: isSensitive,
-      uses_variables: usesVariables,
-      pinned: seed.pinned,
-      var_defaults: defaults,
-    })
+    try {
+      await onsave({
+        title: title.trim(),
+        body,
+        language: language.trim(),
+        notes: notes.trim(),
+        folder_id: folderId === '' ? null : folderId,
+        tags: tagsText
+          .split(',')
+          .map((t) => t.trim())
+          .filter((t) => t !== ''),
+        is_sensitive: isSensitive,
+        uses_variables: usesVariables,
+        pinned: seed.pinned,
+        var_defaults: defaults,
+      })
+    } finally {
+      submitting = false
+    }
   }
 </script>
 
-<form class="form" onsubmit={(e) => { e.preventDefault(); submit() }}>
+<form aria-busy={saving || submitting} class="form" onsubmit={(e) => { e.preventDefault(); void submit() }}>
+  <fieldset disabled={saving || submitting}>
   {#if aiKnown && aiEnabled}
     <details class="ai">
       <summary>Ask AI…</summary>
@@ -241,7 +267,7 @@
         </select>
       </label>
       <div class="ai-actions">
-        <button type="button" disabled={aiBusy || aiPrompt.trim() === ''} onclick={() => void askAI()}>
+        <button type="button" disabled={offline || aiPending || aiPrompt.trim() === ''} onclick={() => void askAI()}>
           {aiBusy ? 'Generating…' : 'Generate'}
         </button>
       </div>
@@ -262,8 +288,8 @@
       <span>Folder</span>
       <select bind:value={folderId}>
         <option value="">(none)</option>
-        {#each folders as f (f.id)}
-          <option value={f.id}>{f.name}</option>
+        {#each folderChoices as f (f.id)}
+          <option value={f.id}>{f.path}</option>
         {/each}
       </select>
     </label>
@@ -274,7 +300,7 @@
   </label>
   {#if aiKnown && aiEnabled}
     <div class="tags-ai">
-      <button type="button" disabled={tagsBusy || body.trim() === ''} onclick={() => void suggestTags()}>
+      <button type="button" disabled={offline || aiPending || body.trim() === ''} onclick={() => void suggestTags()}>
         {tagsBusy ? 'Suggesting…' : 'Suggest tags'}
       </button>
       {#if tagsError}<span class="ai-error">{tagsError}</span>{/if}
@@ -292,7 +318,7 @@
   </label>
   {#if aiKnown && aiEnabled}
     <div class="tags-ai">
-      <button type="button" disabled={explainBusy || body.trim() === ''} onclick={() => void explain()}>
+      <button type="button" disabled={offline || aiPending || body.trim() === ''} onclick={() => void explain()}>
         {explainBusy ? 'Explaining…' : 'Explain'}
       </button>
       {#if explainUndo !== null}
@@ -325,8 +351,11 @@
       {/if}
     </p>
   {/if}
+  </fieldset>
+  {#if error}<p class="form-error" role="alert">{error}</p>{/if}
+  {#if offline}<p role="status">Offline — reconnect before saving. Your edits remain here.</p>{/if}
   <div class="actions">
-    <button type="submit">{isEdit ? 'Save' : 'Create'}</button>
-    <button type="button" onclick={oncancel}>Cancel</button>
+    <button type="submit" disabled={saving || submitting || offline || aiPending}>{saving || submitting ? 'Saving…' : isEdit ? 'Save' : 'Create'}</button>
+    <button type="button" disabled={saving || submitting} onclick={oncancel}>Cancel</button>
   </div>
 </form>

@@ -1,11 +1,15 @@
 <script lang="ts">
   import { tick as settle, untrack } from 'svelte'
   import * as api from './lib/api'
+  import { closeDesktop, registerDesktopClose } from './lib/desktop'
+  import { modal } from './lib/modal'
+  import { folderOptions } from './lib/folders'
   import { writeClipboard } from './lib/clipboard'
   import { ApiError } from './lib/types'
   import {
     allFolders,
     allSnippets,
+    cacheSnippet,
     clearLocalData,
     openLocalDB,
     putFolder,
@@ -85,7 +89,36 @@
   let editing = $state(false)
   let editingSnippet: Snippet | null = $state(null)
   /** Revealed bodies for sensitive snippets (in memory only, never cached). */
-  let revealed = $state<Record<string, string>>({})
+  let revealed = $state<Record<string, { body: string; var_defaults: Record<string, string> }>>({})
+  let detailEpoch = 0
+  let dirty = $state(false)
+  let saving = $state(false)
+  let saveError = $state<string | null>(null)
+  let editorKey = $state(0)
+
+  function clearRevealed(): void {
+    detailEpoch++
+    revealed = {}
+    detailCopy = null
+  }
+
+  function leaveEditor(proceed: () => void): void {
+    if (saving) return
+    if (editing && dirty) dialog = { kind: 'discard', proceed }
+    else proceed()
+  }
+
+  $effect(() => registerDesktopClose(() => leaveEditor(() => void closeDesktop())))
+  $effect(() => {
+    const beforeReload = (e: Event): void => {
+      if (dirty || saving) e.preventDefault()
+    }
+    window.addEventListener('snp:before-reload', beforeReload)
+    return () => window.removeEventListener('snp:before-reload', beforeReload)
+  })
+  $effect(() => {
+    if (!dirty && !saving) window.dispatchEvent(new Event('snp:reload-ready'))
+  })
   let online = $state(true)
   /**
    * When this client last completed a sync (epoch ms). Deliberately a
@@ -113,7 +146,7 @@
    * the keydown handler, and a reactive read would re-render the app on
    * every keystroke in the variables panel.
    */
-  let detailCopy: { id: string; text: string } | null = null
+  let detailCopy: { id: string; text: string | null } | null = null
   let ready = $state(false)
   let settingsOpen = $state(false)
   /** Release version, shown next to the wordmark (spec §5). Starts from
@@ -164,7 +197,20 @@
   }
   const nav = createCompactNav(browserHistory() ?? inertHistory, (s) => (navState = s))
   $effect(() => {
-    const onPop = (e: PopStateEvent): void => nav.onPopState(e.state)
+    const onPop = (e: PopStateEvent): void => {
+      nav.onPopState(e.state)
+      if (compact && editing && nav.state.screen === 'list' && (dirty || saving)) {
+        // The browser already moved back. Restore the detail entry before
+        // asking, so Keep editing leaves both the form and history intact.
+        nav.openDetail()
+        leaveEditor(() => {
+          editing = false
+          editingSnippet = null
+          clearRevealed()
+          nav.back()
+        })
+      }
+    }
     window.addEventListener('popstate', onPop)
     return () => window.removeEventListener('popstate', onPop)
   })
@@ -297,10 +343,11 @@
    * sync, forever.
    */
   let syncing = false
+  let syncDone: Promise<void> = Promise.resolve()
 
   // Non-reactive handles
   let db: SnpDB | undefined
-  let index = new SnippetIndex()
+  const index = $derived(new SnippetIndex(snippets))
   const tracker = new OnlineTracker()
   const dbPromise = openLocalDB()
 
@@ -351,7 +398,7 @@
   const selectedFolderName = $derived.by(() => {
     const fid = selectedSnippet?.folder_id
     if (fid === undefined || fid === null) return null
-    return folders.find((f) => f.id === fid)?.name ?? null
+    return folderOptions(folders).find((f) => f.id === fid)?.path ?? null
   })
 
   function matchesFolder(s: Snippet): boolean {
@@ -380,26 +427,29 @@
     const [fs, ss] = await Promise.all([allFolders(db), allSnippets(db)])
     folders = fs
     snippets = ss
-    index = new SnippetIndex(ss)
   }
 
   /** One sync cycle; failures are surfaced and retried on the next tick. */
   async function doSync(): Promise<void> {
-    if (!db || !ready) return
+    if (!db || !ready || untrack(() => saving) || syncing) return
+    let finishSync!: () => void
+    syncDone = new Promise<void>((resolve) => { finishSync = resolve })
     syncing = true
     busy = true
     try {
-      const resp = await syncLocal(db, index)
+      await syncLocal(db)
       tracker.fetchSucceeded()
       syncedAt = Date.now()
       error = null
       await loadLocal()
+      clearRevealed()
     } catch (e) {
       if (e instanceof ApiError && e.isNetworkError) tracker.fetchFailed()
       error = e instanceof Error ? e.message : String(e)
     } finally {
       busy = false
       syncing = false
+      finishSync()
     }
   }
 
@@ -410,6 +460,7 @@
   }
 
   function fail(e: unknown): void {
+    if (e instanceof ApiError && e.isNetworkError) tracker.fetchFailed()
     error = e instanceof Error ? e.message : String(e)
   }
 
@@ -483,21 +534,11 @@
   type Dialog =
     | { kind: 'folder'; parentId: string | null }
     | { kind: 'resync' }
+    | { kind: 'discard'; proceed: () => void }
     | { kind: 'snippetDelete'; id: string }
     | null
   let dialog = $state<Dialog>(null)
   let folderName = $state('')
-  let dialogInput: HTMLInputElement | undefined = $state()
-  let dialogCancel: HTMLButtonElement | undefined = $state()
-
-  // Focus the name input when the folder dialog opens; for the
-  // destructive delete dialog, focus Cancel so a stray Enter cancels
-  // rather than deletes.
-  $effect(() => {
-    if (dialog?.kind === 'folder') dialogInput?.focus()
-    else if (dialog?.kind === 'snippetDelete') dialogCancel?.focus()
-  })
-
   function promptFolder(parentId: string | null): void {
     if (!online) return
     folderName = ''
@@ -505,9 +546,13 @@
   }
 
   function promptResync(): void {
-    if (!db || syncing) return
+    if (!db || syncing || saving) return
     settingsOpen = false
-    dialog = { kind: 'resync' }
+    leaveEditor(() => {
+      editing = false
+      editingSnippet = null
+      dialog = { kind: 'resync' }
+    })
   }
 
   // Starter snippets (spec §5): applied on request, never automatically.
@@ -550,7 +595,10 @@
     const d = dialog
     if (d === null) return
     dialog = null
-    if (d.kind === 'folder') {
+    if (d.kind === 'discard') {
+      dirty = false
+      d.proceed()
+    } else if (d.kind === 'folder') {
       const name = folderName.trim()
       if (name === '') return
       void createFolder(name, d.parentId)
@@ -599,10 +647,16 @@
   // --- Snippets (server writes: online only, spec §6) ---
 
   function startCreate(): void {
-    if (!online) return
-    editing = true
-    editingSnippet = null
-    if (compact) nav.openDetail()
+    if (!online || !ready) return
+    leaveEditor(() => {
+      clearRevealed()
+      editorKey++
+      saveError = null
+      dirty = false
+      editing = true
+      editingSnippet = null
+      if (compact) nav.openDetail()
+    })
   }
 
   /**
@@ -616,8 +670,9 @@
    * kept in `revealed` so the rest of the UI agrees.
    */
   async function startEdit(): Promise<void> {
-    if (!online || !selectedSnippet) return
+    if (!online || !selectedSnippet || saving) return
     let s = selectedSnippet
+    const epoch = ++detailEpoch
     if (s.body === null) {
       try {
         s = await api.getSnippet(s.id)
@@ -626,8 +681,13 @@
         fail(e)
         return
       }
-      if (s.is_sensitive) revealed = { ...revealed, [s.id]: s.body }
+      if (epoch !== detailEpoch || selectedSnippetId !== s.id) return
+      if (s.is_sensitive) revealed = { [s.id]: { body: s.body, var_defaults: s.var_defaults ?? {} } }
     }
+    editorKey++
+    saveError = null
+    dirty = false
+    detailCopy = null
     editing = true
     editingSnippet = s
     if (compact) nav.openDetail()
@@ -638,29 +698,45 @@
    * list it was opened from; a cancelled edit stays on the snippet.
    */
   function cancelEdit(): void {
-    const wasCreate = editing && editingSnippet === null
-    editing = false
-    editingSnippet = null
-    if (compact && wasCreate && navState.screen === 'detail') nav.back()
+    leaveEditor(() => {
+      const wasCreate = editing && editingSnippet === null
+      editing = false
+      editingSnippet = null
+      dirty = false
+      clearRevealed()
+      if (compact && wasCreate && navState.screen === 'detail') nav.back()
+    })
   }
 
   async function saveSnippet(input: SnippetInput): Promise<void> {
-    if (!db || !online) return
+    if (!db || !online || saving) return
+    const target = editingSnippet?.id
+    saving = true
+    saveError = null
     try {
-      const s = editingSnippet
-        ? await api.updateSnippet(editingSnippet.id, input)
+      await syncDone
+      if (!online) throw new Error('Offline — reconnect before saving.')
+      const response = target
+        ? await api.updateSnippet(target, input)
         : await api.createSnippet(input)
+      const s = cacheSnippet(response)
       await putSnippet(db, s)
-      index.upsert(s)
+      clearRevealed()
+      if (s.is_sensitive) revealed = { [s.id]: { body: input.body, var_defaults: input.var_defaults ?? {} } }
       snippets = snippets.some((x) => x.id === s.id)
         ? snippets.map((x) => (x.id === s.id ? s : x))
         : [...snippets, s]
+      dirty = false
       editing = false
       editingSnippet = null
       selectedSnippetId = s.id
-      if (input.folder_id !== null) selectedFolderId = input.folder_id
+      selectedFolderId = input.folder_id
+      error = null
     } catch (e) {
       fail(e)
+      saveError = e instanceof Error ? e.message : String(e)
+    } finally {
+      saving = false
     }
   }
 
@@ -679,21 +755,19 @@
     id: string,
     patch: Partial<SnippetInput>,
   ): Promise<boolean> {
-    if (!db || !online) return false
-    let s = snippets.find((x) => x.id === id)
-    if (s === undefined) return false
-    if (s.body === null) {
-      try {
-        s = await api.getSnippet(id)
-      } catch (e) {
-        fail(e)
-        return false
-      }
-    }
+    if (!db || !online || saving) return false
+    saving = true
+    const epoch = detailEpoch
     try {
-      const updated = await api.updateSnippet(id, {
+      await syncDone
+      if (!online) throw new Error('Offline — reconnect before saving.')
+      let s = snippets.find((x) => x.id === id)
+      if (s === undefined) return false
+      if (s.body === null) s = await api.getSnippet(id)
+      if (s.body === null) throw new Error('Snippet body is unavailable. Try again.')
+      const input: SnippetInput = {
         title: s.title,
-        body: s.body ?? revealed[id] ?? '',
+        body: s.body,
         language: s.language,
         notes: s.notes,
         folder_id: s.folder_id,
@@ -703,14 +777,20 @@
         pinned: s.pinned ?? false,
         var_defaults: s.var_defaults ?? {},
         ...patch,
-      })
+      }
+      const updated = cacheSnippet(await api.updateSnippet(id, input))
       await putSnippet(db, updated)
-      index.upsert(updated)
+      if (epoch === detailEpoch && selectedSnippetId === id && revealed[id] !== undefined) {
+        detailCopy = null
+        revealed = updated.is_sensitive ? { [id]: { body: input.body, var_defaults: input.var_defaults ?? {} } } : {}
+      }
       snippets = snippets.map((x) => (x.id === id ? updated : x))
       return true
     } catch (e) {
       fail(e)
       return false
+    } finally {
+      saving = false
     }
   }
 
@@ -728,16 +808,22 @@
   }
 
   async function deleteSnippet(id: string): Promise<void> {
-    if (!db || !online) return
+    if (!db || !online || saving) return
+    saving = true
     try {
+      await syncDone
+      if (!online) throw new Error('Offline — reconnect before deleting.')
       await api.deleteSnippet(id)
       await removeSnippet(db, id)
-      index.remove(id)
       snippets = snippets.filter((s) => s.id !== id)
-      if (selectedSnippetId === id) selectedSnippetId = null
-      revealed = Object.fromEntries(Object.entries(revealed).filter(([k]) => k !== id))
+      if (selectedSnippetId === id) {
+        selectedSnippetId = null
+        clearRevealed()
+      }
     } catch (e) {
       fail(e)
+    } finally {
+      saving = false
     }
   }
 
@@ -746,10 +832,12 @@
    * requires a live connection.
    */
   async function reveal(id: string): Promise<void> {
-    if (!online) return
+    if (!online || saving) return
+    const epoch = ++detailEpoch
     try {
       const s = await api.getSnippet(id)
-      if (s.body !== null) revealed = { ...revealed, [id]: s.body }
+      if (epoch !== detailEpoch || selectedSnippetId !== id) return
+      if (s.body !== null) revealed = { [id]: { body: s.body, var_defaults: s.var_defaults ?? {} } }
     } catch (e) {
       fail(e)
     }
@@ -773,8 +861,7 @@
    * inline until the keyboard path needed the same behavior.
    */
   function selectSnippet(id: string): void {
-    setSelection(id)
-    if (compact) nav.openDetail()
+    setSelection(id, true)
   }
 
   /**
@@ -782,10 +869,15 @@
    * box walk the list in place, so in compact mode they must not push the
    * detail screen (spec §6).
    */
-  function setSelection(id: string): void {
-    selectedSnippetId = id
-    editing = false
-    editingSnippet = null
+  function setSelection(id: string, openDetail = false): void {
+    leaveEditor(() => {
+      clearRevealed()
+      selectedSnippetId = id
+      editing = false
+      editingSnippet = null
+      dirty = false
+      if (compact && openDetail) nav.openDetail()
+    })
   }
 
   /** Focus the search field and select its text, so typing replaces it. */
@@ -825,9 +917,9 @@
     const s = selectedSnippet
     if (s === null) return null
     if (detailCopy !== null && detailCopy.id === s.id) return detailCopy.text
-    const body = s.body ?? revealed[s.id] ?? null
+    const body = s.body ?? revealed[s.id]?.body ?? null
     if (body === null) return null
-    return s.uses_variables ? renderTemplate(body, s.var_defaults ?? {}) : body
+    return s.uses_variables ? renderTemplate(body, revealed[s.id]?.var_defaults ?? s.var_defaults ?? {}) : body
   }
 
   /**
@@ -863,8 +955,14 @@
    */
   function jumpToSearch(): void {
     if (compact && navState.depth > 0) {
-      nav.toRoot()
-      void settle().then(focusSearch)
+      leaveEditor(() => {
+        editing = false
+        editingSnippet = null
+        dirty = false
+        clearRevealed()
+        nav.toRoot()
+        void settle().then(focusSearch)
+      })
     } else {
       focusSearch()
     }
@@ -883,7 +981,7 @@
    */
   const commands = $derived.by((): Command[] => {
     const s = selectedSnippet
-    const offline = online ? undefined : 'Offline'
+    const offline = saving ? 'Saving…' : online ? undefined : 'Offline'
     const needSelection = s === null ? 'Select a snippet first' : undefined
     const list: Command[] = []
     if (!editing) {
@@ -952,7 +1050,7 @@
         id: 'resync',
         label: 'Resync',
         group: 'app',
-        disabled: offline ?? (busy ? 'Sync in progress' : undefined),
+        disabled: busy || saving ? 'Sync or save in progress' : undefined,
         run: tick,
       },
       { id: 'full-resync', label: 'Full resync', group: 'app', run: promptResync },
@@ -985,7 +1083,6 @@
   function onGlobalKeydown(e: KeyboardEvent): void {
     if (dialog !== null) {
       if (e.key === 'Escape') cancelDialog()
-      else if (e.key === 'Enter' && dialog.kind === 'resync') confirmDialog()
       return
     }
     if (isPaletteShortcut(e)) {
@@ -1042,12 +1139,13 @@
    * native confirm() is unavailable in the desktop webview.
    */
   async function fullResync(): Promise<void> {
-    if (!db || syncing) return
+    if (!db || syncing || saving) return
     try {
       await clearLocalData(db)
-      revealed = {}
+      clearRevealed()
       syncedAt = null
-      index = new SnippetIndex()
+      snippets = []
+      folders = []
       await doSync()
     } catch (e) {
       fail(e)
@@ -1059,16 +1157,19 @@
   <title>snp</title>
 </svelte:head>
 
-<!-- Global keys: the dialog shortcuts while a dialog is open (Escape
-     cancels; Enter confirms the resync dialog — the folder input handles
-     its own Enter), otherwise the search workflow: ⌘/Ctrl+K focuses the
+<!-- Global keys: Escape cancels dialogs; Enter activates the focused
+     control (the folder input handles its own Enter), otherwise the search workflow: ⌘/Ctrl+K focuses the
      field, arrows move the selection, Enter copies, Escape clears. Every
      handler but the focus shortcut is scoped to the search field so the
      snippet editor keeps its own keys. -->
-<svelte:window onkeydown={onGlobalKeydown} />
+<svelte:window onkeydown={onGlobalKeydown} onbeforeunload={(e) => {
+  if (!dirty && !saving) return
+  e.preventDefault()
+  e.returnValue = ''
+}} />
 
 <div class="app" class:compact>
-  <div class="chrome">
+  <div class="chrome" inert={dialog !== null || paletteOpen}>
     <header class="topbar">
       {#if compact}
         <!-- One control at the left: Back whenever there is a level to
@@ -1185,7 +1286,7 @@
         Synced {formatRelative(syncedAt, now)}
       </span>
     {/if}
-    <button onclick={() => tick()} disabled={busy || !online || !ready}>Resync</button>
+    <button onclick={() => tick()} disabled={busy || saving || !ready}>Resync</button>
   {/snippet}
 
   <!-- Drag handle between two panes. The folders divider trades width with
@@ -1226,6 +1327,7 @@
 
   <main
     class="panes"
+    inert={dialog !== null || paletteOpen}
     class:resizing={dragging !== null}
     bind:this={panesEl}
     style={compact ? '' : paneStyleVars(paneWidths)}
@@ -1238,6 +1340,7 @@
     {/if}
     <aside
       class="pane folders"
+      use:modal={compact && navState.drawerOpen && dialog === null && !paletteOpen}
       class:open={navState.drawerOpen}
       aria-hidden={compact && !navState.drawerOpen ? 'true' : undefined}
     >
@@ -1255,7 +1358,7 @@
       <Favorites
         snippets={favoriteSnippets}
         selectedId={selectedSnippetId}
-        offline={!online}
+        offline={!online || saving}
         onselect={selectSnippet}
         onunpin={(id) => void setPinned(id, false)}
       />
@@ -1284,12 +1387,12 @@
       )}
     {/if}
 
-    <section class="pane list" hidden={compact && navState.screen === 'detail'}>
+    <section class="pane list" inert={compact && navState.drawerOpen} hidden={compact && navState.screen === 'detail'}>
       <SnippetList
         snippets={visibleSnippets}
         selectedId={selectedSnippetId}
         {query}
-        offline={!online}
+        offline={!online || !ready || saving}
         twoLine={twoLineTitles}
         bind:searchEl
         onselect={selectSnippet}
@@ -1310,14 +1413,18 @@
       )}
     {/if}
 
-    <section class="pane detail" hidden={compact && navState.screen === 'list'}>
+    <section class="pane detail" inert={compact && navState.drawerOpen} hidden={compact && navState.screen === 'list'}>
       {#if editing}
-        {#key editingSnippet?.id ?? 'new'}
+        {#key editorKey}
           <SnippetForm
             initial={editingSnippet}
             {folders}
             defaultFolderId={selectedFolderId}
-            onsave={(input) => void saveSnippet(input)}
+            onsave={saveSnippet}
+            {saving}
+            offline={!online}
+            error={saveError}
+            ondirty={(value) => (dirty = value)}
             oncancel={cancelEdit}
           />
         {/key}
@@ -1325,9 +1432,11 @@
         {#key selectedSnippet.id}
         <SnippetDetail
           snippet={selectedSnippet}
-          body={revealed[selectedSnippet.id] ?? null}
+          body={revealed[selectedSnippet.id]?.body ?? null}
+          defaults={revealed[selectedSnippet.id]?.var_defaults ?? selectedSnippet.var_defaults ?? {}}
           folderName={selectedFolderName}
           offline={!online}
+          {saving}
           oncopy={(text) => copySelected(text)}
           onedit={startEdit}
           onremove={() => (dialog = { kind: 'snippetDelete', id: selectedSnippet.id })}
@@ -1351,19 +1460,20 @@
     <div class="modal-backdrop">
       <div
         class="modal"
+        use:modal
         role="dialog"
         aria-modal="true"
         aria-label={dialog.kind === 'folder'
           ? 'New folder'
           : dialog.kind === 'resync'
             ? 'Full resync'
-            : 'Delete snippet'}
+            : dialog.kind === 'discard' ? 'Unsaved changes' : 'Delete snippet'}
         tabindex="-1"
       >
         {#if dialog.kind === 'folder'}
           <h2>New folder</h2>
           <input
-            bind:this={dialogInput}
+            data-modal-initial
             bind:value={folderName}
             placeholder="Folder name"
             aria-label="Folder name"
@@ -1372,6 +1482,9 @@
               else if (e.key === 'Escape') cancelDialog()
             }}
           />
+        {:else if dialog.kind === 'discard'}
+          <h2>Unsaved changes</h2>
+          <p>Discard your changes and continue?</p>
         {:else if dialog.kind === 'resync'}
           <h2>Full resync</h2>
           <p>Clear the local cache and re-sync everything from the server?</p>
@@ -1380,7 +1493,9 @@
           <p>Delete {deleteTargetLabel()}? This can't be undone.</p>
         {/if}
         <div class="modal-actions">
-          {#if dialog.kind === 'snippetDelete'}
+          {#if dialog.kind === 'discard'}
+            <button class="danger" onclick={confirmDialog}>Discard changes</button>
+          {:else if dialog.kind === 'snippetDelete'}
             <button class="danger" onclick={confirmDialog}>Delete</button>
           {:else}
             <button
@@ -1391,7 +1506,7 @@
               {dialog.kind === 'folder' ? 'Create' : 'Clear and resync'}
             </button>
           {/if}
-          <button bind:this={dialogCancel} onclick={cancelDialog}>Cancel</button>
+          <button onclick={cancelDialog}>{dialog.kind === 'discard' ? 'Keep editing' : 'Cancel'}</button>
         </div>
       </div>
     </div>

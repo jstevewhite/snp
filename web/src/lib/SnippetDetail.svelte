@@ -14,8 +14,10 @@
   let {
     snippet,
     body = null,
+    defaults = snippet.var_defaults ?? {},
     folderName = null,
     offline = false,
+    saving = false,
     oncopy,
     onedit,
     onremove,
@@ -27,9 +29,11 @@
     snippet: Snippet
     /** Revealed body for sensitive snippets (fetched on demand, never cached). */
     body?: string | null
+    defaults?: Record<string, string>
     folderName?: string | null
     /** Offline: server writes and sensitive reveals are unavailable (spec §6). */
     offline?: boolean
+    saving?: boolean
     /**
      * Writes the given text to the clipboard (the rendered body). A
      * returned promise lets the copy buttons report a failed write
@@ -52,7 +56,7 @@
      * copy shortcut writes exactly the same thing — variable values typed
      * into the panel included (spec §4).
      */
-    oncopytext?: (id: string, text: string) => void
+    oncopytext?: (id: string, text: string | null) => void
   } = $props()
 
   /** True when the body is not available locally (sensitive, not revealed). */
@@ -98,24 +102,13 @@
   /** Show the panel when the snippet is a template and its body is shown. */
   const showVars = $derived(snippet.uses_variables && !hidden && vars.length > 0)
 
-  // Session-only variable values (spec §4: filled in at copy time). The
-  // component is keyed by snippet id in App.svelte, so these reset on each
-  // selection and are never persisted.
-  // svelte-ignore state_referenced_locally
-  const seedValues: Record<string, string> = (() => {
-    // Pre-fill the inputs from the snippet's saved defaults (spec §4/§6):
-    // the input shows the persisted value instead of the placeholder. The
-    // capture is once at mount; keys for variables no longer in the body
-    // are dropped, and a blank saved value means "no default".
-    const shownNow = snippet.body ?? body ?? ''
-    const names = new Set(extractTemplateVars(shownNow).map((v) => v.name))
-    const out: Record<string, string> = {}
-    for (const [name, value] of Object.entries(snippet.var_defaults ?? {})) {
-      if (names.has(name) && value !== '') out[name] = value
-    }
-    return out
-  })()
-  let values = $state<Record<string, string>>(seedValues)
+  // Reveal can deliver saved defaults after mount. Only explicit typing
+  // overrides them; untouched fields follow the current server values.
+  let overrides = $state<Record<string, string>>({})
+  const values = $derived(Object.fromEntries(vars.map((v) => [
+    v.name, overrides[v.name] ?? defaults[v.name] ?? '',
+  ])))
+  $effect(() => { if (hidden) overrides = {} })
 
   /** Live preview: unfilled vars without a default stay visible. */
   const preview = $derived(showVars ? previewTemplate(shown, values) : shown)
@@ -131,7 +124,7 @@
   // rides along because the app keys this component by snippet: without it
   // the app could not tell a stale publication from the current one.
   $effect(() => {
-    oncopytext?.(snippet.id, copyText)
+    oncopytext?.(snippet.id, hidden ? null : copyText)
   })
 
   // The Rendered preview collapses on the same rule, but independently: a
@@ -143,7 +136,7 @@
   const renderedCapped = $derived(renderedLong && !renderedExpanded)
 
   function setValue(name: string, value: string): void {
-    values[name] = value
+    overrides[name] = value
   }
 
   /**
@@ -166,11 +159,16 @@
   }
 
   /**
-   * What the server holds, in the same cleaned shape. Starts as the
-   * mount-time saved defaults and moves only on a save the server accepted,
-   * so a failure keeps offering the same write.
+   * What the server holds, in the same cleaned shape. Follows refreshed
+   * defaults and advances on accepted saves; a failure keeps the old baseline.
    */
-  let savedBaseline = $state<Record<string, string>>({ ...seedValues })
+  let savedBaseline = $state<Record<string, string>>({})
+  $effect(() => {
+    savedBaseline = Object.fromEntries(vars
+      .filter((v) => defaults[v.name] !== undefined && defaults[v.name] !== '')
+      .map((v) => [v.name, defaults[v.name]]))
+  })
+  let defaultsSaving = $state(false)
 
   /** Inert until the inputs differ from what is stored. */
   const defaultsDirty = $derived(!sameDefaults(cleanedValues(), savedBaseline))
@@ -185,9 +183,11 @@
   async function saveDefaults(): Promise<void> {
     // The button is disabled in these cases; the guard keeps a
     // programmatic click from writing anyway.
-    if (offline || !defaultsDirty) return
+    if (offline || saving || !defaultsDirty || defaultsSaving) return
+    defaultsSaving = true
     const next = cleanedValues()
-    const ok = await onsavedefaults(next)
+    let ok = false
+    try { ok = await onsavedefaults(next) } catch { ok = false } finally { defaultsSaving = false }
     if (ok) {
       savedBaseline = next
       defaultsStatus = 'saved'
@@ -216,7 +216,7 @@
         aria-pressed={snippet.pinned === true}
         aria-label={snippet.pinned === true ? 'Remove from favorites' : 'Add to favorites'}
         title={snippet.pinned === true ? 'Remove from favorites' : 'Add to favorites'}
-        disabled={offline}
+        disabled={offline || saving}
         onclick={onpin}
       >
         <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
@@ -231,7 +231,7 @@
         type="button"
         aria-label="Delete snippet"
         title="Delete snippet"
-        disabled={offline}
+        disabled={offline || saving}
         onclick={onremove}
       >
         <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
@@ -298,7 +298,7 @@
     {/if}
     {#if hidden}
       <div class="reveal-block">
-        <button class="reveal" disabled={offline} onclick={onreveal}>Show body</button>
+        <button class="reveal" disabled={offline || saving} onclick={onreveal}>Show body</button>
         {#if offline}
           <p class="reveal-hint">Online connection required to show the body.</p>
         {/if}
@@ -353,7 +353,7 @@
       <div class="vars-actions">
         <button
           class="save-defaults"
-          disabled={offline || !defaultsDirty}
+          disabled={offline || saving || !defaultsDirty || defaultsSaving}
           onclick={() => void saveDefaults()}
         >
           Save defaults
@@ -372,7 +372,7 @@
   {/if}
 
   <footer class="actions">
-    <button class="edit" disabled={offline} onclick={onedit}>Edit</button>
+    <button class="edit" disabled={offline || saving} onclick={onedit}>Edit</button>
   </footer>
 
   {#if snippet.notes !== ''}

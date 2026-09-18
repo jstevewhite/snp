@@ -1,5 +1,5 @@
 import { sync as apiSync } from './api'
-import { getServerTime, META_SERVER_TIME, type SnpDB } from './db'
+import { cacheSnippet, getServerTime, META_SERVER_TIME, type SnpDB } from './db'
 import type { SnippetIndex } from './search'
 import type { Folder, Snippet, SyncResponse, Tombstone } from './types'
 
@@ -52,7 +52,7 @@ export async function mergeSyncResponse(
       snippets.delete(item.id)
       removed.push(item.id)
     } else {
-      snippets.put(item)
+      snippets.put(cacheSnippet(item))
       added.push(item)
     }
   }
