@@ -336,8 +336,8 @@ button.danger {
    background so the three panes do not merge into a single mass. The
    sticky pane-head must match, and the pane's buttons go transparent so
    they do not each paint a list-colored rectangle on the tinted
-   background. The compact drawer keeps its own solid background (its
-   .app.compact rule outranks this one). */
+   background. The compact drawer restates the same tint in its own
+   .app.compact rule so these steps stay visible there too. */
 .pane.folders,
 .pane.folders .pane-head {
   background: var(--bg-alt);
@@ -492,6 +492,14 @@ button.danger {
 .favorites li:hover .unpin,
 .favorites .unpin:focus-visible {
   opacity: 1;
+}
+
+/* Touch devices have no hover, so keep the control visible there rather
+   than leaving an invisible tap target on every row. */
+@media (hover: none) {
+  .favorites .unpin {
+    opacity: 1;
+  }
 }
 
 .favorites .unpin:hover:not(:disabled) {
@@ -1718,7 +1726,10 @@ button.danger {
   bottom: 0;
   left: 0;
   width: min(85vw, 320px);
-  background: var(--bg);
+  /* Same tint as the desktop folders pane: the pane-head, the tag-count
+     pill and the button hover step all assume the pane is bg-alt, so a
+     bg drawer would leave them invisible against its background. */
+  background: var(--bg-alt);
   border-right: 1px solid var(--border);
   box-shadow: 0 0 24px rgb(0 0 0 / 0.25);
   transform: translateX(-100%);
