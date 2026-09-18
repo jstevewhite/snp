@@ -14,9 +14,9 @@ Spec: `docs/snp-design.md` · Plan: `docs/snp-implementation-plan.md`
 
 ## Current status
 
-- Updated: 2026-09-13 (auto-deploy from the checkout on the dev box; command palette)
-- Phase: review fixes + desktop app (macOS **and Linux** builds) + appearance + AI generation (command/script/function kinds) + tag filter + .app bundle + **bundled starter pack** merged to main; **Markdown notes**, **read-view syntax highlighting**, **notarization in `make app`**, the **Linux desktop build/launcher** and **`snp seed`** landed; the **GitHub release workflows** and the **header version chip** (`GET /api/version`) landed; **v0.1.0 shipped** (signed + notarized macOS bundle, 7 assets, verified after publish); **draggable pane dividers** landed (spec §6, `web/src/lib/panes.ts`) and **Explain now replaces Notes** with an undo (spec §13); **Phase 10, the UI refinement pass**, is on branch `feat/ui-refinements` (**pushed**, and deployed to the tailnet from a dirty tree — `/api/version` reports `v0.1.0-14-g8e82a64-dirty`): explicit copy actions, distinct create labels, simplified timestamps, the search keyboard workflow, visible saved-default state, two-line titles, and the **Favorites** list on a new `pinned` column; plus the **service-worker update check** and **create/cancel test coverage** added while chasing a stale-shell report; `make test` green (go test + vet + 298 Vitest + svelte-check 0 errors / 0 warnings). The Linux desktop binary **build was verified on an ARM Ubuntu 24 host** (git bundle → `make desktop`), after a first attempt failed because that work was still uncommitted and the bundle therefore carried the old darwin-only tree.
-- Next: **Phase 11 on-device checklist** (plan Phase 11 T7; branch `claude/eloquent-maxwell-bcugjn`, T1–T6 built and green): iOS Safari as a tab and as the installed PWA (swipe-back at each depth), Android Chrome hardware back (drawer → detail → leaves the app), the wails app with Settings → Layout = Compact; then merge. After that, as before: **Linux desktop container build + verification** (podman; `libgtk-3-dev` + `libwebkit2gtk-4.1-dev` + Go, `make web` then the desktop build, and exercise `install-desktop.sh` with a scratch `PREFIX=`); then the Windows port, desktop follow-ons (real app icon, startup-error surfacing in the window); then remaining v1 follow-ons (CLI client, SnippetsLab converter, named variable presets per machine — the follow-on named in Phase 10 T5). `feat/ui-refinements` is merged to main and two betas are published (`v0.2.0-beta.1`, and `v0.2.0-beta.2` as the CI validation build); cutting `v0.2.0` is the next release step whenever wanted
+- Updated: 2026-09-18 (UI review + visual refresh, branch `ui-refresh`)
+- Phase: review fixes + desktop app (macOS **and Linux** builds) + appearance + AI generation (command/script/function kinds) + tag filter + .app bundle + **bundled starter pack** merged to main; **Markdown notes**, **read-view syntax highlighting**, **notarization in `make app`**, the **Linux desktop build/launcher** and **`snp seed`** landed; the **GitHub release workflows** and the **header version chip** (`GET /api/version`) landed; **v0.1.0 shipped** (signed + notarized macOS bundle, 7 assets, verified after publish); **draggable pane dividers** landed (spec §6, `web/src/lib/panes.ts`) and **Explain now replaces Notes** with an undo (spec §13); **Phase 10, the UI refinement pass**, is merged (`feat/ui-refinements`); **the 2026-09-17 frontend remediation** is merged; and the **2026-09-18 UI review + visual refresh** is on branch **`ui-refresh`** (chrome surfaces on `--bg-alt`, one 12%-tint selection recipe everywhere, palette group headers + legible disabled reasons, WCAG-AA palette tokens with per-theme `--on-accent`/`--on-danger`, compact touch sizing extended to the drawer and detail actions, ⌘K hint hidden on coarse pointers, centered empty state with a Create CTA, settings-popover Escape/outside-click dismissal, sticky editor actions, `pre`+h-scroll code boxes, the `pane.detail` double-padding fix, SVG lock, safe-first modal actions): `make test` green (go vet + go test CGO_ENABLED=0 in the DSH sandbox; 368 Vitest; svelte-check 0 errors / 0 warnings), plus 24/24 live-DOM geometry checks in headless Chromium — see `docs/ui-review.md`.
+- Next: review/merge `ui-refresh` (the branch is the UI work; `docs/ui-review.md` holds the findings), then **Phase 11 on-device checklist** (plan Phase 11 T7; branch `claude/eloquent-maxwell-bcugjn`, T1–T6 built and green): iOS Safari as a tab and as the installed PWA (swipe-back at each depth), Android Chrome hardware back (drawer → detail → leaves the app), the wails app with Settings → Layout = Compact; then merge. After that, as before: **Linux desktop container build + verification** (podman; `libgtk-3-dev` + `libwebkit2gtk-4.1-dev` + Go, `make web` then the desktop build, and exercise `install-desktop.sh` with a scratch `PREFIX=`); then the Windows port, desktop follow-ons (real app icon, startup-error surfacing in the window); then remaining v1 follow-ons (CLI client, SnippetsLab converter, named variable presets per machine — the follow-on named in Phase 10 T5). Two betas are published (`v0.2.0-beta.1`, and `v0.2.0-beta.2` as the CI validation build); cutting `v0.2.0` is the next release step whenever wanted
 
 ## Log
 
@@ -1544,3 +1544,56 @@ Spec: `docs/snp-design.md` · Plan: `docs/snp-implementation-plan.md`
   to writes. Linux build tags are preserved; Linux-native execution and
   physical mobile/PWA hardware checks remain unverified on this macOS host.
   Generated web/dist/index.html is restored to its tracked stub after builds.
+
+### 2026-09-18 — UI review + visual refresh (branch `ui-refresh`)
+
+- Reviewed the whole SPA twice over: code-read against spec §6, then
+  visually — built, served on `--dev-listen` against a seeded store
+  (`snp seed` plus API-seeded folders/tags/sensitive/template snippets),
+  driven in headless Chromium at 1440×900, 900×700 and 390×844 in light
+  and dark, every finding measured (computed styles, rects, contrast
+  ratios) rather than eyeballed. Findings and the change list live in
+  `docs/ui-review.md`; spec §6 gained a "Visual refresh" bullet plus
+  notes on code-box scrolling and popover dismissal.
+- The refresh: `--bg-alt` chrome surfaces (topbar + folders pane/drawer);
+  one selection recipe (12% accent tint + accent border + 2px inset edge)
+  across snippet rows, folder rows, favorites, active tags and the
+  palette's active row, with inverse-surface hovers; palette group
+  headers (role=presentation) and full-contrast disabled reasons;
+  per-theme `--on-accent`/`--on-danger` tokens with the light accent
+  darkened to `#9a2fe6` so every theme clears WCAG AA as text and as a
+  fill (dark primary buttons were white-on-`#c084fc` at 2.6:1); compact
+  touch sizing extended to the drawer and detail actions (40–44px); the
+  ⌘K hint hidden under `(pointer: coarse)`; a centered empty state with
+  a Create CTA; settings popover closes on Escape and outside
+  pointer-down (the gear's `class:open` finally has CSS); sticky
+  editor actions; SVG lock icons; safe-first modal button order via
+  `row-reverse` (DOM/Tab order and cancel-first focus unchanged);
+  thin scrollbars, one focus treatment, 120ms transitions, modal
+  entrance animation + backdrop blur — all suppressed under
+  `prefers-reduced-motion`.
+- Real bug found by the geometry: the section `pane.detail` and the
+  read-view div both matched the `.detail` padding rule, double-padding
+  the pane (36px content inset, and the sticky bar pinned 18px off the
+  bottom). `.pane.detail { padding: 0 }` fixes both; the read view keeps
+  its own padding.
+- Verification: `npm test` 368 passed and `npm run check` clean after
+  every step; 24/24 live-DOM checks against the rebuilt binary
+  (surfaces, heading alignment, selection recipe per row type, palette
+  tint/headers/option count, modal order + initial focus, gear state,
+  popover dismissal, pre+h-scroll at 900px, compact target heights,
+  hint hidden on touch, dark fill text, empty-state centering, sticky
+  flush to the pane edge); an independent re-review confirmed all ten
+  headline changes and a clean overflow/clipping sweep at all three
+  widths. `go vet`/`go test ./...` green with `CGO_ENABLED=0` — the DSH
+  sandbox blocks the cgo toolchain (SDK headers), and modernc sqlite
+  makes the server binary build fine without it.
+- Gotchas: `getByText('New snippet')` is strict-matched in App tests, so
+  the empty-state CTA is labeled "Create a snippet". Escape for the
+  settings popover must not swallow other shortcuts — the popover is not
+  a modal, so only Escape is intercepted. A web rebuild alone does not
+  update a running server: the bundle is go:embed-ed at build time, so
+  visual verification requires rebuilding `bin/snp` and restarting it
+  (`web/dist/index.html` restored to its stub before committing). A
+  click at the drawer scrim's center lands on the drawer above it —
+  drive dismissal with Escape in Playwright.

@@ -15,6 +15,7 @@ Revised: 2026-09-11 (§4/§5 `pinned`; §6 Favorites, explicit copy actions, the
 Revised: 2026-09-12 (§6 service-worker update check, so a stale precached shell cannot linger)
 Revised: 2026-09-12 (§5/§6 search: prefix terms, terms ANDed, operators literal — online and offline now match the same set)
 Revised: 2026-09-12 (§6 compact layout: the single-pane phone/narrow-window mode and the Layout setting — built, Phase 11; verified in headless Chromium, on-device checklist pending)
+Revised: 2026-09-18 (§6 visual refresh: chrome surfaces, one selection recipe, palette group headers, compact touch targets, settings-popover dismissal, sticky editor actions, code boxes scroll instead of reflowing, WCAG-AA palette tokens)
 Status: approved design, revised after review, implemented
 
 > Revision note (2026-09-06): §6 originally specified a CodeMirror 6
@@ -563,6 +564,8 @@ model** instead: one screen at a time, with the list as the root.
   focuses the search box, so the search workflow (arrows, Enter to copy)
   works from anywhere. The arrow keys in the search box move the
   selection without pushing detail; Enter copies, as in wide mode.
+  Escape closes the settings popover first, in either mode, before it
+  reaches the drawer or the detail screen (see Keyboard below).
 - **Not changed by compact mode.** Everything the screens contain: the
   detail view, the editor, the copy actions, the variables panel, the
   reveal flow, offline behavior. The pane dividers and the persisted
@@ -622,7 +625,10 @@ model** instead: one screen at a time, with the list as the root.
   when its `language` matches a known grammar (highlight.js, loaded per
   language; plain escaped text otherwise). A body longer than ten lines
   (scripts especially) is capped to about ten lines with an inner scroll,
-  with a Show all / Show less button toggling the full height. The
+  with a Show all / Show less button toggling the full height. Long code
+  lines scroll horizontally inside the box instead of reflowing
+  (`white-space: pre` + `overflow-x: auto`, like Notes' `pre`), so a
+  snippet keeps its shape in a narrow pane. The
   template Rendered preview collapses on the same rule but independently
   — a short template can render long, when a variable holds many lines —
   so each box has its own toggle. The editor stays uncapped, and a
@@ -675,7 +681,10 @@ model** instead: one screen at a time, with the list as the root.
   and flashes "Copied." in the header, since there is no button under the
   cursor to change its label. The folder-rename inline input answers Enter
   (commit) and Esc (cancel), the pane dividers take focus and answer the
-  arrow keys, and forms save through their buttons.
+  arrow keys, and forms save through their buttons. The settings popover is
+  not a modal: Escape closes it from anywhere, and a pointer-down outside
+  it dismisses it while leaving the click free to act on the app
+  underneath; other shortcuts (⌘K, the palette) still work with it open.
 - **Command palette**: `Cmd/Ctrl+Shift+P` (matched on the physical P key,
   so Shift-altered layouts still work) toggles a commands-only palette
   over the app; snippet *finding* stays in the search box. It is a
@@ -715,6 +724,35 @@ model** instead: one screen at a time, with the list as the root.
   title carries its full text as a tooltip either way. All three persist in
   localStorage and are applied before first paint
   (`web/src/lib/settings.ts`), in the browser and the desktop window alike.
+- **Visual refresh** (2026-09-18, branch `ui-refresh`; findings and
+  measurements in `docs/ui-review.md`): the topbar and the folders pane
+  (and the compact drawer) sit on `--bg-alt` so navigation reads as one
+  layer above the content panes. "Selected" is one recipe everywhere —
+  a 12% accent tint, an accent border, and a 2px inset accent edge on
+  the leading side — for snippet rows, folder rows, favorites, active
+  tags, and the command palette's active row; a disabled palette command
+  dims its label but keeps its reason at full contrast, and presentation-
+  only group headers (Snippet / Folder / App) separate the palette's
+  sections without becoming options. Palette tokens clear WCAG AA in
+  every theme, both as text and as filled surfaces: the light accent is
+  `#9a2fe6` and each theme names `--on-accent` / `--on-danger` for filled
+  actions (white in light themes, the theme's own `--bg` where the
+  accent is light), so a dark-theme primary button is near-black on
+  `#c084fc` instead of white at 2.6:1. In compact mode the 40–44px touch
+  standard extends to the drawer (folder, tag, favorite rows) and the
+  detail screen (Edit, Save defaults, Show all, Show body, pin, delete),
+  and the ⌘K hint inside the search field hides under
+  `(pointer: coarse)`. The detail pane's empty state centers and carries
+  a *Create a snippet* button; the editor's Save/Cancel row is sticky at
+  the pane's bottom edge (the section `pane.detail` no longer double-
+  pads its content — the read view's own `.detail` padding remains);
+  code boxes scroll long lines instead of reflowing them; the sensitive
+  marker is a flat SVG lock rather than an emoji; the modal's actions
+  read safe-action-first (Cancel left, commit right) visually while DOM
+  and Tab order — and the cancel-first initial focus — are unchanged;
+  controls share one accent focus treatment, thin theme-aware
+  scrollbars, and 120ms state transitions, all suppressed under
+  `prefers-reduced-motion`.
 
 ### PWA and offline
 
