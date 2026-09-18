@@ -18,6 +18,21 @@
 
   const visible = $derived(filterCommands(commands, query))
 
+  /** Display headings for the command groups. The list is flat and
+   * ordered by group (App.svelte assembles it that way), so a header is
+   * emitted wherever the group changes — presentation-only, so screen
+   * readers and role queries see just the options. */
+  const GROUP_LABELS: Record<Command['group'], string> = {
+    snippet: 'Snippet',
+    folder: 'Folder',
+    app: 'App',
+  }
+
+  function groupHeader(c: Command, i: number): string | null {
+    if (i > 0 && visible[i - 1].group === c.group) return null
+    return GROUP_LABELS[c.group]
+  }
+
   // Focus on open; the filter field is the palette's only input.
   $effect(() => {
     input?.focus()
@@ -92,6 +107,9 @@
     {:else}
       <ul id="palette-list" class="palette-list" role="listbox" aria-label="Commands">
         {#each visible as c, i (c.id)}
+          {#if groupHeader(c, i) !== null}
+            <li class="palette-group" role="presentation" aria-hidden="true">{groupHeader(c, i)}</li>
+          {/if}
           <!-- svelte-ignore a11y_click_events_have_key_events -->
           <li
             id="palette-{c.id}"

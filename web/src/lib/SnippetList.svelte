@@ -96,7 +96,14 @@
             {#each s.tags.slice(0, 3) as t (t)}
               <span class="tag">#{t}</span>
             {/each}
-            {#if s.is_sensitive}<span class="lock" title="Sensitive">🔒</span>{/if}
+            {#if s.is_sensitive}
+              <span class="lock" role="img" aria-label="Sensitive" title="Sensitive">
+                <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
+                  <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                  <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                </svg>
+              </span>
+            {/if}
             <span class="when" title={formatAbsolute(s.updated_at)}
               >{formatDate(s.updated_at)}</span
             >

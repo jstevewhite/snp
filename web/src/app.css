@@ -4,14 +4,21 @@
   --bg: #fff;
   --syn-keyword: #8250df;
   --syn-string: #0a3069;
-  --syn-comment: #6e7781;
+  --syn-comment: #63707d;
   --syn-function: #8250df;
   --syn-constant: #953800;
   --bg-alt: #f7f7f5;
   --border: #e4e4e1;
   --code-bg: #f4f3ec;
-  --accent: #aa3bff;
+  /* Accent and danger double as text colors (tags, copy buttons), so
+   * both must clear WCAG AA on --bg. --on-accent/--on-danger are the
+   * text colors for *filled* accent/danger surfaces (modal primary
+   * buttons, the active tag count): #fff in light themes, the theme's
+   * own dark bg where the accent is a light color (dark themes). */
+  --accent: #9a2fe6;
+  --on-accent: #fff;
   --danger: #b3372c;
+  --on-danger: #fff;
   --sans: system-ui, 'Segoe UI', Roboto, sans-serif;
   --mono: ui-monospace, 'Cascadia Code', Consolas, monospace;
 
@@ -46,7 +53,9 @@
     --border: #2e303a;
     --code-bg: #1f2028;
     --accent: #c084fc;
+    --on-accent: #16171d;
     --danger: #e06c5f;
+    --on-danger: #16171d;
   }
 }
 
@@ -65,14 +74,16 @@
   --bg: #fff;
   --syn-keyword: #8250df;
   --syn-string: #0a3069;
-  --syn-comment: #6e7781;
+  --syn-comment: #63707d;
   --syn-function: #8250df;
   --syn-constant: #953800;
   --bg-alt: #f7f7f5;
   --border: #e4e4e1;
   --code-bg: #f4f3ec;
-  --accent: #aa3bff;
+  --accent: #9a2fe6;
+  --on-accent: #fff;
   --danger: #b3372c;
+  --on-danger: #fff;
 }
 
 :root[data-theme='dark'] {
@@ -89,7 +100,9 @@
   --border: #2e303a;
   --code-bg: #1f2028;
   --accent: #c084fc;
+  --on-accent: #16171d;
   --danger: #e06c5f;
+  --on-danger: #16171d;
 }
 
 :root[data-theme='solarized-light'] {
@@ -105,8 +118,10 @@
   --bg-alt: #eee8d5;
   --border: #d3cdb5;
   --code-bg: #eee8d5;
-  --accent: #268bd2;
+  --accent: #2273b0;
+  --on-accent: #fff;
   --danger: #dc322f;
+  --on-danger: #fff;
 }
 
 :root[data-theme='solarized-dark'] {
@@ -122,8 +137,10 @@
   --bg-alt: #073642;
   --border: #405b64;
   --code-bg: #073642;
-  --accent: #268bd2;
-  --danger: #dc322f;
+  --accent: #35a0e0;
+  --on-accent: #002b36;
+  --danger: #ef6e88;
+  --on-danger: #002b36;
 }
 
 :root[data-theme='kimbie-dark'] {
@@ -140,7 +157,9 @@
   --border: #4b3a26;
   --code-bg: #2b2116;
   --accent: #f79a32;
-  --danger: #dc3958;
+  --on-accent: #221a0f;
+  --danger: #f2536e;
+  --on-danger: #221a0f;
 }
 
 :root[data-theme='tokyo-night'] {
@@ -157,7 +176,9 @@
   --border: #363b54;
   --code-bg: #1f2335;
   --accent: #7aa2f7;
+  --on-accent: #1a1b26;
   --danger: #f7768e;
+  --on-danger: #1a1b26;
 }
 
 * {
@@ -181,19 +202,35 @@ body {
 
 /* ---- top bar ---- */
 
+/* The bar and the folders pane are the app's chrome: they sit on
+ * --bg-alt so navigation reads as one layer above the content panes
+ * (--bg). The media/theme blocks define both tones, so this single rule
+ * gives every theme the same hierarchy. */
 .topbar {
   display: flex;
   align-items: center;
   gap: 10px;
   padding: 8px 14px;
   border-bottom: 1px solid var(--border);
-  background: var(--bg);
+  background: var(--bg-alt);
 }
 
 .brand {
   font-family: var(--mono);
   font-weight: 700;
   font-size: calc(15px * var(--text-scale, 1));
+}
+
+/* The wordmark's full stop: a small accent dot that gives the plain
+ * three-letter name a signature without adding chrome. */
+.brand::after {
+  content: '';
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  margin-left: 4px;
+  border-radius: 50%;
+  background: var(--accent);
 }
 
 /* Release version, beside the wordmark: secondary to the brand, so it is
@@ -254,6 +291,10 @@ button {
   border-radius: 6px;
   padding: 4px 10px;
   cursor: pointer;
+  transition:
+    background-color 120ms ease,
+    border-color 120ms ease,
+    color 120ms ease;
 }
 
 button:hover {
@@ -268,6 +309,38 @@ button:disabled {
 button.danger {
   color: var(--danger);
   border-color: var(--danger);
+}
+
+/* Keyboard focus is a visible accent ring on every control; pointer
+ * users never see it (:focus-visible). */
+button:focus-visible,
+.splitter:focus-visible::before {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* The panes and their inner scroll areas get quiet, theme-aware
+ * scrollbars instead of the platform's heavy defaults. */
+.pane,
+.palette-list,
+.detail .body,
+.detail .preview,
+.settings .panel,
+.form textarea.code {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--text) 30%, transparent) transparent;
+}
+
+/* Text controls share one focus treatment: the accent border plus a
+ * soft accent ring, matching the button ring above. */
+.snippet-list .search:focus,
+.form input:focus,
+.form select:focus,
+.form textarea:focus,
+.detail .var input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent);
 }
 
 /* ---- panes ---- */
@@ -295,6 +368,13 @@ button.danger {
 .pane {
   min-height: 0;
   overflow: auto;
+}
+
+/* The folders pane shares the topbar's chrome surface (--bg-alt), so
+ * the left column reads as one navigation layer beside the content
+ * panes. See .topbar above. */
+.pane.folders {
+  background: var(--bg-alt);
 }
 
 /* ---- draggable pane dividers ---- */
@@ -353,7 +433,7 @@ button.danger {
   border-bottom: 1px solid var(--border);
   position: sticky;
   top: 0;
-  background: var(--bg);
+  background: var(--bg-alt);
   z-index: 1;
 }
 
@@ -370,7 +450,7 @@ button.danger {
 
 .pane-head h2 {
   margin: 0;
-  font-size: calc(13px * var(--text-scale, 1));
+  font-size: calc(12px * var(--text-scale, 1));
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: var(--text);
@@ -384,8 +464,11 @@ button.danger {
 }
 
 .favorites h3 {
-  margin: 0 0 6px;
-  font-size: calc(11px * var(--text-scale, 1));
+  /* Aligns the label with FOLDERS/TAGS: .favorites pads 6px, the pane
+   * head pads 12px, so the h3 carries the remaining 6px as margin
+   * (outside the box, so element rects align too). */
+  margin: 0 0 6px 6px;
+  font-size: calc(12px * var(--text-scale, 1));
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: var(--text);
@@ -416,9 +499,22 @@ button.danger {
   white-space: nowrap;
 }
 
+/* ---- the selection recipe ----
+ *
+ * "Selected" is one look everywhere it appears (favorites, folder tree,
+ * snippet list, tags): a 12% accent tint, a full accent border, and a
+ * 2px inset accent edge on the leading side. Hover everywhere is the
+ * inverse surface of the pane the row sits on (--bg on --bg-alt panes,
+ * --bg-alt on --bg panes), so it stays theme-agnostic. */
+
+.favorites .name:hover:not(.selected) {
+  background: var(--bg);
+}
+
 .favorites .name.selected {
   background: color-mix(in srgb, var(--accent) 12%, transparent);
   border-color: var(--accent);
+  box-shadow: inset 2px 0 0 var(--accent);
 }
 
 /* Keep the unpin control quiet until hovered; it sits on every row. */
@@ -455,10 +551,16 @@ button.danger {
   width: 100%;
 }
 
+.folder-tree .all:hover:not(.selected),
+.folder-tree .name:hover:not(.selected) {
+  background: var(--bg);
+}
+
 .folder-tree .all.selected,
 .folder-tree .name.selected {
   background: color-mix(in srgb, var(--accent) 12%, transparent);
   border-color: var(--accent);
+  box-shadow: inset 2px 0 0 var(--accent);
 }
 
 .folder-tree .row {
@@ -583,12 +685,22 @@ button.danger {
   width: 100%;
   text-align: left;
   border: 1px solid transparent;
+  border-radius: 6px;
   padding: 7px 8px;
+  transition:
+    background-color 120ms ease,
+    border-color 120ms ease,
+    box-shadow 120ms ease;
+}
+
+.snippet-list .item:hover:not(.selected) {
+  background: var(--bg-alt);
 }
 
 .snippet-list .item.selected {
   border-color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  box-shadow: inset 2px 0 0 var(--accent);
 }
 
 .snippet-list .title {
@@ -625,6 +737,24 @@ button.danger {
   border-radius: 4px;
 }
 
+/* Sensitive marker: a flat SVG lock (same icon language as the detail
+ * pane's pin/trash), quiet next to the row's metadata. */
+.snippet-list .lock {
+  display: inline-flex;
+  align-items: center;
+  color: var(--text);
+}
+
+.snippet-list .lock .icon {
+  width: calc(12px * var(--text-scale, 1));
+  height: calc(12px * var(--text-scale, 1));
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
 .tag {
   font-size: calc(11px * var(--text-scale, 1));
   color: var(--accent);
@@ -641,6 +771,15 @@ button.danger {
 }
 
 /* ---- detail ---- */
+
+/* The hosting section and the read view inside it both carry the
+ * .detail class, but the padding belongs to the read view (and the
+ * editor's .form has its own). Without this override the pane was
+ * double-padded — 36px of inset on the content, and the form's sticky
+ * Save/Cancel bar pinned 18px short of the pane's bottom edge. */
+.pane.detail {
+  padding: 0;
+}
 
 .detail {
   padding: 18px 22px;
@@ -792,8 +931,11 @@ button.danger {
   border: 1px solid var(--border);
   border-radius: 8px;
   padding: 12px;
-  white-space: pre-wrap;
-  word-break: break-word;
+  /* Code keeps its shape: long lines scroll inside the box instead of
+     reflowing mid-expression (Notes pre already behaved this way). */
+  white-space: pre;
+  overflow-x: auto;
+  tab-size: 2;
 }
 
 /* A long body or Rendered preview (a generated script, say) is capped at
@@ -853,16 +995,41 @@ button.danger {
 }
 
 .detail .sensitive {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   margin: 0;
   font-size: calc(12px * var(--text-scale, 1));
   color: var(--text);
-  border: 1px dashed var(--border);
+  border: 1px solid var(--border);
   border-radius: 6px;
   padding: 8px 10px;
+  background: var(--bg-alt);
 }
 
+.detail .sensitive .icon {
+  flex: none;
+  width: calc(13px * var(--text-scale, 1));
+  height: calc(13px * var(--text-scale, 1));
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* Reveal is the sensitive state's call to action, so it carries the
+   same accent fill the code-box copy buttons use. */
 .detail .reveal {
   align-self: flex-start;
+  background: color-mix(in srgb, var(--accent) 12%, var(--bg));
+  border-color: var(--accent);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.detail .reveal:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent) 20%, var(--bg));
 }
 
 /* ---- detail: variables panel ---- */
@@ -912,8 +1079,9 @@ button.danger {
   border: 1px solid var(--border);
   border-radius: 8px;
   padding: 12px;
-  white-space: pre-wrap;
-  word-break: break-word;
+  white-space: pre;
+  overflow-x: auto;
+  tab-size: 2;
 }
 
 .detail .vars-actions {
@@ -1031,7 +1199,9 @@ button.danger {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  padding: 18px 22px;
+  /* No bottom padding: the sticky actions row carries its own, so the
+   * bar pins flush against the pane's bottom edge. */
+  padding: 18px 22px 0;
 }
 
 .form label {
@@ -1074,9 +1244,20 @@ button.danger {
   gap: 6px;
 }
 
+/* Sticky within the scrolling detail pane: Save/Cancel stay on screen
+ * no matter how tall the form is — a long body no longer pushes them
+ * below the fold. The bottom padding replaces the form's own (removed
+ * above) so the bar's background runs to the pane's edge. */
 .form .actions {
   display: flex;
   gap: 8px;
+  position: sticky;
+  bottom: 0;
+  margin-top: 4px;
+  padding: 10px 0 18px;
+  background: var(--bg);
+  border-top: 1px solid var(--border);
+  z-index: 1;
 }
 
 /* ---- empty state ---- */
@@ -1084,6 +1265,41 @@ button.danger {
 .empty {
   padding: 24px;
   color: var(--text);
+}
+
+/* The detail pane's placeholder fills the pane and centers, instead of
+ * floating top-left: it is the first thing a fresh install shows. */
+.pane.detail > .empty {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 24px;
+  text-align: center;
+}
+
+.pane.detail > .empty h2 {
+  margin: 0;
+  font-size: calc(15px * var(--text-scale, 1));
+  color: var(--text-h);
+}
+
+.pane.detail > .empty p {
+  margin: 0;
+  max-width: 40ch;
+}
+
+.pane.detail > .empty .create {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, var(--bg));
+  font-weight: 600;
+}
+
+.pane.detail > .empty .create:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent) 20%, var(--bg));
 }
 
 /* ---- offline banner (spec §6) ---- */
@@ -1109,6 +1325,14 @@ button.danger {
   position: relative;
 }
 
+/* The gear's open state: the inverse surface plus the accent border the
+   selection recipe uses, so the popover's trigger shows it is engaged. */
+.settings > button.open {
+  background: var(--bg);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
 .settings .panel {
   position: absolute;
   right: 0;
@@ -1121,8 +1345,16 @@ button.danger {
   background: var(--bg);
   border: 1px solid var(--border);
   border-radius: 8px;
-  box-shadow: 0 4px 16px rgb(0 0 0 / 0.12);
+  box-shadow: 0 8px 28px rgb(0 0 0 / 0.16);
   z-index: 10;
+  animation: popover-in 120ms ease-out;
+}
+
+@keyframes popover-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
 }
 
 .settings .panel .field {
@@ -1234,6 +1466,8 @@ button.danger {
   justify-content: center;
   padding-top: 15vh;
   background: rgb(0 0 0 / 0.45);
+  -webkit-backdrop-filter: blur(3px);
+  backdrop-filter: blur(3px);
 }
 
 .modal {
@@ -1246,6 +1480,14 @@ button.danger {
   display: flex;
   flex-direction: column;
   gap: 12px;
+  animation: modal-in 140ms ease-out;
+}
+
+@keyframes modal-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.99);
+  }
 }
 
 .modal h2 {
@@ -1274,7 +1516,13 @@ button.danger {
 
 .modal-actions {
   display: flex;
-  justify-content: flex-end;
+  /* row-reverse puts the safe action (Cancel / Keep editing) on the
+   * left and the commit action on the right — the platform convention
+   * — without changing DOM order, so Tab order and the modal's initial
+   * focus (the last control, spec §6) keep working from the same
+   * markup. */
+  flex-direction: row-reverse;
+  justify-content: flex-start;
   gap: 8px;
 }
 
@@ -1291,13 +1539,13 @@ button.danger {
 .modal-actions button.primary {
   background: var(--accent);
   border-color: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
 }
 
 .modal-actions button.danger {
   background: var(--danger);
   border-color: var(--danger);
-  color: #fff;
+  color: var(--on-danger);
 }
 
 .modal-actions button:disabled {
@@ -1333,12 +1581,29 @@ button.danger {
   font-size: calc(15px * var(--text-scale, 1));
 }
 
+.palette input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent);
+}
+
 .palette-list {
   list-style: none;
   margin: 0;
   padding: 0;
   max-height: min(50vh, 420px);
   overflow-y: auto;
+}
+
+/* Non-option group heading (role=presentation in the markup). Small,
+ * quiet, and skipped by assistive tech and role queries alike. */
+.palette-group {
+  margin: 8px 10px 2px;
+  font-size: calc(10px * var(--text-scale, 1));
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text);
 }
 
 .palette-list li {
@@ -1359,14 +1624,22 @@ button.danger {
   white-space: nowrap;
 }
 
+/* The keyboard-driven surface's one selection state: the same accent
+   recipe as a selected list row, so Enter's target is unmistakable. */
 .palette-list li.active {
-  background: var(--bg-alt);
+  background: color-mix(in srgb, var(--accent) 12%, var(--bg));
+  box-shadow: inset 2px 0 0 var(--accent);
 }
 
+/* A disabled row stays clearly legible — the reason is the palette's
+   answer to "why can't I run this", so it is not double-muted. */
 .palette-list li.disabled {
   color: var(--text);
-  opacity: 0.55;
   cursor: default;
+}
+
+.palette-list li.disabled .label {
+  opacity: 0.75;
 }
 
 .palette-list li .reason {
@@ -1497,13 +1770,14 @@ button.danger {
   color: var(--text-h);
 }
 
-.tag-list .tag:hover {
-  background: var(--bg-alt);
+.tag-list .tag:hover:not(.active) {
+  background: var(--bg);
 }
 
 .tag-list .tag.active {
-  background: color-mix(in srgb, var(--accent) 14%, var(--bg));
+  background: color-mix(in srgb, var(--accent) 12%, var(--bg));
   border: 1px solid var(--accent);
+  box-shadow: inset 2px 0 0 var(--accent);
   color: var(--text-h);
   padding: 2px 5px;
 }
@@ -1525,7 +1799,7 @@ button.danger {
 
 .tag-list .tag.active .tag-count {
   background: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
 }
 
 .tag-list .tag-active-hint {
@@ -1652,7 +1926,7 @@ button.danger {
   bottom: 0;
   left: 0;
   width: min(85vw, 320px);
-  background: var(--bg);
+  background: var(--bg-alt);
   border-right: 1px solid var(--border);
   box-shadow: 0 0 24px rgb(0 0 0 / 0.25);
   transform: translateX(-100%);
@@ -1671,6 +1945,28 @@ button.danger {
 @media (prefers-reduced-motion: reduce) {
   .app.compact .pane.folders {
     transition: none;
+  }
+
+  /* The entrance animations and hover transitions are decoration only:
+     reduced-motion users get the same states, instantly. */
+  .modal,
+  .settings .panel,
+  button,
+  .snippet-list .item {
+    animation: none;
+    transition: none;
+  }
+}
+
+/* On touch screens the ⌘K hint is noise from another world; the field
+ * keeps its padding for the text instead. */
+@media (pointer: coarse) {
+  .snippet-list .hint {
+    display: none;
+  }
+
+  .snippet-list .search {
+    padding-right: 8px;
   }
 }
 
@@ -1719,8 +2015,47 @@ button.danger {
 
 .app.compact .topbar button,
 .app.compact .snippet-list .toolbar button,
-.app.compact .detail .box-head .copy-button {
+.app.compact .detail .box-head .copy-button,
+.app.compact .settings .panel .actions button {
   min-height: 40px;
+}
+
+/* Touch sizing does not stop at the drawer's edge: every row and
+ * control inside the drawer (folder tree, favorites, tags, New folder)
+ * and the detail screen's own actions (Edit, Save defaults, Show all)
+ * reach the same 40–44px targets the list rows and copy buttons meet. */
+.app.compact .pane-head .head-actions button,
+.app.compact .detail .actions button,
+.app.compact .detail .reveal,
+.app.compact .detail .show-all,
+.app.compact .detail .save-defaults,
+.app.compact .favorites .name,
+.app.compact .favorites .unpin,
+.app.compact .tag-list .tag,
+.app.compact .folder-tree .name,
+.app.compact .folder-tree .caret,
+.app.compact .folder-tree .actions button {
+  min-height: 40px;
+}
+
+/* The detail header's icon-only controls (pin, delete) are the only
+ * path to those actions on a phone, so they reach the same target as
+ * every other compact control. */
+.app.compact .detail .pin,
+.app.compact .detail .trash {
+  min-height: 40px;
+  min-width: 40px;
+}
+
+/* The "All snippets" row sits outside the tree rows (44px) but is one
+ * of them visually; give it the row height, not the control height. */
+.app.compact .folder-tree .all {
+  min-height: 44px;
+}
+
+.app.compact .folder-tree .row,
+.app.compact .favorites li {
+  min-height: 44px;
 }
 
 .app.compact .snippet-list .search {
