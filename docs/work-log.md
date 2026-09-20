@@ -1544,3 +1544,30 @@ Spec: `docs/snp-design.md` · Plan: `docs/snp-implementation-plan.md`
   to writes. Linux build tags are preserved; Linux-native execution and
   physical mobile/PWA hardware checks remain unverified on this macOS host.
   Generated web/dist/index.html is restored to its tracked stub after builds.
+
+### 2026-09-20 — UI cards and tag cloud transfer
+
+- Ported the UI adjustments from ~/CODE/qwen/snp onto
+  codex/ui-cards-tag-cloud: wrapping tag pills with counts, snippet result
+  cards, a detail card, and persisted Compact / Regular / Large list sizes.
+  Large cards preview only non-sensitive bodies, limited to three lines.
+- Preserved this repository's Favorites, resizable panes, compact navigation,
+  search shortcuts/selection scrolling, date formatting, and independent
+  two-line title setting. Search controls wrap within narrow panes. Renamed
+  the detail pane class so the card styling applies only to its contents;
+  updated compact CSS and existing navigation test selectors accordingly.
+- Validation: make test passed (Go vet/tests, 369 Vitest tests, zero
+  Svelte/TypeScript errors/warnings); production Vite/PWA build passed.
+  Regression coverage verifies saved size selection, invalid-value fallback,
+  and sensitive-body exclusion. No browser/native visual smoke this session.
+  Restored the tracked dist stub after building; generated assets excluded.
+
+### 2026-09-20 — SVG toolbar icons
+
+- Replaced the compact Folders menu glyph with an outlined folder SVG and
+  the Settings gear glyph with an outlined gear SVG. Both match the detail
+  pin/trash stroke weight, inherit theme color, and scale with interface text.
+  Existing accessible button labels remain; decorative SVGs are aria-hidden.
+- Validation: make test passed (Go vet/tests, 369 Vitest tests, zero
+  Svelte/TypeScript errors/warnings). Left the pre-existing generated
+  web/dist/index.html change untouched and excluded it from the commit.

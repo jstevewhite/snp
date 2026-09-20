@@ -593,6 +593,7 @@ button.danger {
 
 .snippet-list .toolbar {
   display: flex;
+  flex-direction: column;
   gap: 8px;
   padding: 10px 12px;
   border-bottom: 1px solid var(--border);
@@ -642,10 +643,10 @@ button.danger {
 .snippet-list .items {
   list-style: none;
   margin: 0;
-  padding: 6px;
+  padding: 12px;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 10px;
 }
 
 .snippet-list .item {
@@ -654,8 +655,10 @@ button.danger {
   gap: 3px;
   width: 100%;
   text-align: left;
-  border: 1px solid transparent;
-  padding: 7px 8px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 12px;
+  box-shadow: 0 2px 4px rgb(0 0 0 / 4%);
 }
 
 .snippet-list .item.selected {
@@ -715,6 +718,11 @@ button.danger {
 /* ---- detail ---- */
 
 .detail {
+  margin: 12px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--bg);
+  box-shadow: 0 2px 8px rgb(0 0 0 / 5%);
   padding: 18px 22px;
   display: flex;
   flex-direction: column;
@@ -1556,15 +1564,22 @@ button.danger {
   color: var(--text);
 }
 
+.tag-cloud {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
 .tag-list .tag {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  border: none;
-  background: none;
-  border-radius: 6px;
-  padding: 3px 6px;
+  max-width: 100%;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  border-radius: 999px;
+  padding: 4px 8px;
   text-align: left;
   color: var(--text-h);
 }
@@ -1578,7 +1593,6 @@ button.danger {
   background: color-mix(in srgb, var(--accent) 14%, var(--bg));
   border: 1px solid var(--accent);
   color: var(--text-h);
-  padding: 2px 5px;
 }
 
 .tag-list .tag .tag-name {
@@ -1704,7 +1718,7 @@ button.danger {
 }
 
 .app.compact .pane.list,
-.app.compact .pane.detail {
+.app.compact .pane.detail-pane {
   grid-column: 1;
   grid-row: 1;
   min-width: 0;
@@ -1830,3 +1844,65 @@ button.danger {
 /* Keep native fieldset disabling without changing the editor layout. */
 .form > fieldset { border: 0; padding: 0; margin: 0; min-width: 0; display: contents; }
 .form-error { color: var(--danger, #dc2626); }
+
+/* Cards share the active theme; list size is independent of text scaling. */
+.pane.list, .pane.detail-pane { background: var(--bg-alt); }
+.snippet-list .search-row { display: flex; gap: 8px; }
+.snippet-list .list-size { display: flex; flex-wrap: wrap; gap: 4px; }
+.snippet-list .list-size button {
+  flex: 1;
+  padding: 4px 8px;
+  font-size: calc(11px * var(--text-scale, 1));
+}
+.snippet-list .list-size button[aria-pressed='true'] {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, var(--bg));
+}
+.snippet-list .item.selected {
+  background: color-mix(in srgb, var(--accent) 8%, var(--bg));
+}
+.snippet-list .title { max-width: 100%; }
+.snippet-list .meta { min-width: 0; max-width: 100%; overflow-wrap: anywhere; }
+.snippet-list .meta .tag {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 1px 6px;
+}
+.snippet-list[data-size='compact'] .items { gap: 6px; }
+.snippet-list[data-size='compact'] .item { padding: 6px 10px; gap: 2px; border-radius: 8px; }
+.snippet-list[data-size='large'] .items { gap: 14px; }
+.snippet-list[data-size='large'] .item { padding: 18px; gap: 10px; }
+
+.snippet-list .body-preview {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-family: var(--mono);
+  font-size: calc(12px * var(--text-scale, 1));
+  color: var(--text);
+  max-width: 100%;
+}
+.snippet-list button:focus-visible, .tag-cloud button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.snippet-list .search-row { flex-wrap: wrap; }
+.snippet-list .search-wrap { flex-basis: 140px; }
+
+
+/* Toolbar icons use the same stroke style as the detail pin and trash. */
+.topbar .control-icon {
+  display: block;
+  width: calc(16px * var(--text-scale, 1));
+  height: calc(16px * var(--text-scale, 1));
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}

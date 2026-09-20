@@ -193,3 +193,24 @@ export function applyTextScale(percent: number): void {
   const pct = clampTextScale(percent)
   document.documentElement.style.setProperty('--text-scale', String(pct / 100))
 }
+
+export const LIST_SIZE_STORAGE_KEY = 'snp.listSize'
+export const LIST_SIZES = ['compact', 'regular', 'large'] as const
+export type ListSize = typeof LIST_SIZES[number]
+
+export function loadListSize(): ListSize {
+  try {
+    const value = storage()?.getItem(LIST_SIZE_STORAGE_KEY)
+    return LIST_SIZES.find((size) => size === value) ?? 'regular'
+  } catch {
+    return 'regular'
+  }
+}
+
+export function saveListSize(size: ListSize): void {
+  try {
+    storage()?.setItem(LIST_SIZE_STORAGE_KEY, size)
+  } catch {
+    // Persistence is best-effort, like the other appearance settings.
+  }
+}

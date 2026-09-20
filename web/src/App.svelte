@@ -1185,7 +1185,9 @@
             aria-expanded={navState.drawerOpen}
             onclick={() => nav.openDrawer()}
           >
-            ☰
+            <svg class="control-icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+            </svg>
           </button>
         {/if}
       {/if}
@@ -1207,7 +1209,10 @@
           disabled={!ready}
           onclick={() => (settingsOpen = !settingsOpen)}
         >
-          ⚙
+          <svg class="control-icon" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M9.5 3h5l.6 2.5 1.7 1 2.5-.7 2.5 4.4-1.9 1.8v2l1.9 1.8-2.5 4.4-2.5-.7-1.7 1-.6 2.5h-5l-.6-2.5-1.7-1-2.5.7-2.5-4.4L4.1 14v-2l-1.9-1.8 2.5-4.4 2.5.7 1.7-1z" transform="translate(0 -1)" />
+            <circle cx="12" cy="12" r="3" />
+          </svg>
         </button>
         {#if settingsOpen}
           <div class="panel">
@@ -1413,7 +1418,7 @@
       )}
     {/if}
 
-    <section class="pane detail" inert={compact && navState.drawerOpen} hidden={compact && navState.screen === 'list'}>
+    <section class="pane detail-pane" inert={compact && navState.drawerOpen} hidden={compact && navState.screen === 'list'}>
       {#if editing}
         {#key editorKey}
           <SnippetForm

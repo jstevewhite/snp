@@ -2,6 +2,14 @@
   import { searchShortcutLabel } from './keys'
   import { formatAbsolute, formatDate } from './time'
   import type { Snippet } from './types'
+  import { LIST_SIZES, loadListSize, saveListSize, type ListSize } from './settings'
+
+  let size = $state<ListSize>(loadListSize())
+
+  function setSize(value: ListSize): void {
+    size = value
+    saveListSize(value)
+  }
 
   let {
     snippets,
@@ -57,26 +65,35 @@
   })
 </script>
 
-<div class="snippet-list" class:two-line={twoLine}>
+<div class="snippet-list" class:two-line={twoLine} data-size={size}>
   <div class="toolbar">
-    <div class="search-wrap">
-      <input
-        bind:this={searchEl}
-        type="search"
-        class="search"
-        placeholder="Search: caddy tag:ops lang:go"
-        value={query}
-        oninput={(e) => onsearch(e.currentTarget.value)}
-        aria-label="Search snippets"
-      />
-      <!-- Decorative: the field's aria-label is its accessible name, and the
-           hint only repeats what the keydown handler accepts. -->
-      <kbd class="hint" aria-hidden="true">{searchShortcutLabel()}</kbd>
+    <div class="search-row">
+      <div class="search-wrap">
+        <input
+          bind:this={searchEl}
+          type="search"
+          class="search"
+          placeholder="Search: caddy tag:ops lang:go"
+          value={query}
+          oninput={(e) => onsearch(e.currentTarget.value)}
+          aria-label="Search snippets"
+        />
+        <!-- Decorative: the field's aria-label is its accessible name, and the
+             hint only repeats what the keydown handler accepts. -->
+        <kbd class="hint" aria-hidden="true">{searchShortcutLabel()}</kbd>
+      </div>
+      {#if onfolders !== undefined}
+        <button class="folders" onclick={onfolders}>Folders</button>
+      {/if}
+      <button class="new" disabled={offline} onclick={oncreate}>New snippet</button>
     </div>
-    {#if onfolders !== undefined}
-      <button class="folders" onclick={onfolders}>Folders</button>
-    {/if}
-    <button class="new" disabled={offline} onclick={oncreate}>New snippet</button>
+    <div class="list-size" role="group" aria-label="Snippet list size">
+      {#each LIST_SIZES as option}
+        <button aria-pressed={size === option} onclick={() => setSize(option)}>
+          {option[0].toUpperCase() + option.slice(1)}
+        </button>
+      {/each}
+    </div>
   </div>
   <ul class="items" bind:this={listEl}>
     {#each snippets as s (s.id)}
@@ -84,6 +101,7 @@
         <button
           class="item"
           class:selected={s.id === selectedId}
+          aria-current={s.id === selectedId ? 'true' : undefined}
           data-id={s.id}
           onclick={() => onselect(s.id)}
         >
@@ -101,6 +119,9 @@
               >{formatDate(s.updated_at)}</span
             >
           </span>
+          {#if size === 'large' && !s.is_sensitive && s.body}
+            <span class="body-preview">{s.body.slice(0, 240)}</span>
+          {/if}
         </button>
       </li>
     {:else}

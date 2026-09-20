@@ -298,7 +298,7 @@ describe('newer navigation and data paths', () => {
     await waitFor(() => expect(screen.getByRole('dialog', { name: 'Unsaved changes' })).toBeDefined())
     await fireEvent.click(screen.getByText('Keep editing'))
     expect((screen.getByLabelText('Body') as HTMLTextAreaElement).value).toBe('draft')
-    expect((document.querySelector('.pane.detail') as HTMLElement).hidden).toBe(false)
+    expect((document.querySelector('.pane.detail-pane') as HTMLElement).hidden).toBe(false)
     await fireEvent.click(screen.getByRole('button', { name: 'Back' }))
     await waitFor(() => expect(screen.getByText('Discard changes')).toBeDefined())
     await fireEvent.click(screen.getByText('Discard changes'))
