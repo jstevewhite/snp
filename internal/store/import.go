@@ -78,6 +78,10 @@ func (s *Store) Import(doc ImportDoc, mode string) (ImportResult, error) {
 			seen[sn.ID] = true
 		}
 	}
+	folders, err := orderImportFolders(doc.Folders)
+	if err != nil {
+		return ImportResult{}, err
+	}
 
 	ctx := context.Background()
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -87,9 +91,14 @@ func (s *Store) Import(doc ImportDoc, mode string) (ImportResult, error) {
 	defer tx.Rollback()
 	now := s.now()
 
-	for _, f := range doc.Folders {
-		if f.ID == "" || strings.TrimSpace(f.Name) == "" {
-			return ImportResult{}, fmt.Errorf("%w: folder with empty id or name", ErrImport)
+	for _, f := range folders {
+		if f.ParentID != nil {
+			if err := liveFolderTx(tx, *f.ParentID); err != nil {
+				if errors.Is(err, ErrNotFound) {
+					return ImportResult{}, fmt.Errorf("%w: folder %q references unknown parent %q", ErrImport, f.ID, *f.ParentID)
+				}
+				return ImportResult{}, err
+			}
 		}
 		name := strings.TrimSpace(f.Name)
 		var n int
@@ -151,6 +160,41 @@ func (s *Store) Import(doc ImportDoc, mode string) (ImportResult, error) {
 		return ImportResult{}, err
 	}
 	return res, nil
+}
+
+// orderImportFolders puts document parents before their children without
+// modifying the input. Export sorts by name, so its order need not match
+// the foreign-key insertion order (spec §5). Parents outside the document
+// are checked against the store during import.
+func orderImportFolders(folders []ImportFolder) ([]ImportFolder, error) {
+	ids := make(map[string]bool, len(folders))
+	for _, f := range folders {
+		if f.ID == "" || strings.TrimSpace(f.Name) == "" {
+			return nil, fmt.Errorf("%w: folder with empty id or name", ErrImport)
+		}
+		if ids[f.ID] {
+			return nil, fmt.Errorf("%w: duplicate folder id %q", ErrImport, f.ID)
+		}
+		ids[f.ID] = true
+	}
+	children := make(map[string][]ImportFolder, len(folders))
+	ordered := make([]ImportFolder, 0, len(folders))
+	for _, f := range folders {
+		if f.ParentID != nil && ids[*f.ParentID] {
+			children[*f.ParentID] = append(children[*f.ParentID], f)
+		} else {
+			ordered = append(ordered, f)
+		}
+	}
+	// Each folder has at most one parent. Release its children when their
+	// parent is ready; any folders left over belong to or depend on a cycle.
+	for i := 0; i < len(ordered); i++ {
+		ordered = append(ordered, children[ordered[i].ID]...)
+	}
+	if len(ordered) != len(folders) {
+		return nil, fmt.Errorf("%w: folder parent cycle", ErrImport)
+	}
+	return ordered, nil
 }
 
 // softDeleteMissingTx soft-deletes live rows of table whose id is not

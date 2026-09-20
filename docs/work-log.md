@@ -1571,3 +1571,41 @@ Spec: `docs/snp-design.md` · Plan: `docs/snp-implementation-plan.md`
 - Validation: make test passed (Go vet/tests, 369 Vitest tests, zero
   Svelte/TypeScript errors/warnings). Left the pre-existing generated
   web/dist/index.html change untouched and excluded it from the commit.
+
+### 2026-09-20 — Recheck nested-folder export/import after UI update
+
+- Checked main at 19e66b9 against the nested-folder export/import finding
+  in docs/grok-review.md. Export/import implementation is unchanged from
+  the reviewed revision; the issue remains and contradicts the intended
+  export/import round trip (spec §5, plan Phase 5).
+- Reproduced with disposable stores: create Work/bash and a snippet in bash,
+  export, JSON-round-trip into ImportDoc, then import into an empty store.
+  Both merge and replace fail with FOREIGN KEY constraint failed (787),
+  twice each. Export orders bash before Work; import inserts in that order.
+  Reversing only the two folder entries makes both modes pass, twice each,
+  with both folders and the snippet's folder reference restored.
+- Existing tests miss this nested-folder round trip. Recommended fix is
+  dependency-aware folder import, so previously generated exports work too,
+  with regression coverage for child-before-parent documents in both modes.
+  This session was verification only; temporary repro tests were removed
+  and application code was not changed.
+- Validation: make test passed (Go vet/tests, 369 Vitest tests, zero
+  Svelte/TypeScript errors/warnings). Initial sandboxed Go suite could not
+  bind local HTTP test listeners; rerun with listener access passed.
+
+### 2026-09-20 — Fix nested-folder export/import ordering
+
+- Added a regression test before the fix: a three-level Work/bash/awk tree
+  exports children first and failed to import into an empty store in both
+  merge and replace modes with FOREIGN KEY constraint failed (787).
+- Import now orders document folders by parent dependency before upserting,
+  without changing the document or export format. Existing exports therefore
+  work without manual reordering. Parents outside the document are resolved
+  against live stored folders. Duplicate folder IDs, document cycles, and
+  missing parents return ErrImport; failures leave stored data unchanged.
+- Regression coverage checks both modes, repeat imports (updates), the full
+  restored tree and snippet fields, existing parents outside the document,
+  invalid dependencies, and rollback. The original failure now passes.
+- Validation: make test passed (Go vet/tests, 369 Vitest tests, zero
+  Svelte/TypeScript errors/warnings); git diff --check clean. No web build or
+  generated assets. Unrelated untracked review notes and screenshot excluded.
