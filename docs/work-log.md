@@ -1662,3 +1662,15 @@ Spec: `docs/snp-design.md` · Plan: `docs/snp-implementation-plan.md`
 - Gotchas: local preview listeners and browser networking require sandbox
   escalation. Bundled Playwright had no downloaded browser; used installed
   Chrome with a fresh temporary profile. No native Wails smoke or deployment.
+
+### 2026-09-20 — Match sensitive locks to the SVG glyphs
+
+- Replaced the lock emoji in snippet cards and the detail sensitivity notice
+  with a monochrome outlined SVG using the existing glyph stroke style.
+  The icon inherits the active theme color and interface text scaling.
+  Cards expose an accessible Sensitive label; detail icons are decorative
+  alongside the existing visible notice. Sensitive-body behavior unchanged.
+- Validation: make test passed (Go vet/tests, 372 Vitest tests, zero
+  Svelte/TypeScript errors/warnings); git diff --check clean. Initial Go
+  HTTP tests hit sandbox listener restrictions; rerun with access passed.
+  No new tests for this visual-only change; no generated assets changed.
