@@ -149,6 +149,18 @@
   let detailCopy: { id: string; text: string | null } | null = null
   let ready = $state(false)
   let settingsOpen = $state(false)
+  let settingsEl = $state<HTMLDivElement | undefined>()
+  $effect(() => {
+    if (!settingsOpen || !settingsEl) return
+    const container = settingsEl
+    const dismissSettings = (e: MouseEvent): void => {
+      if (!e.composedPath().includes(container)) settingsOpen = false
+    }
+    // Capture also sees clicks that other controls stop from bubbling.
+    // Include the toggle in the boundary so its own click closes normally.
+    document.addEventListener('click', dismissSettings, true)
+    return () => document.removeEventListener('click', dismissSettings, true)
+  })
   /** Release version, shown next to the wordmark (spec §5). Starts from
    * the cached value so the header renders immediately — offline too. */
   let version: string | null = $state(loadCachedVersion())
@@ -1202,9 +1214,10 @@
       {#if !compact}
         {@render syncStatus()}
       {/if}
-      <div class="settings">
+      <div class="settings" bind:this={settingsEl}>
         <button
           aria-label="Settings"
+          aria-expanded={settingsOpen}
           class:open={settingsOpen}
           disabled={!ready}
           onclick={() => (settingsOpen = !settingsOpen)}

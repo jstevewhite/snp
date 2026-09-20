@@ -508,6 +508,37 @@ describe('App', () => {
     unmount()
   })
 
+  it.each(['wide', 'compact'])('settings dismisses on outside clicks in %s layout', async (layout) => {
+    localStorage.setItem(LAYOUT_STORAGE_KEY, layout)
+    stubFetch()
+    render(App)
+    await waitFor(() => expect(screen.getByText('Caddyfile')).toBeDefined())
+    const settings = screen.getByLabelText('Settings')
+
+    await fireEvent.click(settings)
+    expect(screen.getByLabelText('Theme')).toBeDefined()
+    // Controls inside the flyout must remain usable without closing it.
+    await fireEvent.click(screen.getByLabelText('Two-line titles in the list'))
+    expect(screen.getByLabelText('Theme')).toBeDefined()
+    expect(localStorage.getItem(TWO_LINE_TITLES_STORAGE_KEY)).toBe('true')
+
+    // An outside click dismisses the flyout and still performs its action.
+    await fireEvent.click(screen.getByText('Caddyfile'))
+    expect(screen.queryByLabelText('Theme')).toBeNull()
+    expect(detailBody()).toBe('http://localhost:8080')
+
+    // The toggle closes it too, without an outside handler reopening it.
+    await fireEvent.click(settings)
+    expect(screen.getByLabelText('Theme')).toBeDefined()
+    await fireEvent.click(settings)
+    expect(screen.queryByLabelText('Theme')).toBeNull()
+
+    // Clicking outside does not require an interactive target.
+    await fireEvent.click(settings)
+    await fireEvent.click(document.body)
+    expect(screen.queryByLabelText('Theme')).toBeNull()
+  })
+
   it('choosing a theme applies and persists it', async () => {
     stubFetch()
     const { unmount } = render(App)

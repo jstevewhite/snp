@@ -1609,3 +1609,19 @@ Spec: `docs/snp-design.md` · Plan: `docs/snp-implementation-plan.md`
 - Validation: make test passed (Go vet/tests, 369 Vitest tests, zero
   Svelte/TypeScript errors/warnings); git diff --check clean. No web build or
   generated assets. Unrelated untracked review notes and screenshot excluded.
+
+### 2026-09-20 — Dismiss settings on outside clicks
+
+- Reproduced the settings flyout remaining open after clicking a snippet in
+  both wide and compact layouts; there was no outside-click listener.
+- Added a document capture listener while settings is open, cleaned up on
+  close/unmount. The boundary includes the panel and its toggle, so controls
+  inside remain usable and the toggle still closes normally. Outside clicks
+  dismiss settings without consuming the clicked control's action. Settings
+  now exposes its expanded state to assistive technology.
+- Added two failing-then-passing component regression cases covering wide
+  and compact layouts, inside controls, outside selection, toggle dismissal,
+  and blank-area clicks.
+- Validation: make test passed (Go vet/tests, 371 Vitest tests, zero
+  Svelte/TypeScript errors/warnings); git diff --check clean. No browser or
+  native visual smoke performed; no generated assets changed.
