@@ -539,18 +539,18 @@ describe('App', () => {
     expect(screen.queryByLabelText('Theme')).toBeNull()
   })
 
-  it('choosing a theme applies and persists it', async () => {
+  it.each(['tokyo-night', 'slate-blue'])('choosing %s applies and persists it', async (theme) => {
     stubFetch()
     const { unmount } = render(App)
     await waitFor(() => expect(screen.getByText('Caddyfile')).toBeDefined())
     await fireEvent.click(screen.getByLabelText('Settings'))
     const select = screen.getByLabelText('Theme') as HTMLSelectElement
-    expect(select.options.length).toBe(7)
-    await fireEvent.change(select, { target: { value: 'tokyo-night' } })
+    expect(select.options.length).toBe(8)
+    await fireEvent.change(select, { target: { value: theme } })
     await waitFor(() =>
-      expect(document.documentElement.getAttribute('data-theme')).toBe('tokyo-night'),
+      expect(document.documentElement.getAttribute('data-theme')).toBe(theme),
     )
-    expect(localStorage.getItem('snp.theme')).toBe('tokyo-night')
+    expect(localStorage.getItem('snp.theme')).toBe(theme)
     // Back to auto: the attribute is removed and the key cleared.
     await fireEvent.change(select, { target: { value: 'auto' } })
     await waitFor(() =>

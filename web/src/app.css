@@ -15,6 +15,15 @@
   --sans: system-ui, 'Segoe UI', Roboto, sans-serif;
   --mono: ui-monospace, 'Cascadia Code', Consolas, monospace;
 
+  /* Shared surface treatments follow every theme's palette (spec §6).
+   * Keep geometry independent of color so switching themes never resizes
+   * panes, cards, or controls. */
+  --workspace-bg: color-mix(in srgb, var(--bg-alt) 70%, var(--bg));
+  --surface-border: color-mix(in srgb, var(--border) 60%, var(--bg));
+  --selected-bg: color-mix(in srgb, var(--accent) 9%, var(--bg));
+  --selected-border: color-mix(in srgb, var(--accent) 30%, var(--border));
+  --accent-border: color-mix(in srgb, var(--accent) 35%, var(--border));
+
   /* Interface text-size multiplier (settings → interface text size).
    * Every font-size below multiplies by this; the settings module sets
    * it on <html> via inline style. */
@@ -160,6 +169,46 @@
   --danger: #f7768e;
 }
 
+/* Slate Blue follows the system appearance, like the concept. Explicit
+ * Light/Dark and the existing named themes retain their own palettes. */
+:root[data-theme='slate-blue'] {
+  color-scheme: light;
+  --text: #5c6c77;
+  --text-h: #263844;
+  --bg: #fff;
+  --bg-alt: #e7ecee;
+  --workspace-bg: #f0f3f4;
+  --border: #d5dfe5;
+  --code-bg: #eaf1f5;
+  --accent: #226d8b;
+  --danger: #b3372c;
+  --syn-keyword: #26638e;
+  --syn-string: #286749;
+  --syn-comment: #5c6c77;
+  --syn-function: #644985;
+  --syn-constant: #935117;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root[data-theme='slate-blue'] {
+    color-scheme: dark;
+    --text: #acbbc6;
+    --text-h: #e1ebf2;
+    --bg: #242d35;
+    --bg-alt: #161c22;
+    --workspace-bg: #1b2228;
+    --border: #3d4c58;
+    --code-bg: #1b2831;
+    --accent: #89c4dd;
+    --danger: #f18c82;
+    --syn-keyword: #89c4dd;
+    --syn-string: #a5cfb0;
+    --syn-comment: #acbbc6;
+    --syn-function: #c4b2e3;
+    --syn-constant: #e6b783;
+  }
+}
+
 * {
   box-sizing: border-box;
 }
@@ -191,9 +240,23 @@ body {
 }
 
 .brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
   font-family: var(--mono);
   font-weight: 700;
   font-size: calc(15px * var(--text-scale, 1));
+}
+
+/* A clipped bracket: the same accent as the selected snippet's edge. */
+.brand::before {
+  content: '';
+  width: 0.75em;
+  height: 1em;
+  border: 2px solid var(--accent);
+  border-right: 0;
+  border-radius: 3px 0 0 3px;
+  transform: skewY(-10deg);
 }
 
 /* Release version, beside the wordmark: secondary to the brand, so it is
@@ -473,8 +536,9 @@ button.danger {
 }
 
 .favorites .name.selected {
-  background: color-mix(in srgb, var(--accent) 12%, transparent);
-  border-color: var(--accent);
+  background: var(--selected-bg);
+  border-color: var(--selected-border);
+  box-shadow: inset 3px 0 var(--accent);
 }
 
 /* The unpin control sits on every row, so it stays hidden until the row
@@ -529,8 +593,9 @@ button.danger {
 
 .folder-tree .all.selected,
 .folder-tree .name.selected {
-  background: color-mix(in srgb, var(--accent) 12%, transparent);
-  border-color: var(--accent);
+  background: var(--selected-bg);
+  border-color: var(--selected-border);
+  box-shadow: inset 3px 0 var(--accent);
 }
 
 .folder-tree .row {
@@ -650,24 +715,37 @@ button.danger {
 }
 
 .snippet-list .item {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: 3px;
   width: 100%;
   text-align: left;
-  border: 1px solid var(--border);
-  border-radius: 12px;
+  border: 1px solid var(--surface-border);
+  border-radius: 9px;
   padding: 12px;
-  box-shadow: 0 2px 4px rgb(0 0 0 / 4%);
 }
 
 .snippet-list .item.selected {
-  border-color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  border-color: var(--selected-border);
+  background: var(--selected-bg);
+}
+
+/* Draw inside the existing card, without changing its padding or width. */
+.snippet-list .item.selected::before {
+  content: '';
+  position: absolute;
+  left: -1px;
+  top: 12%;
+  bottom: 12%;
+  width: 3px;
+  border-radius: 0 3px 3px 0;
+  background: var(--accent);
+  pointer-events: none;
 }
 
 .snippet-list .title {
-  font-weight: 600;
+  font-weight: 500;
   color: var(--text-h);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -696,13 +774,14 @@ button.danger {
   font-family: var(--mono);
   font-size: calc(11px * var(--text-scale, 1));
   padding: 0 5px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--surface-border);
+  background: var(--code-bg);
   border-radius: 4px;
 }
 
 .tag {
   font-size: calc(11px * var(--text-scale, 1));
-  color: var(--accent);
+  color: var(--text);
 }
 
 .snippet-list .meta .when {
@@ -720,9 +799,8 @@ button.danger {
 .detail {
   margin: 12px;
   border: 1px solid var(--border);
-  border-radius: 14px;
+  border-radius: 9px;
   background: var(--bg);
-  box-shadow: 0 2px 8px rgb(0 0 0 / 5%);
   padding: 18px 22px;
   display: flex;
   flex-direction: column;
@@ -731,6 +809,7 @@ button.danger {
 
 .detail h1 {
   margin: 0;
+  font-weight: 500;
   font-size: calc(22px * var(--text-scale, 1));
   letter-spacing: -0.02em;
 }
@@ -813,7 +892,8 @@ button.danger {
 }
 
 .detail .folder {
-  border: 1px solid var(--border);
+  border: 1px solid var(--surface-border);
+  background: var(--code-bg);
   border-radius: 4px;
   padding: 0 6px;
   font-size: calc(11px * var(--text-scale, 1));
@@ -859,8 +939,8 @@ button.danger {
 
 .detail .tag {
   background: var(--code-bg);
-  border: 1px solid var(--border);
-  border-radius: 999px;
+  border: 1px solid var(--surface-border);
+  border-radius: 5px;
   padding: 1px 8px;
 }
 
@@ -918,6 +998,11 @@ button.danger {
 .copy-button.small {
   font-size: calc(11px * var(--text-scale, 1));
   padding: 1px 6px;
+}
+
+.copy-button {
+  color: var(--accent);
+  border-color: var(--accent-border);
 }
 
 /* Transient result on the button itself: a copy that failed must not look
@@ -1576,9 +1661,9 @@ button.danger {
   justify-content: space-between;
   gap: 8px;
   max-width: 100%;
-  border: 1px solid var(--border);
+  border: 1px solid var(--surface-border);
   background: var(--bg);
-  border-radius: 999px;
+  border-radius: 5px;
   padding: 4px 8px;
   text-align: left;
   color: var(--text-h);
@@ -1590,8 +1675,9 @@ button.danger {
 }
 
 .tag-list .tag.active {
-  background: color-mix(in srgb, var(--accent) 14%, var(--bg));
-  border: 1px solid var(--accent);
+  background: var(--selected-bg);
+  border: 1px solid var(--selected-border);
+  box-shadow: inset 3px 0 var(--accent);
   color: var(--text-h);
 }
 
@@ -1612,8 +1698,8 @@ button.danger {
 }
 
 .tag-list .tag.active .tag-count {
-  background: var(--accent);
-  color: #fff;
+  background: var(--bg);
+  color: var(--accent);
 }
 
 .tag-list .tag-active-hint {
@@ -1846,27 +1932,34 @@ button.danger {
 .form-error { color: var(--danger, #dc2626); }
 
 /* Cards share the active theme; list size is independent of text scaling. */
-.pane.list, .pane.detail-pane { background: var(--bg-alt); }
+.pane.list, .pane.detail-pane { background: var(--workspace-bg); }
 .snippet-list .search-row { display: flex; gap: 8px; }
-.snippet-list .list-size { display: flex; flex-wrap: wrap; gap: 4px; }
+.snippet-list .list-size {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  background: var(--bg-alt);
+  border-radius: 6px;
+}
 .snippet-list .list-size button {
   flex: 1;
   padding: 4px 8px;
   font-size: calc(11px * var(--text-scale, 1));
+  background: transparent;
+  border-color: transparent;
+  color: var(--text);
 }
 .snippet-list .list-size button[aria-pressed='true'] {
-  color: var(--accent);
-  border-color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 10%, var(--bg));
-}
-.snippet-list .item.selected {
-  background: color-mix(in srgb, var(--accent) 8%, var(--bg));
+  color: var(--text-h);
+  border-color: var(--border);
+  background: var(--bg);
 }
 .snippet-list .title { max-width: 100%; }
 .snippet-list .meta { min-width: 0; max-width: 100%; overflow-wrap: anywhere; }
 .snippet-list .meta .tag {
-  border: 1px solid var(--border);
-  border-radius: 999px;
+  border: 1px solid var(--surface-border);
+  border-radius: 5px;
+  background: var(--code-bg);
   padding: 1px 6px;
 }
 .snippet-list[data-size='compact'] .items { gap: 6px; }
@@ -1905,4 +1998,23 @@ button.danger {
   stroke-width: 2;
   stroke-linecap: round;
   stroke-linejoin: round;
+}
+
+/* Labels share the wordmark's technical typography at their existing
+ * sizes. Theme colors and text scaling remain authoritative. */
+.pane-head h2,
+.favorites h3,
+.tag-head h2,
+.detail .box-label,
+.detail .vars h2,
+.detail .notes h2 {
+  font-family: var(--mono);
+  font-weight: 500;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  button {
+    transition: background-color 120ms ease-out, border-color 120ms ease-out,
+      color 120ms ease-out;
+  }
 }

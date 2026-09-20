@@ -1625,3 +1625,40 @@ Spec: `docs/snp-design.md` · Plan: `docs/snp-implementation-plan.md`
 - Validation: make test passed (Go vet/tests, 371 Vitest tests, zero
   Svelte/TypeScript errors/warnings); git diff --check clean. No browser or
   native visual smoke performed; no generated assets changed.
+
+### 2026-09-20 — Explore visual identity without workflow changes
+
+- Reviewed the current appearance CSS, list/detail components, spec §6,
+  and repository screenshots for a design discussion. Screenshots predate
+  some current card and toolbar treatments; source informed the concepts.
+- Prepared a separate conversation mockup with warm moss, quiet violet,
+  and slate-blue treatments. Suggested consistent typography, quieter
+  borders, a distinctive selected-row marker, and a small brand mark.
+- Application code and generated assets unchanged. This was a visual
+  exploration, not an implemented or browser-verified redesign; no tests
+  run. Existing themes, text scaling, list density, and compact navigation
+  should be preserved in any implementation.
+
+### 2026-09-20 — Implement the theme-aware Slate Blue visual treatment
+
+- Added opt-in Slate Blue (system), with light/dark UI and syntax palettes.
+  Existing theme IDs, colors, defaults, and stored preferences are preserved.
+- Shared CSS now supplies quieter borders, flat cards, neutral metadata
+  chips, a clipped-bracket wordmark, accent selection markers, technical
+  section labels, and copy-action accents. Surface colors derive from the
+  active palette. Button color transitions honor reduced motion. Pane
+  sizing, card padding, density options, text-size controls, and navigation
+  logic remain unchanged; no application event handlers changed.
+- Extended the existing settings component test to cover selecting and
+  persisting Slate Blue, then returning to Auto. Updated spec §6.
+- Validation: make test passed (Go vet/tests, 372 Vitest tests, zero
+  Svelte/TypeScript errors/warnings). Production Vite/PWA build passed with
+  output in a temporary directory, leaving the tracked web/dist stub alone.
+  Headless Chrome against an isolated local server verified identical
+  measured geometry across all eight themes, live Slate Blue light/dark
+  switching, persistence on reload, template preview/copy, all densities,
+  150% text scaling, and compact detail/back/drawer navigation across named
+  themes without page errors. Inspected light/dark/390px screenshots.
+- Gotchas: local preview listeners and browser networking require sandbox
+  escalation. Bundled Playwright had no downloaded browser; used installed
+  Chrome with a fresh temporary profile. No native Wails smoke or deployment.

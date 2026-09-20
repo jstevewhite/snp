@@ -477,7 +477,7 @@ target builds both.
 
 ### Layout
 
-Three panes: favorites and folders with a wrapping tag pill cloud below
+Three panes: favorites and folders with a wrapping tag chip cloud below
 (left), search box and result cards (middle), snippet view card or editor
 (right). The list offers Compact, Regular (default), and Large sizes,
 remembered locally independently of the layout and title-wrapping settings.
@@ -709,11 +709,17 @@ model** instead: one screen at a time, with the list as the root.
   server's, so a timestamp in the future reads "just now". The header label
   re-renders on a 30-second tick so the age does not go stale.
 - **Appearance** (settings panel, 2026-09-08): a **Theme** select —
-  auto (system), light, dark, Solarized Light, Solarized Dark, Kimbie
-  Dark, Tokyo Night — and an **Interface text size** slider (75–150%).
+  auto (system), light, dark, Slate Blue (system), Solarized Light,
+  Solarized Dark, Kimbie Dark, Tokyo Night — and an **Interface text size**
+  slider (75–150%).
   Themes remap the CSS palette variables via `:root[data-theme=…]`
-  blocks (auto = no attribute, so `prefers-color-scheme` drives it);
-  text size scales every `font-size` through the `--text-scale` custom
+  blocks (auto = no attribute, so `prefers-color-scheme` drives it).
+  Slate Blue has its own light/dark palettes, also selected by the system.
+  All themes share the same geometry and surface treatments: quiet card
+  borders, a bracket wordmark, accent selection markers, and neutral
+  metadata chips. The existing theme preference is preserved; Slate Blue
+  is opt-in. Derived surface colors follow the active palette.
+  Text size scales every `font-size` through the `--text-scale` custom
   property. A **Two-line titles in the list** checkbox wraps a long list
   title onto a second line instead of truncating it at one; every list
   title carries its full text as a tooltip either way. All three persist in

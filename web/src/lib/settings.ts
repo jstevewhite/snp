@@ -42,6 +42,7 @@ export const THEMES: ThemeOption[] = [
   { id: 'auto', label: 'Auto (system)' },
   { id: 'light', label: 'Light' },
   { id: 'dark', label: 'Dark' },
+  { id: 'slate-blue', label: 'Slate Blue (system)' },
   { id: 'solarized-light', label: 'Solarized Light' },
   { id: 'solarized-dark', label: 'Solarized Dark' },
   { id: 'kimbie-dark', label: 'Kimbie Dark' },
