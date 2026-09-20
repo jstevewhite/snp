@@ -1893,3 +1893,16 @@ button.danger {
 
 .snippet-list .search-row { flex-wrap: wrap; }
 .snippet-list .search-wrap { flex-basis: 140px; }
+
+
+/* Toolbar icons use the same stroke style as the detail pin and trash. */
+.topbar .control-icon {
+  display: block;
+  width: calc(16px * var(--text-scale, 1));
+  height: calc(16px * var(--text-scale, 1));
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}

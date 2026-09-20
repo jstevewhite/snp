@@ -1561,3 +1561,13 @@ Spec: `docs/snp-design.md` · Plan: `docs/snp-implementation-plan.md`
   Regression coverage verifies saved size selection, invalid-value fallback,
   and sensitive-body exclusion. No browser/native visual smoke this session.
   Restored the tracked dist stub after building; generated assets excluded.
+
+### 2026-09-20 — SVG toolbar icons
+
+- Replaced the compact Folders menu glyph with an outlined folder SVG and
+  the Settings gear glyph with an outlined gear SVG. Both match the detail
+  pin/trash stroke weight, inherit theme color, and scale with interface text.
+  Existing accessible button labels remain; decorative SVGs are aria-hidden.
+- Validation: make test passed (Go vet/tests, 369 Vitest tests, zero
+  Svelte/TypeScript errors/warnings). Left the pre-existing generated
+  web/dist/index.html change untouched and excluded it from the commit.
