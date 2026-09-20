@@ -2,6 +2,7 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/svelte'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import SnippetList from './SnippetList.svelte'
 import type { Snippet } from './types'
+import { LIST_SIZE_STORAGE_KEY } from './settings'
 
 function snippet(id: string, title: string, p: Partial<Snippet> = {}): Snippet {
   return {
@@ -20,7 +21,10 @@ function snippet(id: string, title: string, p: Partial<Snippet> = {}): Snippet {
   }
 }
 
-afterEach(cleanup)
+afterEach(() => {
+  cleanup()
+  localStorage.removeItem(LIST_SIZE_STORAGE_KEY)
+})
 
 describe('SnippetList', () => {
   it('renders items with title, language and tags', () => {
@@ -170,4 +174,28 @@ describe('SnippetList', () => {
     })
     expect(screen.getByText('No matches')).toBeDefined()
   })
+})
+
+
+it('remembers list size and previews only non-sensitive bodies in large cards', async () => {
+  const props = {
+    snippets: [
+      snippet('public', 'Public', { body: 'public preview' }),
+      snippet('secret', 'Secret', { body: 'never preview this', is_sensitive: true }),
+    ],
+    onselect: vi.fn(), onsearch: vi.fn(), oncreate: vi.fn(),
+  }
+  localStorage.setItem(LIST_SIZE_STORAGE_KEY, 'invalid')
+  const view = render(SnippetList, props)
+  expect(screen.getByRole('button', { name: 'Regular' }).getAttribute('aria-pressed')).toBe('true')
+  await fireEvent.click(screen.getByRole('button', { name: 'Large' }))
+  expect(screen.getByText('public preview')).toBeDefined()
+  expect(screen.queryByText('never preview this')).toBeNull()
+  view.unmount()
+  render(SnippetList, props)
+  expect(screen.getByRole('button', { name: 'Large' }).getAttribute('aria-pressed')).toBe('true')
+  await fireEvent.click(screen.getByRole('button', { name: 'Compact' }))
+  expect(screen.queryByText('public preview')).toBeNull()
+  await fireEvent.click(screen.getByText('Public'))
+  expect(props.onselect).toHaveBeenCalledWith('public')
 })

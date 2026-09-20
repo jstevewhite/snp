@@ -477,8 +477,12 @@ target builds both.
 
 ### Layout
 
-Three panes: favorites and folders with a tag list below (left), search box
-and result list (middle), snippet view or editor (right). Snippet tags are
+Three panes: favorites and folders with a wrapping tag pill cloud below
+(left), search box and result cards (middle), snippet view card or editor
+(right). The list offers Compact, Regular (default), and Large sizes,
+remembered locally independently of the layout and title-wrapping settings.
+Compact uses tighter spacing; Large adds up to three lines of non-sensitive
+body preview. Snippet tags are
 also shown as chips in the detail pane. The favorites list sits above the
 folder tree and stays visible when empty, with a line saying how to add to
 it.

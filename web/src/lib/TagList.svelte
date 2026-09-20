@@ -28,21 +28,23 @@
   {#if tags.length === 0}
     <p class="hint">No tags yet</p>
   {:else}
-    {#each tags as t (t.name)}
-      <button
-        class="tag"
-        class:active={activeSet.has(t.name)}
-        aria-pressed={activeSet.has(t.name)}
-        aria-label={`Filter by tag ${t.name}`}
-        title={activeSet.has(t.name)
-          ? `${t.name}: active — click to clear`
-          : `Filter by ${t.name}`}
-        onclick={() => onselect(t.name)}
-      >
-        <span class="tag-name">{t.name}</span>
-        <span class="tag-count">{t.count}</span>
-      </button>
-    {/each}
+    <div class="tag-cloud">
+      {#each tags as t (t.name)}
+        <button
+          class="tag"
+          class:active={activeSet.has(t.name)}
+          aria-pressed={activeSet.has(t.name)}
+          aria-label={`Filter by tag ${t.name}`}
+          title={activeSet.has(t.name)
+            ? `${t.name}: active — click to clear`
+            : `Filter by ${t.name}`}
+          onclick={() => onselect(t.name)}
+        >
+          <span class="tag-name">{t.name}</span>
+          <span class="tag-count">{t.count}</span>
+        </button>
+      {/each}
+    </div>
     {#if active.length > 0}
       <p class="tag-active-hint">
         Showing snippets with {active.join(', ')} — click a tag to clear it.

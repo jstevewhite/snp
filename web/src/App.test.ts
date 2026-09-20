@@ -119,7 +119,7 @@ function stubHistory() {
 }
 
 const listPane = (): HTMLElement => document.querySelector('.pane.list') as HTMLElement
-const detailPane = (): HTMLElement => document.querySelector('.pane.detail') as HTMLElement
+const detailPane = (): HTMLElement => document.querySelector('.pane.detail-pane') as HTMLElement
 const drawer = (): HTMLElement => document.querySelector('.pane.folders') as HTMLElement
 /** The detail body's text, whole even after highlighting splits it into spans. */
 const detailBody = (): string => document.querySelector('.detail .body')?.textContent ?? ''

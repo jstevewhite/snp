@@ -1413,7 +1413,7 @@
       )}
     {/if}
 
-    <section class="pane detail" inert={compact && navState.drawerOpen} hidden={compact && navState.screen === 'list'}>
+    <section class="pane detail-pane" inert={compact && navState.drawerOpen} hidden={compact && navState.screen === 'list'}>
       {#if editing}
         {#key editorKey}
           <SnippetForm
