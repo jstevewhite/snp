@@ -1769,3 +1769,20 @@ Spec: `docs/snp-design.md` · Plan: `docs/snp-implementation-plan.md`
   two-pane resize. jsdom inert is a property without attribute reflection.
   An independently rebuilt web/dist/index.html remains excluded from this
   task's commit.
+
+### 2026-09-21 — Prepare v0.4.0 documentation and release tag
+
+- Updated README usage for pinnable folders, the two-pane flyout, separate
+  remembered divider widths, theme selection (including Nixie and CRT),
+  text scaling, and list density. Updated compact navigation wording and
+  the release-tag example to v0.4.0.
+- Corrected stale AI documentation: Explain replaces Notes with Undo, and
+  sensitive drafts block Explain/Suggest tags and discard pending results.
+  Kept the distinction that an explicit Ask AI prompt still goes to the
+  configured provider. Reflowed release asset details to pass Markdown lint.
+- Validation: markdownlint-cli2 README.md passed; make test passed (Go
+  vet/tests, 387 Vitest tests, zero Svelte/TypeScript errors/warnings);
+  git diff --check clean. Remote main matched the checkout and v0.4.0
+  was absent when checked. User requested this docs commit, an annotated
+  v0.4.0 tag, and pushing main plus that tag to origin; the tag triggers
+  the existing cross-platform release workflow.

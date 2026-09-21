@@ -138,14 +138,24 @@ Prebuilt binaries are on the [releases page](https://github.com/jstevewhite/snp/
 
 | File | What |
 |---|---|
-| `snp_<ver>_linux_{amd64,arm64}.tar.gz` | Server / CLI plus `deploy/install.sh`, `snp.service`, `backup.sh`. Unpack and run the install command below from the unpacked directory. |
-| `snp_<ver>_darwin_universal.tar.gz` | The same CLI for macOS, Apple silicon + Intel. |
-| `snp-desktop_<ver>_macos_universal.zip` | `snp.app`, Apple silicon + Intel. Signed and notarized when the repo's Apple secrets are set; otherwise ad-hoc signed, and Gatekeeper will ask you to allow it. |
-| `snp-desktop_<ver>_linux_{amd64,arm64}.tar.gz` | Desktop app plus `deploy/install-desktop.sh`. Built against WebKitGTK **4.1**, so it needs Ubuntu 24.04+, Debian 13+, Fedora 40+ or similar at runtime. |
+| `snp_<ver>_linux_{amd64,arm64}.tar.gz` | Server / CLI + installer |
+| `snp_<ver>_darwin_universal.tar.gz` | macOS CLI |
+| `snp-desktop_<ver>_macos_universal.zip` | macOS app |
+| `snp-desktop_<ver>_linux_{amd64,arm64}.tar.gz` | Desktop + installer |
 | `SHA256SUMS` | Checksums. |
 
-Cutting a release: push a `v*` tag (`git tag v0.2.0 && git push origin
-v0.2.0`). `.github/workflows/release.yml` builds every platform in
+Linux server archives include `deploy/install.sh`, `snp.service`, and
+`backup.sh`; unpack one and run the install command below from that
+directory. Linux desktop archives include `deploy/install-desktop.sh`
+and require WebKitGTK **4.1** (Ubuntu 24.04+, Debian 13+, Fedora 40+ or
+similar).
+
+Both macOS archives support Apple silicon and Intel. The desktop archive
+contains `snp.app`, signed and notarized when the repo's Apple secrets are
+set; otherwise it is ad-hoc signed and Gatekeeper asks you to allow it.
+
+Cutting a release: push a `v*` tag (`git tag v0.4.0 && git push origin
+v0.4.0`). `.github/workflows/release.yml` builds every platform in
 parallel and publishes the release only once all of them succeed.
 The `beta` workflow in the Actions tab does the same for a manually
 entered `v*-beta.N` label and marks it a prerelease. See the header of
@@ -287,6 +297,32 @@ settings sheet shows both shortcuts.
 some everyday commands. Applying the starter pack again overwrites edits
 to its bundled snippets and restores any you deleted.
 
+### Appearance and layout
+
+**Settings → Theme** offers Auto (system), Light, Dark, Slate Blue (system),
+Nixie, CRT, Solarized Light, Solarized Dark, Kimbie Dark, and Tokyo Night.
+**Nixie** uses warm amber glow and a glass-like version badge; **CRT** uses
+green phosphor. Both add static scanlines behind code and soft glow without
+changing the layout. Theme choices are remembered in the browser and
+desktop app.
+
+The pin in the **Folders** header controls the wide layout. Pinned gives
+you three panes; unpinning leaves the snippet list and detail side by side.
+Use the top-left **Folders** button to open favorites, folders, and tags
+as a flyout, then pin it again to keep it visible. Escape, an outside
+click, or selecting a folder or favorite closes the flyout; selecting tags
+keeps it open so you can combine filters.
+
+The pin preference and divider widths are remembered, with separate widths
+for the two- and three-pane arrangements. Drag a divider to resize, or
+double-click it to reset the current arrangement. Compact mode always uses
+the folders drawer; returning to wide mode restores your pin preference.
+
+**Settings → Interface text size** scales the interface from 75–150%.
+The list's **Compact**, **Regular**, and **Large** buttons control card
+density independently; **Two-line titles in the list** allows longer
+titles to wrap.
+
 ## Using the PWA
 
 Install it so it works offline:
@@ -299,12 +335,11 @@ Install it so it works offline:
 
 Phone layout: below about 720px the app shows one screen at a time — the
 search box and list first, a tap opens the snippet with a **←** Back
-control, and **☰** (or the **Folders** button beside the search box)
-slides in the favorites, folders and tags. The phone's back gesture works
-at every level. **Settings → Layout** forces the wide three-pane or the
-compact one-screen arrangement regardless of width; in compact mode the
-version, connection, sync age and **Resync** live at the top of the
-settings sheet.
+control, and the top-left folder icon (or the **Folders** button beside the
+search box) slides in the favorites, folders and tags. The phone's back
+gesture works at every level. **Settings → Layout** forces the wide or
+compact arrangement regardless of width; in compact mode the version,
+connection, sync age and **Resync** live at the top of the settings sheet.
 
 Offline: browsing and search work from the local cache; creating, editing,
 and deleting are disabled (nothing is queued), and revealing a sensitive
@@ -334,7 +369,8 @@ The desktop app does not sync with a remote tailnet server.
 - **Configuration matches the CLI** (`--config`, `--state-dir`,
   `--ai-key`, `SNP_*`, …), except that no `owner` is required;
   `--hostname` and `--owner` are accepted and ignored.
-- **A plain native window.** 1150×760 by default (minimum 400×560, narrow enough for the compact layout),
+- **A plain native window.** 1150×760 by default (minimum 400×560, narrow
+  enough for the compact layout),
   themed before the first paint, with in-app dialogs where the webview
   has no `prompt`/`confirm`.
 
@@ -408,18 +444,21 @@ Two additional controls work on the current form contents:
 - **Suggest tags** sends the body, optional title and language, and the
   collection's existing tag vocabulary to the provider. Suggested tags
   merge into the Tags field.
-- **Explain** sends the body to the provider and appends a Markdown
-  explanation to Notes.
+- **Explain** sends the body to the provider and replaces Notes with a
+  Markdown explanation. **Undo** restores the previous Notes; manually
+  editing Notes clears that undo point.
 
 **Ask AI** sends your prompt, optional language, and the selected output
 kind's instructions; it does not include the existing body. Each action
 is a single request without chat history. Prompts and bodies are not
 logged by snp, and form changes are stored only when you save.
 
-The **Sensitive** flag protects bodies at rest and excludes them from
-search indexing and offline caching. It does **not** block Explain or
-Suggest tags from sending the current body to the provider, or redact
-sensitive text you type into an Ask AI prompt.
+The **Sensitive** flag protects bodies at rest, excludes them from search
+indexing and offline caching, and disables **Explain** and **Suggest tags**.
+Marking a draft sensitive also prevents pending results from changing its
+Notes or tags, but cannot recall content already sent. **Ask AI** does not
+include the existing body; sensitive text you type into its prompt is
+still sent to the configured provider.
 
 ![the Ask AI panel in the snippet form](docs/images/snippet-creation-form-ask-ai-go-caddy-ops.png)
 
@@ -492,10 +531,11 @@ should use **Settings → Full resync**.
   backups.
 - **AI actions send content to the configured provider.** Ask AI sends
   your prompt; Explain and Suggest tags send the current snippet body,
-  including sensitive bodies. Tag suggestions also send the title,
-  language, and collection's tag vocabulary. Use a provider you trust or a
-  local OpenAI-compatible endpoint, and review generated snippets before
-  running them. See [AI features](#ai-features-optional) for details.
+  and are disabled when the snippet is marked Sensitive. Tag suggestions
+  also send the title, language, and collection's tag vocabulary. Use a
+  provider you trust or a local OpenAI-compatible endpoint, and review
+  generated snippets before running them. See
+  [AI features](#ai-features-optional) for details.
 
 ## Logs
 
