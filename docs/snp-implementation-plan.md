@@ -766,3 +766,16 @@ kind/Explain Undo, clipboard fallback, prefix-AND search and Linux desktop.
 
 Done when: transferred regressions and the existing suite pass `make test`,
 web/desktop builds succeed, and compact navigation still preserves drafts.
+
+## Recovery — Trash and revision history (2026-09-21)
+
+- Expose the existing 30-day snippet trash and restore into a live folder
+  or Unfiled; preserve FTS and emit restored snippets through sync.
+- Save the previous content on meaningful edits and import overwrites,
+  retaining 50 revisions per snippet. Encrypt sensitive history, including
+  earlier versions when sensitivity is enabled. Restore atomically while
+  preserving the current version and favorite flag.
+- Add online-only Trash and History dialogs with preview, comparison,
+  explicit sensitive reveal, restore, and a delete Undo action.
+- Done when store/API and UI regressions pass make test, production build
+  succeeds, and recovery is smoke-tested without caching historical bodies.

@@ -901,7 +901,7 @@ Makefile                 build/test/dev plus desktop/app targets
 
 ## 11. Out of scope for v1
 
-Version history, multi-user, sharing, offline writes, CLI client,
+Multi-user, sharing, offline writes, CLI client,
 SnippetsLab converter, semantic search, encryption with a user passphrase.
 The CLI and the SnippetsLab converter are the first follow-ons.
 
@@ -1072,3 +1072,35 @@ un-reviewed.
   a self-hosted OpenAI-compatible endpoint (e.g. ollama) is supported
   by pointing `ai_endpoint` at it. Treat generated snippets like any
   other snippet — review before running.
+
+## Recovery: trash and revision history
+
+Deleted snippets remain in Trash until the existing 30-day purge. Restore
+clears the tombstone and advances updated_at; if the original folder is
+no longer live, the snippet returns to Unfiled. FTS already retains the
+trashed row, so restore must not insert another index row.
+
+Before a meaningful replacement (including import overwrites), save the
+previous title, body, language, notes, folder, tags, template flag and
+defaults. No-op and favorite-only updates do not create versions. Retain
+the latest 50 revisions, ordered by monotonically increasing revision ID
+so multiple edits in one second remain distinct. A restore saves the
+current version first, preserves creation time and the current favorite
+flag, and keeps sensitive content sensitive. Missing folders become Unfiled.
+
+Revision payloads are JSON, encrypted with AES-256-GCM when either the old
+or new snippet is sensitive. AAD is revision:<snippet-id>:<revision-id>.
+Marking a snippet sensitive also encrypts earlier plaintext revisions in
+the same transaction; later disabling sensitivity never decrypts history
+in storage. History lists expose timestamps and protection status only;
+protected content requires explicit reveal (`?reveal=1` on the revision GET). Trash and history are online
+only, use no-store responses, and are never stored in IndexedDB.
+
+API additions: GET /api/trash?limit=100&offset=0, POST
+/api/snippets/{id}/restore, GET /api/snippets/{id}/revisions, GET
+/api/snippets/{id}/revisions/{revision}, POST
+/api/snippets/{id}/revisions/{revision}/restore. Restores return the standard
+write response, redacting sensitive bodies and defaults. Revision records
+are deleted with their snippet at hard purge. Database backups include
+history (and still require the key); JSON exports contain only live current
+versions. History begins with the first change after this migration.

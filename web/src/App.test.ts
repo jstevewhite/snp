@@ -63,7 +63,7 @@ function syncPayload() {
   }
 }
 
-function stubFetch(): ReturnType<typeof vi.fn> {
+function stubFetch() {
   const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
     const url = String(input)
     if (url.includes('/api/sync')) {
@@ -820,6 +820,93 @@ describe('App', () => {
     await waitFor(() => expect(deletes).toEqual(['/api/snippets/s1']))
     await waitFor(() => expect(screen.queryByText('Caddyfile')).toBeNull())
     unmount()
+  })
+
+  it('restores a deleted snippet through Undo and updates the local cache', async () => {
+    const requests: string[] = []
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      requests.push(`${init?.method ?? 'GET'} ${url}`)
+      if (url.includes('/api/sync')) return new Response(JSON.stringify(syncPayload()))
+      if (init?.method === 'DELETE') return new Response(null, { status: 204 })
+      if (url.endsWith('/restore')) return new Response(JSON.stringify(syncPayload().snippets[0]))
+      return new Response('null')
+    }))
+    render(App)
+    await fireEvent.click(await screen.findByText('Caddyfile'))
+    await fireEvent.click(screen.getByLabelText('Delete snippet'))
+    await screen.findByText(/You can restore it for 30 days/)
+    await fireEvent.click(screen.getByRole('button', { name: 'Delete' }))
+    await fireEvent.click(await screen.findByRole('button', { name: 'Undo' }))
+    await waitFor(() => expect(screen.getAllByText('Caddyfile').length).toBeGreaterThan(0))
+    expect(requests).toContain('POST /api/snippets/s1/restore')
+    const { openDB } = await import('idb')
+    const db = await openDB('snp')
+    expect((await db.get('snippets', 's1')).body).toBe('http://localhost:8080')
+    db.close()
+  })
+
+  it('opens history as a modal and closes it with Escape', async () => {
+    const fetchMock = stubFetch()
+    const base = fetchMock.getMockImplementation()!
+    fetchMock.mockImplementation(async (input: RequestInfo | URL) => String(input).endsWith('/revisions') ? new Response('[]') : base(input))
+    const { container } = render(App)
+    await fireEvent.click(await screen.findByText('Caddyfile'))
+    const history = screen.getByRole('button', { name: 'History' })
+    history.focus()
+    await fireEvent.click(history)
+    await screen.findByRole('dialog', { name: 'Revision history' })
+    expect((container.querySelector('main') as HTMLElement).inert).toBe(true)
+    await screen.findByText(/No previous versions yet/)
+    await fireEvent.keyDown(window, { key: 'Escape' })
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+    await waitFor(() => expect(document.activeElement).toBe(history))
+  })
+
+  it('restores protected history without persisting revealed content', async () => {
+    const revision = { id: 7, saved_at: T0, version_at: T0, protected: true }
+    const old = { ...syncPayload().snippets[1], body: 'historical-secret', var_defaults: { host: 'private-default' } }
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url.includes('/api/sync')) return new Response(JSON.stringify(syncPayload()))
+      if (url.endsWith('/revisions')) return new Response(JSON.stringify([revision]))
+      if (url.includes('/revisions/7?')) return new Response(JSON.stringify({ ...revision, snippet: old }))
+      if (url.endsWith('/restore')) return new Response(JSON.stringify(old))
+      if (url.endsWith('/s2')) return new Response(JSON.stringify({ ...old, body: 'current-secret' }))
+      return new Response('null')
+    }))
+    render(App)
+    await fireEvent.click(await screen.findByText('Redis flush'))
+    await fireEvent.click(screen.getByRole('button', { name: 'History' }))
+    await fireEvent.click(await screen.findByRole('button', { name: /Previous version/ }))
+    await fireEvent.click(screen.getByRole('button', { name: 'Reveal comparison' }))
+    await screen.findByText('historical-secret')
+    await fireEvent.click(screen.getByRole('button', { name: 'Restore this version' }))
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+    expect(screen.queryByText('historical-secret')).toBeNull()
+    expect(screen.queryByText('current-secret')).toBeNull()
+    expect(screen.getByRole('button', { name: 'Show body' })).toBeDefined()
+    const { openDB } = await import('idb')
+    const db = await openDB('snp')
+    const cached = await db.get('snippets', 's2')
+    expect(cached.body).toBeNull()
+    expect(cached.var_defaults).toBeNull()
+    db.close()
+  })
+
+  it('protects dirty drafts before opening Trash', async () => {
+    const fetchMock = stubFetch()
+    const base = fetchMock.getMockImplementation()!
+    fetchMock.mockImplementation(async (input: RequestInfo | URL) => String(input).includes('/api/trash') ? new Response('[]') : base(input))
+    render(App)
+    await fireEvent.click(await screen.findByText('Caddyfile'))
+    await fireEvent.click(screen.getByRole('button', { name: 'Edit' }))
+    await fireEvent.input(screen.getByLabelText('Title'), { target: { value: 'Unsaved draft' } })
+    await fireEvent.click(screen.getByRole('button', { name: 'Trash' }))
+    await screen.findByRole('dialog', { name: 'Unsaved changes' })
+    await fireEvent.click(screen.getByRole('button', { name: 'Keep editing' }))
+    expect((screen.getByLabelText('Title') as HTMLInputElement).value).toBe('Unsaved draft')
+    expect(screen.queryByRole('dialog', { name: 'Trash' })).toBeNull()
   })
 
   it('tag clicks filter the list (AND) and combine with folders', async () => {

@@ -72,6 +72,7 @@
   import Favorites from './lib/Favorites.svelte'
   import OfflineBanner from './lib/OfflineBanner.svelte'
   import SnippetDetail from './lib/SnippetDetail.svelte'
+  import RecoveryDialog from './lib/RecoveryDialog.svelte'
   import SnippetForm from './lib/SnippetForm.svelte'
   import SnippetList from './lib/SnippetList.svelte'
   import TagList from './lib/TagList.svelte'
@@ -216,7 +217,7 @@
   })
 
   $effect(() => {
-    if (compact || !flyoutOpen || !foldersEl || dialog !== null || paletteOpen) return
+    if (compact || !flyoutOpen || !foldersEl || dialog !== null || paletteOpen || recovery !== null) return
     const panel = foldersEl
     const opener = foldersToggle
     const dismiss = (event: MouseEvent): void => {
@@ -602,6 +603,58 @@
     | { kind: 'snippetDelete'; id: string }
     | null
   let dialog = $state<Dialog>(null)
+  let recovery = $state<{ snippet: Snippet | null } | null>(null)
+  let undoDelete = $state<{ id: string; title: string } | null>(null)
+  $effect(() => {
+    if (!undoDelete) return
+    const timer = setTimeout(() => { undoDelete = null }, 10000)
+    return () => clearTimeout(timer)
+  })
+
+  function openRecovery(snippet: Snippet | null = null): void {
+    if (!online || saving) return
+    leaveEditor(() => {
+      editing = false
+      editingSnippet = null
+      clearRevealed()
+      settingsOpen = false
+      closeFolders()
+      recovery = { snippet }
+    })
+  }
+
+  async function restoreContent(id: string, revision?: number): Promise<void> {
+    if (!db || !online || saving) throw new Error('Reconnect before restoring.')
+    saving = true
+    try {
+      await syncDone
+      if (!online) throw new Error('Reconnect before restoring.')
+      const restored = cacheSnippet(revision === undefined
+        ? await api.restoreSnippet(id)
+        : await api.restoreRevision(id, revision))
+      await putSnippet(db, restored)
+      snippets = [...snippets.filter((s) => s.id !== id), restored]
+      clearRevealed()
+      selectedSnippetId = id
+      selectedFolderId = restored.folder_id
+      query = ''
+      activeTags = []
+      recovery = null
+      undoDelete = null
+      if (compact) nav.openDetail()
+    } finally { saving = false }
+  }
+
+  function undoDeletion(): void {
+    if (!undoDelete) return
+    const id = undoDelete.id
+    leaveEditor(() => {
+      editing = false
+      editingSnippet = null
+      void restoreContent(id).catch(fail)
+    })
+  }
+
   let folderName = $state('')
   function promptFolder(parentId: string | null): void {
     if (!online) return
@@ -877,9 +930,11 @@
     try {
       await syncDone
       if (!online) throw new Error('Offline — reconnect before deleting.')
+      const title = snippets.find((s) => s.id === id)?.title ?? 'Snippet'
       await api.deleteSnippet(id)
       await removeSnippet(db, id)
       snippets = snippets.filter((s) => s.id !== id)
+      undoDelete = { id, title }
       if (selectedSnippetId === id) {
         selectedSnippetId = null
         clearRevealed()
@@ -1053,9 +1108,12 @@
     const s = selectedSnippet
     const offline = saving ? 'Saving…' : online ? undefined : 'Offline'
     const needSelection = s === null ? 'Select a snippet first' : undefined
-    const list: Command[] = []
+    const list: Command[] = [
+      { id: 'trash', label: 'Open Trash', group: 'snippet', disabled: offline, run: () => openRecovery() },
+    ]
     if (!editing) {
       list.push(
+        { id: 'history', label: 'Revision history', group: 'snippet', disabled: needSelection ?? offline, run: () => { if (s) openRecovery(s) } },
         { id: 'new', label: 'New snippet', group: 'snippet', disabled: offline, run: startCreate },
         {
           id: 'edit',
@@ -1151,6 +1209,10 @@
    * (spec §6 keyboard discipline).
    */
   function onGlobalKeydown(e: KeyboardEvent): void {
+    if (recovery !== null) {
+      if (e.key === 'Escape') { e.preventDefault(); if (!saving) recovery = null }
+      return
+    }
     if (dialog !== null) {
       if (e.key === 'Escape') cancelDialog()
       return
@@ -1244,7 +1306,7 @@
 }} />
 
 <div class="app" class:compact class:folders-overlay={foldersOverlay} class:folders-unpinned={!foldersPinned && !compact}>
-  <div class="chrome" inert={dialog !== null || paletteOpen}>
+  <div class="chrome" inert={dialog !== null || paletteOpen || recovery !== null}>
     <header class="topbar">
       {#if compact}
         <!-- One control at the left: Back whenever there is a level to
@@ -1424,7 +1486,7 @@
 
   <main
     class="panes"
-    inert={dialog !== null || paletteOpen}
+    inert={dialog !== null || paletteOpen || recovery !== null}
     class:resizing={dragging !== null}
     bind:this={panesEl}
     style={compact ? '' : paneStyleVars(activePaneWidths)}
@@ -1440,7 +1502,7 @@
       id="folders-pane"
       bind:this={foldersEl}
       aria-label="Folders, favorites, and tags"
-      use:modal={foldersOverlay && foldersOpen && dialog === null && !paletteOpen}
+      use:modal={foldersOverlay && foldersOpen && dialog === null && !paletteOpen && recovery === null}
       class:open={foldersOpen}
       aria-hidden={foldersOverlay && !foldersOpen ? 'true' : undefined}
       inert={foldersOverlay && !foldersOpen}
@@ -1490,6 +1552,7 @@
         onremove={(id) => void deleteFolder(id)}
       />
       <TagList tags={tagItems} active={activeTags} onselect={toggleTag} />
+      <button class="trash-open" disabled={!online || saving} onclick={() => openRecovery()}>Trash</button>
     </aside>
 
     {#if !foldersOverlay}
@@ -1554,6 +1617,7 @@
           {saving}
           oncopy={(text) => copySelected(text)}
           onedit={startEdit}
+          onhistory={() => openRecovery(selectedSnippet)}
           onremove={() => (dialog = { kind: 'snippetDelete', id: selectedSnippet.id })}
           onreveal={() => void reveal(selectedSnippet.id)}
           onsavedefaults={(defaults) => saveDefaults(selectedSnippet.id, defaults)}
@@ -1568,6 +1632,17 @@
       {/if}
     </section>
   </main>
+
+  {#if recovery !== null}
+    <RecoveryDialog snippet={recovery.snippet} {folders} {online} {saving} onrestore={restoreContent} onclose={() => { if (!saving) recovery = null }} />
+  {/if}
+  {#if undoDelete}
+    <div class="undo-trash" role="status" inert={dialog !== null || paletteOpen || recovery !== null}>
+      <span>“{undoDelete.title}” moved to Trash.</span>
+      <button disabled={!online || saving} onclick={undoDeletion}>Undo</button>
+      <button aria-label="Dismiss undo" onclick={() => { undoDelete = null }}>×</button>
+    </div>
+  {/if}
 
   {#if dialog}
     <!-- Clicking the backdrop does not dismiss: Escape and the Cancel
@@ -1605,7 +1680,7 @@
           <p>Clear the local cache and re-sync everything from the server?</p>
         {:else}
           <h2>Delete snippet?</h2>
-          <p>Delete {deleteTargetLabel()}? This can't be undone.</p>
+          <p>Move {deleteTargetLabel()} to Trash? You can restore it for 30 days.</p>
         {/if}
         <div class="modal-actions">
           {#if dialog.kind === 'discard'}

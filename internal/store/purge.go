@@ -60,8 +60,12 @@ func (s *Store) Purge() (PurgeCounts, error) {
 	var c PurgeCounts
 	c.Snippets = len(pending)
 
+	// Recent snippet/folder tombstones may still reference an older folder.
+	// Defer that folder until its dependents have been purged or restored.
 	res, err := tx.ExecContext(ctx,
-		`DELETE FROM folders WHERE deleted_at IS NOT NULL AND deleted_at <= ?`, cutoff)
+		`DELETE FROM folders WHERE deleted_at IS NOT NULL AND deleted_at <= ?
+         AND id NOT IN (SELECT folder_id FROM snippets WHERE folder_id IS NOT NULL)
+         AND id NOT IN (SELECT parent_id FROM folders WHERE parent_id IS NOT NULL)`, cutoff)
 	if err != nil {
 		return PurgeCounts{}, err
 	}

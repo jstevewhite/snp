@@ -281,6 +281,10 @@ func (s *Store) importSnippetTx(ctx context.Context, tx *sql.Tx, in ImportSnippe
 	}
 	var rowid int64
 	if exists {
+		next := SnippetInput{Title: title, Body: in.Body, Language: in.Language, Notes: in.Notes, FolderID: folderID, Tags: in.Tags, IsSensitive: in.IsSensitive, UsesVariables: in.UsesVariables, Pinned: in.Pinned, VarDefaults: in.VarDefaults}
+		if err := s.captureRevisionTx(ctx, tx, id, next); err != nil {
+			return "", false, err
+		}
 		if err := tx.QueryRowContext(ctx, `SELECT rowid FROM snippets WHERE id = ?`, id).Scan(&rowid); err != nil {
 			return "", false, err
 		}

@@ -14,6 +14,9 @@ Spec: `docs/snp-design.md` · Plan: `docs/snp-implementation-plan.md`
 
 ## Current status
 
+- Recovery session (2026-09-21): Trash/Restore and 50-version history are
+  implemented in the working tree after v0.4.0. Full checks and browser
+  smoke pass; see the newest entry. No new release/tag/push in this session.
 - Updated: 2026-09-13 (auto-deploy from the checkout on the dev box; command palette)
 - Phase: review fixes + desktop app (macOS **and Linux** builds) + appearance + AI generation (command/script/function kinds) + tag filter + .app bundle + **bundled starter pack** merged to main; **Markdown notes**, **read-view syntax highlighting**, **notarization in `make app`**, the **Linux desktop build/launcher** and **`snp seed`** landed; the **GitHub release workflows** and the **header version chip** (`GET /api/version`) landed; **v0.1.0 shipped** (signed + notarized macOS bundle, 7 assets, verified after publish); **draggable pane dividers** landed (spec §6, `web/src/lib/panes.ts`) and **Explain now replaces Notes** with an undo (spec §13); **Phase 10, the UI refinement pass**, is on branch `feat/ui-refinements` (**pushed**, and deployed to the tailnet from a dirty tree — `/api/version` reports `v0.1.0-14-g8e82a64-dirty`): explicit copy actions, distinct create labels, simplified timestamps, the search keyboard workflow, visible saved-default state, two-line titles, and the **Favorites** list on a new `pinned` column; plus the **service-worker update check** and **create/cancel test coverage** added while chasing a stale-shell report; `make test` green (go test + vet + 298 Vitest + svelte-check 0 errors / 0 warnings). The Linux desktop binary **build was verified on an ARM Ubuntu 24 host** (git bundle → `make desktop`), after a first attempt failed because that work was still uncommitted and the bundle therefore carried the old darwin-only tree.
 - Next: **Phase 11 on-device checklist** (plan Phase 11 T7; branch `claude/eloquent-maxwell-bcugjn`, T1–T6 built and green): iOS Safari as a tab and as the installed PWA (swipe-back at each depth), Android Chrome hardware back (drawer → detail → leaves the app), the wails app with Settings → Layout = Compact; then merge. After that, as before: **Linux desktop container build + verification** (podman; `libgtk-3-dev` + `libwebkit2gtk-4.1-dev` + Go, `make web` then the desktop build, and exercise `install-desktop.sh` with a scratch `PREFIX=`); then the Windows port, desktop follow-ons (real app icon, startup-error surfacing in the window); then remaining v1 follow-ons (CLI client, SnippetsLab converter, named variable presets per machine — the follow-on named in Phase 10 T5). `feat/ui-refinements` is merged to main and two betas are published (`v0.2.0-beta.1`, and `v0.2.0-beta.2` as the CI validation build); cutting `v0.2.0` is the next release step whenever wanted
@@ -1786,3 +1789,48 @@ Spec: `docs/snp-design.md` · Plan: `docs/snp-implementation-plan.md`
   was absent when checked. User requested this docs commit, an annotated
   v0.4.0 tag, and pushing main plus that tag to origin; the tag triggers
   the existing cross-platform release workflow.
+
+### 2026-09-21 — Trash, restore and revision history
+
+- Added paginated online Trash with restore, a 10-second deletion Undo,
+  and command-palette entries. Restore preserves content/favorites, clears
+  the tombstone, advances updated_at for sync, and falls back to Unfiled
+  when the original folder is deleted. Retained FTS rows are reused.
+- Added migration 0005 and transactional previous-version capture on
+  meaningful replacements and import overwrites. Retain 50 revisions per
+  snippet, using monotonic IDs for same-second ordering. Favorite-only and
+  no-op changes are excluded. Version restore captures current content
+  before replacing it, preserves creation time/current favorite state, and
+  resolves missing folders to Unfiled. Hard purge cascades to revisions.
+- Sensitive snapshots encrypt the entire payload with AES-GCM and AAD
+  bound to both snippet and revision ID. Enabling sensitivity encrypts
+  earlier plaintext versions in the same transaction. Protected restores
+  stay sensitive. Summary responses contain no historical content; the
+  preview endpoint requires explicit reveal=1 for protected versions.
+  Recovery responses and single-snippet reads use Cache-Control: no-store.
+- Added a responsive History dialog beside Edit, with side-by-side body,
+  notes, metadata and variable-default comparison. Recovery data stays in
+  dialog memory, sensitive previews require reveal, and stale requests are
+  discarded after selection changes/disconnect/close. Existing modal,
+  dirty-editor and serialized-write protections cover recovery actions.
+- Fixed folder purge to defer folders still referenced by newer snippet
+  or folder tombstones, avoiding foreign-key failures during cleanup.
+- Updated README, spec and plan. History starts with future edits;
+  database backups retain history/trash, JSON exports remain live current
+  versions only. No history is synced into the offline cache.
+- Validation: make test passed (Go vet/tests, 397 Vitest tests in 32 files,
+  zero Svelte/TypeScript errors or warnings), production web build and Go
+  API build passed, README Markdown lint and git diff --check passed.
+  Regressions cover FTS/sync restore, missing folders, retention/no-op,
+  encryption/promotion/AAD binding, import rollback, purge, API auth/CSRF,
+  explicit reveal, UI failures/stale responses, Undo and cache redaction.
+- Browser smoke against temporary data: edit → compare → restore, delete →
+  Trash → restore with history intact, 390px responsive comparison, and
+  sensitivity promotion → reveal → restore with body hidden afterward.
+  No console errors/warnings. No native Wails smoke or deployment.
+  Preview remains on 127.0.0.1:5179, with the updated test API on :8080.
+- Gotchas: UI test fireEvent.click does not focus the opener; set focus
+  before asserting modal restoration. Testing Library role queries use
+  exact string names without Playwright's exact option. After a preview
+  rebuild the service worker can refresh once more during initial actions.
+  web/dist/index.html was left untouched; all builds used temporary output.

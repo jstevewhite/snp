@@ -5,6 +5,9 @@
 // window.go.desktop.App bridge (spec §12) instead of fetch.
 
 import {
+  type TrashEntry,
+  type Revision,
+  type RevisionDetail,
   type Folder,
   type Identity,
   type Snippet,
@@ -263,3 +266,15 @@ export interface AIExplainInput {
 export function explainSnippet(input: AIExplainInput): Promise<AIExplainResult> {
   return request<AIExplainResult>('/ai/explain', { method: 'POST', body: input })
 }
+
+// Recovery data is fetched on demand and kept only in dialog memory.
+export const listTrash = (offset = 0): Promise<TrashEntry[]> =>
+  request(`/trash?limit=100&offset=${offset}`)
+export const restoreSnippet = (id: string): Promise<Snippet> =>
+  request(`/snippets/${encodeURIComponent(id)}/restore`, { method: 'POST' })
+export const listRevisions = (id: string): Promise<Revision[]> =>
+  request(`/snippets/${encodeURIComponent(id)}/revisions`)
+export const getRevision = (id: string, revision: number, reveal = false): Promise<RevisionDetail> =>
+  request(`/snippets/${encodeURIComponent(id)}/revisions/${revision}${reveal ? '?reveal=1' : ''}`)
+export const restoreRevision = (id: string, revision: number): Promise<Snippet> =>
+  request(`/snippets/${encodeURIComponent(id)}/revisions/${revision}/restore`, { method: 'POST' })

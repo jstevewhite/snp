@@ -20,6 +20,7 @@
     saving = false,
     oncopy,
     onedit,
+    onhistory,
     onremove,
     onreveal,
     onpin,
@@ -41,6 +42,7 @@
      */
     oncopy: (text: string) => void | Promise<void>
     onedit: () => void
+    onhistory?: () => void
     onremove: () => void
     onreveal: () => void
     /** Toggles the snippet's pinned (favorite) flag (spec §4). */
@@ -379,6 +381,7 @@
 
   <footer class="actions">
     <button class="edit" disabled={offline || saving} onclick={onedit}>Edit</button>
+    {#if onhistory}<button disabled={offline || saving} onclick={onhistory}>History</button>{/if}
   </footer>
 
   {#if snippet.notes !== ''}

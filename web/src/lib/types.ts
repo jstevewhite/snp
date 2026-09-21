@@ -114,3 +114,23 @@ export class ApiError extends Error {
     return this.status === 0
   }
 }
+
+/** Online-only recovery metadata; never written to IndexedDB. */
+export interface TrashEntry {
+  id: string
+  title: string
+  language: string
+  is_sensitive: boolean
+  deleted_at: string
+}
+
+export interface Revision {
+  id: number
+  saved_at: string
+  version_at: string
+  protected: boolean
+}
+
+export interface RevisionDetail extends Revision {
+  snippet: Snippet
+}

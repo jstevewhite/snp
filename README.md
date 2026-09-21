@@ -297,6 +297,27 @@ settings sheet shows both shortcuts.
 some everyday commands. Applying the starter pack again overwrites edits
 to its bundled snippets and restores any you deleted.
 
+### Trash and revision history
+
+Deleting a snippet moves it to **Trash** in the folders pane. Use the
+brief **Undo** action or open Trash and choose **Restore**. Deleted
+snippets are automatically removed after 30 days. If their original
+folder is gone, they return to Unfiled.
+
+Open a snippet and choose **History** beside Edit to compare and restore
+previous versions. The latest 50 changed versions are kept, including
+content overwritten by imports. Restoring saves the current version first
+and keeps the current favorite setting. History starts with the first edit
+after upgrading; unchanged saves and favorite toggles do not add versions.
+Trash and revision history are also available in the command palette.
+
+Both features require a connection. Sensitive history is encrypted and
+requires **Reveal comparison** to view; marking a snippet sensitive also
+encrypts its earlier versions. Restoring protected history keeps the
+snippet sensitive. Historical content stays out of the offline cache.
+Database backups retain trash and history; JSON exports include only
+current live versions. Keep the encryption key with database backups.
+
 ### Appearance and layout
 
 **Settings → Theme** offers Auto (system), Light, Dark, Slate Blue (system),

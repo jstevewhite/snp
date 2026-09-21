@@ -269,6 +269,17 @@ func (s *Store) ReplaceSnippet(id string, in SnippetInput) (SnippetOut, error) {
 	}
 	defer tx.Rollback()
 
+	out, err := s.replaceSnippetTx(ctx, tx, id, in)
+	if err != nil {
+		return SnippetOut{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return SnippetOut{}, err
+	}
+	return out, nil
+}
+
+func (s *Store) replaceSnippetTx(ctx context.Context, tx *sql.Tx, id string, in SnippetInput) (SnippetOut, error) {
 	var created string
 	var rowid int64
 	if err := tx.QueryRowContext(ctx,
@@ -282,6 +293,9 @@ func (s *Store) ReplaceSnippet(id string, in SnippetInput) (SnippetOut, error) {
 		if err := liveFolderTx(tx, *in.FolderID); err != nil {
 			return SnippetOut{}, err
 		}
+	}
+	if err := s.captureRevisionTx(ctx, tx, id, in); err != nil {
+		return SnippetOut{}, err
 	}
 	now := s.now()
 	body, err := s.storeBody(id, in.Body, in.IsSensitive)
@@ -312,9 +326,6 @@ func (s *Store) ReplaceSnippet(id string, in SnippetInput) (SnippetOut, error) {
 	if err := s.insertFTSTx(ctx, tx, rowid, in.Title, in.Notes, bodyForIndex(in), strings.Join(tags, " ")); err != nil {
 		return SnippetOut{}, err
 	}
-	if err := tx.Commit(); err != nil {
-		return SnippetOut{}, err
-	}
 
 	out := SnippetOut{
 		ID:            id,
@@ -338,7 +349,15 @@ func (s *Store) ReplaceSnippet(id string, in SnippetInput) (SnippetOut, error) {
 
 // GetSnippet returns a live snippet with its body decrypted.
 func (s *Store) GetSnippet(id string) (SnippetOut, error) {
-	ctx := context.Background()
+	return s.getSnippet(context.Background(), s.db, id, true)
+}
+
+// snippetReader permits consistent reads within a write transaction.
+type snippetReader interface {
+	QueryRowContext(context.Context, string, ...any) *sql.Row
+}
+
+func (s *Store) getSnippet(ctx context.Context, q snippetReader, id string, live bool) (SnippetOut, error) {
 	var (
 		out     SnippetOut
 		body    []byte
@@ -347,14 +366,19 @@ func (s *Store) GetSnippet(id string) (SnippetOut, error) {
 		uvars   int
 		pinned  int
 		vdPlain string
+		tagText string
 		vdEnc   sql.Null[[]byte]
 	)
-	err := s.db.QueryRowContext(ctx,
+	where := ""
+	if live {
+		where = " AND deleted_at IS NULL"
+	}
+	err := q.QueryRowContext(ctx,
 		`SELECT id, title, body, language, notes, folder_id, is_sensitive, uses_variables, pinned,
-		 var_defaults, var_defaults_enc, created_at, updated_at
-		 FROM snippets WHERE id = ? AND deleted_at IS NULL`, id).
+		 var_defaults, var_defaults_enc, created_at, updated_at, tags
+		 FROM snippets WHERE id = ?`+where, id).
 		Scan(&out.ID, &out.Title, &body, &out.Language, &out.Notes, &folder, &sens, &uvars, &pinned,
-			&vdPlain, &vdEnc, &out.CreatedAt, &out.UpdatedAt)
+			&vdPlain, &vdEnc, &out.CreatedAt, &out.UpdatedAt, &tagText)
 	if errors.Is(err, sql.ErrNoRows) {
 		return SnippetOut{}, ErrNotFound
 	}
@@ -390,11 +414,10 @@ func (s *Store) GetSnippet(id string) (SnippetOut, error) {
 	if err != nil {
 		return SnippetOut{}, err
 	}
-	tagMap, err := s.tagsFor(ctx, []string{id})
-	if err != nil {
-		return SnippetOut{}, err
+	out.Tags = strings.Fields(tagText)
+	if out.Tags == nil {
+		out.Tags = []string{}
 	}
-	out.Tags = tagMap[id]
 	return out, nil
 }
 

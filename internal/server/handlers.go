@@ -24,6 +24,11 @@ func (s *Server) apiMux() http.Handler {
 	mux.HandleFunc("PUT /api/snippets/{id}", s.handleReplaceSnippet)
 	mux.HandleFunc("DELETE /api/snippets/{id}", s.handleDeleteSnippet)
 	mux.HandleFunc("GET /api/snippets/{id}/raw", s.handleRawSnippet)
+	mux.HandleFunc("GET /api/trash", s.handleTrash)
+	mux.HandleFunc("POST /api/snippets/{id}/restore", s.handleRestoreSnippet)
+	mux.HandleFunc("GET /api/snippets/{id}/revisions", s.handleRevisions)
+	mux.HandleFunc("GET /api/snippets/{id}/revisions/{revision}", s.handleRevision)
+	mux.HandleFunc("POST /api/snippets/{id}/revisions/{revision}/restore", s.handleRestoreRevision)
 	mux.HandleFunc("GET /api/folders", s.handleListFolders)
 	mux.HandleFunc("POST /api/folders", s.handleCreateFolder)
 	mux.HandleFunc("PUT /api/folders/{id}", s.handleUpdateFolder)
@@ -141,6 +146,7 @@ func (s *Server) handleCreateSnippet(w http.ResponseWriter, r *http.Request) {
 
 // handleGetSnippet returns one live snippet with its body decrypted.
 func (s *Server) handleGetSnippet(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
 	out, err := s.store.GetSnippet(r.PathValue("id"))
 	if err != nil {
 		s.handleStoreErr(w, err)
