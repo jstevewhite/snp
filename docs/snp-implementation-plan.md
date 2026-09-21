@@ -805,3 +805,13 @@ web/desktop builds succeed, and compact navigation still preserves drafts.
 - Done when full checks/builds pass, wrong-password/damaged-file recovery
   leaves no published output, native protected saves work, and UI password
   confirmation, clearing and encrypted import have regression coverage.
+
+
+## Duplicate snippet (2026-09-21)
+
+- Add toolbar/palette duplication into a guarded create draft with copied
+  content and metadata, preserving sensitivity and original template text.
+- Keep creation independent of the source ID/history and invalidate stale
+  sensitive fetches; clear discarded seeds and preserve cache redaction.
+- Done when source-preservation, create/cancel, offline and sensitive-copy
+  regressions pass make test and production UI build/smoke pass.

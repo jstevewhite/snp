@@ -7,6 +7,7 @@
 
   let {
     initial = null,
+    draft = null,
     folders,
     defaultFolderId = null,
     onsave,
@@ -18,6 +19,8 @@
   }: {
     /** null → create mode; a snippet → edit mode. */
     initial?: Snippet | null
+    /** Seed a new unsaved copy, without giving it an existing identity. */
+    draft?: SnippetInput | null
     folders: Folder[]
     defaultFolderId?: string | null
     onsave: (input: SnippetInput) => void | Promise<void>
@@ -32,20 +35,24 @@
   // fields are seeded from `initial` exactly once, at mount; afterwards the
   // form owns its own state. The one-time capture of the prop is intentional.
   // svelte-ignore state_referenced_locally
+  const source = initial ?? draft
+  // svelte-ignore state_referenced_locally
+  const isDuplicate = draft !== null
+  // svelte-ignore state_referenced_locally
   const seed = {
-    title: initial?.title ?? '',
-    language: initial?.language ?? '',
-    tags: initial?.tags.join(', ') ?? '',
-    folder: initial !== null ? initial.folder_id ?? '' : defaultFolderId ?? '',
-    body: initial?.body ?? '',
-    notes: initial?.notes ?? '',
-    sensitive: initial?.is_sensitive ?? false,
-    usesVariables: initial?.uses_variables ?? false,
-    varDefaults: initial?.var_defaults ?? {},
+    title: source?.title ?? '',
+    language: source?.language ?? '',
+    tags: source?.tags.join(', ') ?? '',
+    folder: source !== null ? source.folder_id ?? '' : defaultFolderId ?? '',
+    body: source?.body ?? '',
+    notes: source?.notes ?? '',
+    sensitive: source?.is_sensitive ?? false,
+    usesVariables: source?.uses_variables ?? false,
+    varDefaults: source?.var_defaults ?? {},
     // Pinning is toggled from the read view, not the form, but a PUT is a
     // full replace — so editing a snippet has to carry the flag through or
     // the save would silently unpin it.
-    pinned: initial?.pinned ?? false,
+    pinned: source?.pinned ?? false,
   }
 
   let title = $state(seed.title)
@@ -68,6 +75,7 @@
   })
 
   const dirty = $derived(
+    isDuplicate ||
     title !== seed.title || language !== seed.language || tagsText !== seed.tags ||
     folderId !== seed.folder || body !== seed.body || notes !== seed.notes ||
     isSensitive !== seed.sensitive || usesVariables !== hasTemplateVars(seed.body)

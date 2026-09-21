@@ -20,6 +20,7 @@
     saving = false,
     oncopy,
     onedit,
+    onduplicate,
     onhistory,
     onremove,
     onreveal,
@@ -42,6 +43,7 @@
      */
     oncopy: (text: string) => void | Promise<void>
     onedit: () => void
+    onduplicate?: () => void
     onhistory?: () => void
     onremove: () => void
     onreveal: () => void
@@ -381,6 +383,7 @@
 
   <footer class="actions">
     <button class="edit" disabled={offline || saving} onclick={onedit}>Edit</button>
+    {#if onduplicate}<button disabled={offline || saving} onclick={onduplicate}>Duplicate</button>{/if}
     {#if onhistory}<button disabled={offline || saving} onclick={onhistory}>History</button>{/if}
   </footer>
 

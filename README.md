@@ -297,6 +297,15 @@ settings sheet shows both shortcuts.
 some everyday commands. Applying the starter pack again overwrites edits
 to its bundled snippets and restores any you deleted.
 
+### Duplicate a snippet
+
+Select a snippet and click **Duplicate**, or choose **Duplicate snippet**
+from the command palette. A new draft opens as `Title (copy)` with the
+original body, folder, tags, notes, template defaults, favorite status and
+sensitivity. Edit it and click **Create** to save a separate snippet with
+fresh history. The original is unchanged; discarding the draft saves
+nothing. Duplication requires a connection, including for sensitive bodies.
+
 ### Trash and revision history
 
 Deleting a snippet moves it to **Trash** in the folders pane. Use the

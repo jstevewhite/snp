@@ -1162,3 +1162,20 @@ path; failures remove the staged file. Restore follows the stopped-app
 procedure above. This command also unlocks JSON exports of any size; the
 app handles armored JSON files only. Standard age tools can recover either
 file type. CLI export/backup/import formats are otherwise unchanged.
+
+
+## Duplicate snippets
+
+The detail toolbar and command palette offer Duplicate while online and
+outside an editor. This opens a create draft named `Title (copy)` with the
+source's original body (not rendered template output), notes, language,
+folder, tags, sensitivity, favorite flag and saved variable defaults. The
+copy carries no source ID, timestamps, Trash state or revision history;
+Create uses the existing POST endpoint, assigning a new ID and timestamps.
+The source is never updated. The prefilled draft has the usual unsaved
+changes guard, and closing/discarding clears its seed from app state.
+
+Sensitive copies fetch their source body/defaults on demand and retain the
+sensitive flag. They never write decrypted content into the offline cache.
+Failed fetches do not open blank drafts; selection/editor changes invalidate
+pending fetch results. Offline duplication is disabled.

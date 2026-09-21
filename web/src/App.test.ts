@@ -1614,3 +1614,92 @@ describe('App (command palette)', () => {
     unmount()
   })
 })
+
+
+describe('Duplicate snippet', () => {
+  beforeEach(async () => { await indexedDB.deleteDatabase('snp'); localStorage.removeItem(LAYOUT_STORAGE_KEY) })
+  afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals() })
+  for (const sensitive of [false, true]) {
+    it(`creates a separate ${sensitive ? 'sensitive' : 'ordinary'} copy with original template and metadata`, async () => {
+      const payload = syncPayload()
+      const source = { ...payload.snippets[2], pinned: true, notes: 'Deployment notes', folder_id: 'f1', is_sensitive: sensitive }
+      const syncDoc = { ...payload, snippets: payload.snippets.map(s => s.id === source.id
+        ? { ...source, body: sensitive ? null : source.body, var_defaults: sensitive ? null : source.var_defaults } : s) }
+      const writes: { url: string; method: string; body: Record<string, unknown> }[] = []
+      vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input)
+        let result: unknown = null
+        if (url.includes('/api/sync')) result = syncDoc
+        if (url.endsWith('/api/snippets/s3') && init?.method === 'GET') result = source
+        if (url.includes('/api/snippets') && ['POST', 'PUT'].includes(init?.method ?? '')) {
+          const body = JSON.parse(String(init?.body))
+          writes.push({ url, method: init!.method!, body })
+          result = { ...body, id: 'duplicate1', created_at: T0, updated_at: T0 }
+        }
+        return new Response(JSON.stringify(result), { status: init?.method === 'POST' ? 201 : 200, headers: { 'Content-Type': 'application/json' } })
+      }))
+      const { unmount } = render(App)
+      await screen.findAllByText('Deploy')
+      await fireEvent.click(screen.getAllByText('Deploy')[0])
+      await fireEvent.click(screen.getByRole('button', { name: 'Duplicate' }))
+      await screen.findByLabelText('Title')
+      expect((screen.getByLabelText('Title') as HTMLInputElement).value).toBe('Deploy (copy)')
+      expect((screen.getByLabelText('Body') as HTMLTextAreaElement).value).toBe(source.body)
+      expect(writes).toHaveLength(0)
+      await fireEvent.click(screen.getByRole('button', { name: 'Create' }))
+      await screen.findByRole('heading', { name: 'Deploy (copy)' })
+      expect(writes).toEqual([{ url: '/api/snippets', method: 'POST', body: {
+        title: 'Deploy (copy)', body: source.body, language: source.language, notes: source.notes,
+        folder_id: 'f1', tags: ['ops'], is_sensitive: sensitive, uses_variables: true,
+        pinned: true, var_defaults: { ns: 'prod' },
+      } }])
+      const { openDB } = await import('idb')
+      const db = await openDB('snp')
+      const original = await db.get('snippets', 's3')
+      const copy = await db.get('snippets', 'duplicate1')
+      expect(original.title).toBe('Deploy')
+      expect(copy.id).not.toBe(original.id)
+      if (sensitive) { expect(copy.body).toBeNull(); expect(copy.var_defaults).toBeNull() }
+      db.close(); unmount()
+    })
+  }
+  it('guards an unsaved copy and discards it without writing or seeding the next new snippet', async () => {
+    const fetchMock = stubFetch()
+    render(App)
+    await screen.findByText('Caddyfile')
+    await fireEvent.click(screen.getByText('Caddyfile'))
+    await fireEvent.click(screen.getByRole('button', { name: 'Duplicate' }))
+    await screen.findByLabelText('Title')
+    await fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    await screen.findByText('Unsaved changes')
+    await fireEvent.click(screen.getByRole('button', { name: 'Discard changes' }))
+    expect(screen.queryByLabelText('Title')).toBeNull()
+    await fireEvent.click(screen.getByRole('button', { name: 'New snippet' }))
+    expect((screen.getByLabelText('Title') as HTMLInputElement).value).toBe('')
+    expect(fetchMock.mock.calls.every(call => !String(call[0]).endsWith('/api/snippets'))).toBe(true)
+  })
+  it('ignores a sensitive fetch that completes after selecting another snippet', async () => {
+    let finish!: (response: Response) => void
+    const pending = new Promise<Response>(resolve => { finish = resolve })
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      if (String(input).endsWith('/api/snippets/s2')) return pending
+      return new Response(JSON.stringify(String(input).includes('/api/sync') ? syncPayload() : null), { headers: { 'Content-Type': 'application/json' } })
+    }))
+    render(App)
+    await screen.findByText('Redis flush')
+    await fireEvent.click(screen.getByText('Redis flush'))
+    await fireEvent.click(screen.getByRole('button', { name: 'Duplicate' }))
+    await fireEvent.click(screen.getByText('Caddyfile'))
+    finish(new Response(JSON.stringify({ ...syncPayload().snippets[1], body: 'late secret' }), { headers: { 'Content-Type': 'application/json' } }))
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Caddyfile' })).toBeDefined())
+    expect(screen.queryByLabelText('Body')).toBeNull()
+    expect(screen.queryByText('late secret')).toBeNull()
+  })
+  it('is unavailable offline', async () => {
+    stubFetch(); render(App)
+    await screen.findAllByText('Deploy')
+    await fireEvent.click(screen.getAllByText('Deploy')[0])
+    window.dispatchEvent(new Event('offline'))
+    await waitFor(() => expect((screen.getByRole('button', { name: 'Duplicate' }) as HTMLButtonElement).disabled).toBe(true))
+  })
+})

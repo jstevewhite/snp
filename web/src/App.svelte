@@ -92,6 +92,7 @@
   let selectedSnippetId: string | null = $state(null)
   let editing = $state(false)
   let editingSnippet: Snippet | null = $state(null)
+  let duplicateDraft: SnippetInput | null = $state(null)
   /** Revealed bodies for sensitive snippets (in memory only, never cached). */
   let revealed = $state<Record<string, { body: string; var_defaults: Record<string, string> }>>({})
   let detailEpoch = 0
@@ -260,6 +261,7 @@
         leaveEditor(() => {
           editing = false
           editingSnippet = null
+          duplicateDraft = null
           clearRevealed()
           nav.back()
         })
@@ -619,6 +621,7 @@
     leaveEditor(() => {
       editing = false
       editingSnippet = null
+      duplicateDraft = null
       clearRevealed()
       settingsOpen = false
       closeFolders()
@@ -657,6 +660,7 @@
     leaveEditor(() => {
       editing = false
       editingSnippet = null
+      duplicateDraft = null
       clearRevealed()
       settingsOpen = false
       closeFolders()
@@ -692,6 +696,7 @@
     leaveEditor(() => {
       editing = false
       editingSnippet = null
+      duplicateDraft = null
       void restoreContent(id).catch(fail)
     })
   }
@@ -709,6 +714,7 @@
     leaveEditor(() => {
       editing = false
       editingSnippet = null
+      duplicateDraft = null
       dialog = { kind: 'resync' }
     })
   }
@@ -813,6 +819,7 @@
       dirty = false
       editing = true
       editingSnippet = null
+      duplicateDraft = null
       if (compact) nav.openDetail()
     })
   }
@@ -848,7 +855,39 @@
     detailCopy = null
     editing = true
     editingSnippet = s
+    duplicateDraft = null
     if (compact) nav.openDetail()
+  }
+
+  /** A duplicate is an unsaved create draft; never reuse the source identity. */
+  async function startDuplicate(): Promise<void> {
+    if (!online || !ready || !selectedSnippet || editing || saving || dataBusy) return
+    let source = selectedSnippet
+    const sourceId = source.id
+    const epoch = ++detailEpoch
+    try {
+      // Sensitive bodies/defaults are absent from the cache. Fetch the original
+      // template, never the read view's rendered or temporarily edited values.
+      if (source.body === null || source.is_sensitive) source = await api.getSnippet(sourceId)
+      if (epoch !== detailEpoch || selectedSnippetId !== sourceId || !online || editing || saving || dataBusy) return
+      if (source.body === null) throw new Error('The snippet body is unavailable. Reconnect and try again.')
+      const draft: SnippetInput = {
+        title: `${source.title} (copy)`, body: source.body, language: source.language,
+        notes: source.notes, folder_id: source.folder_id, tags: [...source.tags],
+        is_sensitive: source.is_sensitive, uses_variables: source.uses_variables,
+        pinned: source.pinned ?? false, var_defaults: { ...source.var_defaults },
+      }
+      clearRevealed()
+      editorKey++
+      saveError = null
+      editingSnippet = null
+      duplicateDraft = draft
+      dirty = true
+      editing = true
+      if (compact) nav.openDetail()
+    } catch (e) {
+      if (epoch === detailEpoch && selectedSnippetId === sourceId) fail(e)
+    }
   }
 
   /**
@@ -860,6 +899,7 @@
       const wasCreate = editing && editingSnippet === null
       editing = false
       editingSnippet = null
+      duplicateDraft = null
       dirty = false
       clearRevealed()
       if (compact && wasCreate && navState.screen === 'detail') nav.back()
@@ -887,6 +927,7 @@
       dirty = false
       editing = false
       editingSnippet = null
+      duplicateDraft = null
       selectedSnippetId = s.id
       selectedFolderId = input.folder_id
       error = null
@@ -1035,6 +1076,7 @@
       selectedSnippetId = id
       editing = false
       editingSnippet = null
+      duplicateDraft = null
       dirty = false
       if (compact && openDetail) nav.openDetail()
       if (!compact && openDetail) flyoutOpen = false
@@ -1124,6 +1166,7 @@
       leaveEditor(() => {
         editing = false
         editingSnippet = null
+        duplicateDraft = null
         dirty = false
         clearRevealed()
         nav.toRoot()
@@ -1156,6 +1199,7 @@
     if (!editing) {
       list.push(
         { id: 'history', label: 'Revision history', group: 'snippet', disabled: needSelection ?? offline, run: () => { if (s) openRecovery(s) } },
+        { id: 'duplicate', label: 'Duplicate snippet', group: 'snippet', disabled: needSelection ?? offline, run: () => void startDuplicate() },
         { id: 'new', label: 'New snippet', group: 'snippet', disabled: offline, run: startCreate },
         {
           id: 'edit',
@@ -1643,6 +1687,7 @@
         {#key editorKey}
           <SnippetForm
             initial={editingSnippet}
+            draft={duplicateDraft}
             {folders}
             defaultFolderId={selectedFolderId}
             onsave={saveSnippet}
@@ -1664,6 +1709,7 @@
           {saving}
           oncopy={(text) => copySelected(text)}
           onedit={startEdit}
+          onduplicate={() => void startDuplicate()}
           onhistory={() => openRecovery(selectedSnippet)}
           onremove={() => (dialog = { kind: 'snippetDelete', id: selectedSnippet.id })}
           onreveal={() => void reveal(selectedSnippet.id)}

@@ -14,6 +14,11 @@ Spec: `docs/snp-design.md` · Plan: `docs/snp-implementation-plan.md`
 
 ## Current status
 
+- Duplicate-snippet session (2026-09-21): toolbar/palette duplication opens
+  a guarded create draft with copied metadata and sensitivity. Full checks,
+  production UI build and browser create/history smoke pass. Changes remain
+  local after commit 17f3064; see the latest log entry.
+
 - Password-protection session (2026-09-21): app exports/backups default to
   age encryption; encrypted JSON import and offline `snp decrypt` recovery
   are implemented. Full tests and production builds pass. Preview is
@@ -1936,3 +1941,28 @@ Spec: `docs/snp-design.md` · Plan: `docs/snp-implementation-plan.md`
   compatible. UI built only into /tmp, preserving web/dist/index.html.
   Preview stays at :5179 with the updated loopback API on :8080. No commit,
   tag, push or release was performed in this session.
+
+
+### 2026-09-21 — Duplicate snippet
+
+- Added Duplicate in the detail toolbar and Duplicate snippet in the command
+  palette. Opens a new `Title (copy)` draft, retaining body, notes, language,
+  folder, tags, saved template defaults, sensitivity and favorite status.
+  Uses the ordinary Create endpoint; no source ID, timestamps or history
+  are copied. The original remains untouched.
+- Kept duplicate seeds separate from edit targets. Prefilled copies use the
+  existing unsaved-changes guard; all editor exit/reset paths clear seeds.
+  Sensitive copies fetch original bodies/defaults on demand, ignore late
+  results after navigation, and remain redacted in IndexedDB. Offline
+  duplication is disabled. Rendered template values are not copied.
+- Validation: make test passed (Go vet/tests, 419 frontend tests, zero
+  Svelte/TypeScript diagnostics), production UI build passed, README lint
+  and git diff --check passed. New integration regressions cover ordinary
+  and sensitive creation/metadata/source preservation, redacted caching,
+  cancel/seed clearing, stale fetches and offline controls. Test fixtures
+  need their own cleanup/cache reset when outside the existing App suite.
+- Browser smoke on disposable :5179 preview: duplicated JSON import demo,
+  confirmed prefilled draft/Create, saved a separate copy alongside the
+  original, and verified its empty initial revision history. README/spec/
+  plan updated; build output stayed in /tmp, leaving the embed stub intact.
+  No commit, tag, push or release performed in this session.
