@@ -61,6 +61,25 @@ export const THEME_STORAGE_KEY = 'snp.theme'
 export const TEXT_SCALE_STORAGE_KEY = 'snp.textScale'
 export const TWO_LINE_TITLES_STORAGE_KEY = 'snp.twoLineTitles'
 export const LAYOUT_STORAGE_KEY = 'snp.layout'
+export const FOLDERS_PINNED_STORAGE_KEY = 'snp.foldersPinned'
+
+/** Pinned by default; compact mode ignores this preference. */
+export function loadFoldersPinned(): boolean {
+  try {
+    return storage()?.getItem(FOLDERS_PINNED_STORAGE_KEY) !== 'false'
+  } catch {
+    return true
+  }
+}
+
+export function saveFoldersPinned(pinned: boolean): void {
+  try {
+    if (pinned) storage()?.removeItem(FOLDERS_PINNED_STORAGE_KEY)
+    else storage()?.setItem(FOLDERS_PINNED_STORAGE_KEY, 'false')
+  } catch {
+    // Persistence is best-effort.
+  }
+}
 
 const DEFAULT_THEME = 'auto'
 const DEFAULT_TEXT_SCALE = 100

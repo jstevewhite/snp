@@ -1,6 +1,7 @@
 /**
  * Resizable pane layout (spec §6 "Layout"): folders+tags | snippet list |
- * detail, side by side with draggable dividers.
+ * detail, side by side with draggable dividers. When folders are unpinned,
+ * only list + detail occupy columns; widths have a separate storage key.
  *
  * The detail pane is the flexible one — it always takes whatever the two
  * fixed panes leave, so only two widths are tracked. Until the user drags a
@@ -25,6 +26,7 @@ export interface PaneWidths {
 export type SplitterId = 'folders' | 'list'
 
 export const PANE_WIDTHS_STORAGE_KEY = 'snp.paneWidths'
+export const UNPINNED_PANE_WIDTHS_STORAGE_KEY = 'snp.unpinnedPaneWidths'
 
 /**
  * Divider hit area in CSS pixels — must match `.splitter` width in app.css
@@ -53,13 +55,13 @@ function clampRange(value: number, min: number, max: number): number {
 }
 
 /**
- * Space the two fixed panes may occupy, i.e. the container minus both
+ * Space the fixed panes may occupy: the container minus the visible
  * dividers and the detail pane's minimum. `null` when the container width is
  * unknown (jsdom reports 0), which disables the container-aware limits.
  */
-function roomFor(containerWidth: number): number | null {
+function roomFor(containerWidth: number, foldersPinned = true): number | null {
   if (!Number.isFinite(containerWidth) || containerWidth <= 0) return null
-  return containerWidth - SPLITTER_WIDTH * 2 - DETAIL_MIN
+  return containerWidth - SPLITTER_WIDTH * (foldersPinned ? 2 : 1) - DETAIL_MIN
 }
 
 /** Clamp a width pair into range, keeping the detail pane usable. */
@@ -89,8 +91,9 @@ export function resizePane(
   which: SplitterId,
   delta: number,
   containerWidth: number,
+  foldersPinned = true,
 ): PaneWidths {
-  const room = roomFor(containerWidth)
+  const room = roomFor(containerWidth, foldersPinned)
   if (which === 'folders') {
     const total = clampRange(
       widths.folders + widths.list,
@@ -102,7 +105,7 @@ export function resizePane(
     const folders = clampRange(widths.folders + delta, minFolders, maxFolders)
     return { folders: Math.round(folders), list: Math.round(total - folders) }
   }
-  const maxList = Math.min(LIST_MAX, (room ?? Number.POSITIVE_INFINITY) - widths.folders)
+  const maxList = Math.min(LIST_MAX, (room ?? Number.POSITIVE_INFINITY) - (foldersPinned ? widths.folders : 0))
   const list = clampRange(widths.list + delta, LIST_MIN, Math.max(LIST_MIN, maxList))
   return { folders: widths.folders, list: Math.round(list) }
 }
@@ -121,11 +124,11 @@ function valid(widths: PaneWidths): boolean {
 }
 
 /** Persisted widths, or `null` when absent/unreadable (use the CSS default). */
-export function loadPaneWidths(): PaneWidths | null {
+export function loadPaneWidths(foldersPinned = true): PaneWidths | null {
   const s = storage()
   if (!s) return null
   try {
-    const raw = s.getItem(PANE_WIDTHS_STORAGE_KEY)
+    const raw = s.getItem(foldersPinned ? PANE_WIDTHS_STORAGE_KEY : UNPINNED_PANE_WIDTHS_STORAGE_KEY)
     if (raw === null || raw === '') return null
     const parsed: unknown = JSON.parse(raw)
     if (typeof parsed !== 'object' || parsed === null) return null
@@ -140,12 +143,13 @@ export function loadPaneWidths(): PaneWidths | null {
 }
 
 /** Persist widths; `null` clears the stored value (back to the default). */
-export function savePaneWidths(widths: PaneWidths | null): void {
+export function savePaneWidths(widths: PaneWidths | null, foldersPinned = true): void {
   const s = storage()
   if (!s) return
   try {
-    if (widths === null) s.removeItem(PANE_WIDTHS_STORAGE_KEY)
-    else s.setItem(PANE_WIDTHS_STORAGE_KEY, JSON.stringify(widths))
+    const key = foldersPinned ? PANE_WIDTHS_STORAGE_KEY : UNPINNED_PANE_WIDTHS_STORAGE_KEY
+    if (widths === null) s.removeItem(key)
+    else s.setItem(key, JSON.stringify(widths))
   } catch {
     // Persistence is best-effort.
   }
@@ -165,12 +169,12 @@ export function paneStyleVars(widths: PaneWidths | null): string {
  * container is not laid out (jsdom reports zero rects, and so would a hidden
  * window), so callers keep the stylesheet default instead of pinning 0px.
  */
-export function measurePaneWidths(root: HTMLElement | null | undefined): PaneWidths | null {
+export function measurePaneWidths(root: HTMLElement | null | undefined, foldersPinned = true): PaneWidths | null {
   if (!root) return null
   const folders = root.querySelector<HTMLElement>('.pane.folders')
   const list = root.querySelector<HTMLElement>('.pane.list')
   if (!folders || !list) return null
-  const foldersWidth = folders.getBoundingClientRect().width
+  const foldersWidth = foldersPinned ? folders.getBoundingClientRect().width : fallbackPaneWidths().folders
   const listWidth = list.getBoundingClientRect().width
   if (foldersWidth <= 0 || listWidth <= 0) return null
   return { folders: Math.round(foldersWidth), list: Math.round(listWidth) }

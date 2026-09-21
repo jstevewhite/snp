@@ -1741,3 +1741,31 @@ Spec: `docs/snp-design.md` · Plan: `docs/snp-implementation-plan.md`
   was blank, so visual verification used the production build. A separate
   build changed the tracked web/dist stub during this session; it was not
   modified or staged by this task.
+
+### 2026-09-21 — Pinnable folders flyout and two-pane wide layout
+
+- Added a folders-header pin control, defaulting to pinned. Unpinning
+  removes the folders column/divider and exposes a topbar Folders button
+  for the favorites/folders/tags flyout. Pinning restores the three panes.
+  Persisted the preference and kept independent widths/reset behavior for
+  two- and three-pane layouts; unpinned resizing reserves no folder space.
+- Reused the compact drawer surface and modal focus handling. Added inert
+  closed/background surfaces, initial close-button focus, opener focus
+  restoration, Escape/outside dismissal, folder/favorite dismissal, and
+  multi-tag selection without dismissal. Pinning preserves editor drafts.
+  Compact mode retains its history navigation and hides the pin; mode
+  transitions dismiss the desktop flyout without changing the preference.
+- Updated spec §6. Added component regressions for persistence, filtering,
+  focus, dismissal, draft retention, search shortcut, mode changes, and
+  independent sizing/reset; added a two-pane width-limit regression.
+- Validation: make test passed (Go vet/tests, 387 Vitest tests, zero
+  Svelte/TypeScript errors/warnings). Temporary production build passed.
+  Browser verified docked/two-pane/flyout views, reload persistence, focus,
+  a live 390px transition, compact folder dialog/cancel and return to wide;
+  no browser warnings/errors. git diff --check clean. No native Wails smoke
+  or deployment. Preview remains at 127.0.0.1:5179 with temporary data.
+- Gotchas: wait until the layout update settles before measuring a newly
+  selected pane arrangement; hidden drawer width must not constrain a
+  two-pane resize. jsdom inert is a property without attribute reflection.
+  An independently rebuilt web/dist/index.html remains excluded from this
+  task's commit.

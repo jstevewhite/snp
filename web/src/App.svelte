@@ -55,6 +55,8 @@
     applyTextScale,
     applyTheme,
     loadSettings,
+    loadFoldersPinned,
+    saveFoldersPinned,
     saveLayout,
     saveTextScale,
     saveTheme,
@@ -199,7 +201,43 @@
   $effect(() => watchNarrow((n) => (narrow = n)))
   const mode = $derived(resolveLayout(layout, narrow))
   const compact = $derived(mode === 'compact')
+  let foldersPinned = $state(loadFoldersPinned())
+  let flyoutOpen = $state(false)
+  let foldersToggle = $state<HTMLButtonElement | undefined>()
+  let foldersEl = $state<HTMLElement | undefined>()
+  let folderPin = $state<HTMLButtonElement | undefined>()
+  const foldersOverlay = $derived(compact || !foldersPinned)
   let navState = $state<NavState>({ screen: 'list', drawerOpen: false, depth: 0 })
+  const foldersOpen = $derived(compact ? navState.drawerOpen : !foldersPinned && flyoutOpen)
+  $effect(() => saveFoldersPinned(foldersPinned))
+  $effect(() => {
+    // A breakpoint/layout transition always dismisses the desktop flyout.
+    if (compact) flyoutOpen = false
+  })
+
+  $effect(() => {
+    if (compact || !flyoutOpen || !foldersEl || dialog !== null || paletteOpen) return
+    const panel = foldersEl
+    const opener = foldersToggle
+    const dismiss = (event: MouseEvent): void => {
+      const path = event.composedPath()
+      if (!path.includes(panel) && (!opener || !path.includes(opener))) flyoutOpen = false
+    }
+    document.addEventListener('click', dismiss, true)
+    return () => document.removeEventListener('click', dismiss, true)
+  })
+
+  function closeFolders(): void {
+    if (compact) nav.closeDrawer()
+    else flyoutOpen = false
+  }
+
+  function toggleFoldersPin(): void {
+    foldersPinned = !foldersPinned
+    flyoutOpen = false
+    void settle().then(() => (foldersPinned ? folderPin : foldersToggle)?.focus())
+  }
+
   const inertHistory: NavHistory = {
     state: null,
     pushState() {},
@@ -254,6 +292,12 @@
   // the first paint looked like. Only a real drag persists a pair, so a
   // window the user never resized keeps adapting to its size.
   let paneWidths = $state<PaneWidths | null>(loadPaneWidths())
+  let unpinnedPaneWidths = $state<PaneWidths | null>(loadPaneWidths(false))
+  const activePaneWidths = $derived(foldersPinned ? paneWidths : unpinnedPaneWidths)
+  function setPaneWidths(widths: PaneWidths | null): void {
+    if (foldersPinned) paneWidths = widths
+    else unpinnedPaneWidths = widths
+  }
   let panesEl = $state<HTMLElement | undefined>()
   /** Divider being held, for the drag styling. */
   let dragging = $state<SplitterId | null>(null)
@@ -270,13 +314,20 @@
   // the widths, since reading a rect forces a synchronous layout and so sees
   // the default proportions rather than the pixels just discarded.
   $effect(() => {
-    if (paneWidths !== null) return
-    const measured = measurePaneWidths(panesEl)
-    if (measured !== null) paneWidths = measured
+    if (compact || activePaneWidths !== null) return
+    const pinned = foldersPinned
+    const root = panesEl
+    let cancelled = false
+    void settle().then(() => {
+      if (cancelled) return
+      const measured = measurePaneWidths(root, pinned)
+      if (measured !== null) setPaneWidths(measured)
+    })
+    return () => { cancelled = true }
   })
 
   function currentPaneWidths(): PaneWidths {
-    return paneWidths ?? measurePaneWidths(panesEl) ?? fallbackPaneWidths()
+    return activePaneWidths ?? measurePaneWidths(panesEl, foldersPinned) ?? fallbackPaneWidths()
   }
 
   function paneContainerWidth(): number {
@@ -305,12 +356,13 @@
   function movePaneDrag(event: PointerEvent): void {
     if (dragOrigin === null) return
     dragOrigin.moved = true
-    paneWidths = resizePane(
+    setPaneWidths(resizePane(
       dragOrigin.widths,
       dragOrigin.which,
       event.clientX - dragOrigin.x,
       dragOrigin.container,
-    )
+      foldersPinned,
+    ))
   }
 
   function endPaneDrag(event: PointerEvent): void {
@@ -323,14 +375,14 @@
     } catch {
       // Nothing was captured (or jsdom): nothing to release.
     }
-    if (origin.moved && paneWidths !== null) savePaneWidths(paneWidths)
+    if (origin.moved && activePaneWidths !== null) savePaneWidths(activePaneWidths, foldersPinned)
   }
 
   /** Keyboard equivalent of a drag: arrows, 1px at a time with Shift held. */
   function nudgePane(which: SplitterId, event: KeyboardEvent, direction: 1 | -1): void {
     const step = event.shiftKey ? 1 : NUDGE_PX
-    paneWidths = resizePane(currentPaneWidths(), which, direction * step, paneContainerWidth())
-    savePaneWidths(paneWidths)
+    setPaneWidths(resizePane(currentPaneWidths(), which, direction * step, paneContainerWidth(), foldersPinned))
+    savePaneWidths(activePaneWidths, foldersPinned)
   }
 
   function onSplitterKeydown(which: SplitterId, event: KeyboardEvent): void {
@@ -343,8 +395,8 @@
 
   /** Double-click, or Home on a focused divider: back to the default layout. */
   function resetPaneWidths(): void {
-    savePaneWidths(null)
-    paneWidths = null
+    savePaneWidths(null, foldersPinned)
+    setPaneWidths(null)
   }
 
   /**
@@ -889,6 +941,7 @@
       editingSnippet = null
       dirty = false
       if (compact && openDetail) nav.openDetail()
+      if (!compact && openDetail) flyoutOpen = false
     })
   }
 
@@ -966,6 +1019,11 @@
    * is visible again (a hidden field cannot take focus).
    */
   function jumpToSearch(): void {
+    if (!compact && flyoutOpen) {
+      flyoutOpen = false
+      void settle().then(focusSearch)
+      return
+    }
     if (compact && navState.depth > 0) {
       leaveEditor(() => {
         editing = false
@@ -1111,6 +1169,11 @@
       jumpToSearch()
       return
     }
+    if (!compact && flyoutOpen && e.key === 'Escape') {
+      e.preventDefault()
+      closeFolders()
+      return
+    }
     if (compact && e.key === 'Escape' && document.activeElement !== searchEl) {
       // Escape pops a level: the drawer, else detail → list — but never
       // out of the editor or a text field, where Cancel is explicit.
@@ -1180,7 +1243,7 @@
   e.returnValue = ''
 }} />
 
-<div class="app" class:compact>
+<div class="app" class:compact class:folders-overlay={foldersOverlay} class:folders-unpinned={!foldersPinned && !compact}>
   <div class="chrome" inert={dialog !== null || paletteOpen}>
     <header class="topbar">
       {#if compact}
@@ -1202,6 +1265,21 @@
             </svg>
           </button>
         {/if}
+      {/if}
+      {#if !compact && !foldersPinned}
+        <button
+          bind:this={foldersToggle}
+          class="nav"
+          aria-label="Folders"
+          aria-controls="folders-pane"
+          aria-expanded={foldersOpen}
+          title="Folders, favorites, and tags"
+          onclick={() => { settingsOpen = false; flyoutOpen = !flyoutOpen }}
+        >
+          <svg class="control-icon" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+          </svg>
+        </button>
       {/if}
       <span class="brand">snp</span>
       {#if !compact}
@@ -1324,6 +1402,7 @@
     <!-- svelte-ignore a11y_no_noninteractive_element_interactions, a11y_no_noninteractive_tabindex -->
     <div
       class="splitter"
+      inert={foldersOverlay && foldersOpen}
       class:dragging={dragging === which}
       role="separator"
       aria-orientation="vertical"
@@ -1348,26 +1427,44 @@
     inert={dialog !== null || paletteOpen}
     class:resizing={dragging !== null}
     bind:this={panesEl}
-    style={compact ? '' : paneStyleVars(paneWidths)}
+    style={compact ? '' : paneStyleVars(activePaneWidths)}
   >
-    {#if compact && navState.drawerOpen}
-      <!-- Covers the screen behind the drawer; a tap closes it, the same
-           way as Back, through history. -->
-      <button class="scrim" aria-label="Close folders" onclick={() => nav.closeDrawer()}
+    {#if foldersOverlay && foldersOpen}
+      <!-- Covers the workspace behind the flyout. Compact mode closes
+           through history; wide mode keeps both panes in place. -->
+      <button class="scrim" aria-label="Close folders" onclick={closeFolders}
       ></button>
     {/if}
     <aside
       class="pane folders"
-      use:modal={compact && navState.drawerOpen && dialog === null && !paletteOpen}
-      class:open={navState.drawerOpen}
-      aria-hidden={compact && !navState.drawerOpen ? 'true' : undefined}
+      id="folders-pane"
+      bind:this={foldersEl}
+      aria-label="Folders, favorites, and tags"
+      use:modal={foldersOverlay && foldersOpen && dialog === null && !paletteOpen}
+      class:open={foldersOpen}
+      aria-hidden={foldersOverlay && !foldersOpen ? 'true' : undefined}
+      inert={foldersOverlay && !foldersOpen}
     >
       <div class="pane-head">
         <h2>Folders</h2>
         <span class="head-actions">
           <button onclick={() => promptFolder(null)} disabled={!online}>New folder</button>
-          {#if compact}
-            <button class="close" aria-label="Close folders" onclick={() => nav.closeDrawer()}>
+          {#if !compact}
+            <button
+              bind:this={folderPin}
+              class="folder-pin"
+              aria-label={foldersPinned ? 'Unpin folders pane' : 'Pin folders pane'}
+              aria-pressed={foldersPinned}
+              title={foldersPinned ? 'Unpin folders pane' : 'Pin folders pane'}
+              onclick={toggleFoldersPin}
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M16 9V3H8v6l-3 3v2h14v-2zM12 14v7" />
+              </svg>
+            </button>
+          {/if}
+          {#if foldersOverlay}
+            <button class="close" data-modal-initial aria-label="Close folders" onclick={closeFolders}>
               ×
             </button>
           {/if}
@@ -1386,7 +1483,7 @@
         offline={!online}
         onselect={(id) => {
           selectedFolderId = id
-          if (compact) nav.closeDrawer()
+          closeFolders()
         }}
         oncreate={(pid) => promptFolder(pid)}
         onrename={(id, name) => void renameFolder(id, name)}
@@ -1395,7 +1492,7 @@
       <TagList tags={tagItems} active={activeTags} onselect={toggleTag} />
     </aside>
 
-    {#if !compact}
+    {#if !foldersOverlay}
       {@render paneSplitter(
         'folders',
         'Resize folders pane',
@@ -1405,7 +1502,7 @@
       )}
     {/if}
 
-    <section class="pane list" inert={compact && navState.drawerOpen} hidden={compact && navState.screen === 'detail'}>
+    <section class="pane list" inert={foldersOverlay && foldersOpen} hidden={compact && navState.screen === 'detail'}>
       <SnippetList
         snippets={visibleSnippets}
         selectedId={selectedSnippetId}
@@ -1425,13 +1522,13 @@
       {@render paneSplitter(
         'list',
         'Resize snippet list pane',
-        paneWidths?.list ?? null,
+        activePaneWidths?.list ?? null,
         LIST_MIN,
         LIST_MAX,
       )}
     {/if}
 
-    <section class="pane detail-pane" inert={compact && navState.drawerOpen} hidden={compact && navState.screen === 'list'}>
+    <section class="pane detail-pane" inert={foldersOverlay && foldersOpen} hidden={compact && navState.screen === 'list'}>
       {#if editing}
         {#key editorKey}
           <SnippetForm

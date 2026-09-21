@@ -81,6 +81,13 @@ describe('pane widths', () => {
     expect(800 - SPLITTER_WIDTH * 2 - narrow.folders - narrow.list).toBe(DETAIL_MIN)
   })
 
+  it('reserves only one divider and no folder space when unpinned', () => {
+    const start = { folders: 480, list: 360 }
+    const grown = resizePane(start, 'list', 5000, 1000, false)
+    expect(grown).toEqual({ folders: 480, list: 1000 - SPLITTER_WIDTH - DETAIL_MIN })
+    expect(resizePane(start, 'list', -5000, 1000, false).list).toBe(LIST_MIN)
+  })
+
   it('never goes below the list minimum when the window is too narrow', () => {
     const squeezed = resizePane({ folders: 230, list: 360 }, 'list', -5000, 1440)
     expect(squeezed.list).toBe(LIST_MIN)

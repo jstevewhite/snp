@@ -495,8 +495,22 @@ arrow keys resize by 16px (1px with Shift) and Home or a double-click
 restores the default layout. Widths persist in localStorage
 (`snp.paneWidths`, see `web/src/lib/panes.ts`); a window whose dividers
 were never dragged keeps the stylesheet's own flexible proportions and
-so still adapts to its size. This is the **wide** layout; below the
-compact breakpoint, or when the Layout setting says so, the same
+so still adapts to its size.
+
+The folders header has a pin control (pinned by default). Unpinning closes
+folders and removes its column and divider, leaving list and detail side
+by side; a Folders button in the top bar opens the same favorites/folders/
+tags content as a flyout. The flyout traps focus and closes on Escape,
+its close button, an outside click, or a folder/favorite selection; tag selection
+keeps it open for multi-tag filtering. Closing restores focus to its opener.
+Pinning docks it again. The pin preference persists as `snp.foldersPinned`,
+and two-pane divider widths persist separately as `snp.unpinnedPaneWidths`,
+so pinning restores the three-pane widths. Reset affects only the current
+arrangement. Neither operation replaces the detail or editor component.
+Compact mode always uses its existing history-backed drawer and hides the
+pin control; returning to wide mode restores the pin preference.
+
+This is the **wide** layout; below the compact breakpoint, or when the Layout setting says so, the same
 components are arranged as one screen at a time instead (next section).
 
 ### Compact layout

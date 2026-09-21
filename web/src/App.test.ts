@@ -1,9 +1,14 @@
 import 'fake-indexeddb/auto'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/svelte'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { PANE_WIDTHS_STORAGE_KEY } from './lib/panes'
-import { LAYOUT_STORAGE_KEY, TWO_LINE_TITLES_STORAGE_KEY } from './lib/settings'
+import { PANE_WIDTHS_STORAGE_KEY, UNPINNED_PANE_WIDTHS_STORAGE_KEY } from './lib/panes'
+import { FOLDERS_PINNED_STORAGE_KEY, LAYOUT_STORAGE_KEY, TWO_LINE_TITLES_STORAGE_KEY } from './lib/settings'
 import App from './App.svelte'
+
+beforeEach(() => {
+  localStorage.removeItem(FOLDERS_PINNED_STORAGE_KEY)
+  localStorage.removeItem(UNPINNED_PANE_WIDTHS_STORAGE_KEY)
+})
 
 const T0 = '2026-09-03T00:00:00Z'
 
@@ -195,6 +200,89 @@ describe('App', () => {
     await waitFor(() => expect(panes.getAttribute('style')).toContain('--list-w: 370px'))
     expect(panes.getAttribute('style')).toContain('--folders-w: 280px')
     unmount()
+  })
+
+  it('unpins folders into a dismissible flyout with focus restoration and filtering', async () => {
+    stubFetch()
+    render(App)
+    await waitFor(() => expect(screen.getByText('Caddyfile')).toBeDefined())
+    await fireEvent.click(screen.getByLabelText('Unpin folders pane'))
+    expect(localStorage.getItem(FOLDERS_PINNED_STORAGE_KEY)).toBe('false')
+    expect(screen.getAllByRole('separator', { name: /Resize/ })).toHaveLength(1)
+    expect(drawer().inert).toBe(true)
+    expect(listPane().hidden).toBe(false)
+    expect(detailPane().hidden).toBe(false)
+    const trigger = screen.getByLabelText('Folders')
+    await waitFor(() => expect(document.activeElement).toBe(trigger))
+    await fireEvent.click(trigger)
+    await waitFor(() => expect(drawer().contains(document.activeElement)).toBe(true))
+    expect(trigger.getAttribute('aria-expanded')).toBe('true')
+    expect(listPane().inert).toBe(true)
+    await fireEvent.click(screen.getByLabelText('Filter by tag ops'))
+    expect(drawer().classList.contains('open')).toBe(true)
+    await fireEvent.click(screen.getByText('Ops'))
+    await waitFor(() => expect(drawer().classList.contains('open')).toBe(false))
+    await waitFor(() => expect(document.activeElement).toBe(trigger))
+    expect(screen.queryByText('Deploy')).toBeNull()
+    expect(listPane().inert).toBe(false)
+    await fireEvent.click(trigger)
+    await fireEvent.keyDown(window, { key: 'Escape' })
+    await waitFor(() => expect(drawer().classList.contains('open')).toBe(false))
+    await fireEvent.click(trigger)
+    await fireEvent.click(document.querySelector('.scrim')!)
+    await waitFor(() => expect(drawer().classList.contains('open')).toBe(false))
+    await fireEvent.click(trigger)
+    await fireEvent.click(document.body)
+    await waitFor(() => expect(drawer().classList.contains('open')).toBe(false))
+    await fireEvent.click(trigger)
+    await fireEvent.click(screen.getByLabelText('Pin folders pane'))
+    expect(screen.getAllByRole('separator')).toHaveLength(2)
+    expect(localStorage.getItem(FOLDERS_PINNED_STORAGE_KEY)).toBeNull()
+    expect(drawer().inert).toBe(false)
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByLabelText('Unpin folders pane')))
+  })
+
+  it('remembers unpinned state and resizes two panes without overwriting pinned widths', async () => {
+    localStorage.setItem(FOLDERS_PINNED_STORAGE_KEY, 'false')
+    localStorage.setItem(PANE_WIDTHS_STORAGE_KEY, JSON.stringify({ folders: 260, list: 320 }))
+    stubFetch()
+    render(App)
+    await waitFor(() => expect(screen.getByText('Caddyfile')).toBeDefined())
+    const panes = document.querySelector('.panes') as HTMLElement
+    panes.getBoundingClientRect = () => ({ width: 1000 }) as DOMRect
+    const divider = screen.getByRole('separator')
+    // A two-pane list can use space previously reserved for folders.
+    await fireEvent.pointerDown(divider, { clientX: 360, pointerId: 1 })
+    await fireEvent.pointerMove(divider, { clientX: 900, pointerId: 1 })
+    await fireEvent.pointerUp(divider, { clientX: 900, pointerId: 1 })
+    expect(panes.getAttribute('style')).toContain('--list-w: 714px')
+    expect(JSON.parse(localStorage.getItem(UNPINNED_PANE_WIDTHS_STORAGE_KEY)!)).toEqual({ folders: 230, list: 714 })
+    await fireEvent.click(screen.getByLabelText('Folders'))
+    await fireEvent.click(screen.getByLabelText('Pin folders pane'))
+    expect(panes.getAttribute('style')).toContain('--folders-w: 260px; --list-w: 320px')
+    await fireEvent.click(screen.getByLabelText('Unpin folders pane'))
+    expect(panes.getAttribute('style')).toContain('--list-w: 714px')
+    await fireEvent.keyDown(screen.getByRole('separator'), { key: 'ArrowLeft' })
+    expect(panes.getAttribute('style')).toContain('--list-w: 698px')
+    await fireEvent.dblClick(screen.getByRole('separator'))
+    expect(localStorage.getItem(UNPINNED_PANE_WIDTHS_STORAGE_KEY)).toBeNull()
+    expect(JSON.parse(localStorage.getItem(PANE_WIDTHS_STORAGE_KEY)!)).toEqual({ folders: 260, list: 320 })
+  })
+
+  it('closes the flyout for search and preserves an editor draft when pinning', async () => {
+    stubFetch()
+    render(App)
+    await waitFor(() => expect(screen.getByText('Caddyfile')).toBeDefined())
+    await fireEvent.click(screen.getByText('New snippet'))
+    await fireEvent.input(screen.getByLabelText('Title'), { target: { value: 'Keep this draft' } })
+    await fireEvent.click(screen.getByLabelText('Unpin folders pane'))
+    await fireEvent.click(screen.getByLabelText('Folders'))
+    await fireEvent.keyDown(window, { key: 'k', ctrlKey: true })
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByLabelText('Search snippets')))
+    expect(drawer().classList.contains('open')).toBe(false)
+    await fireEvent.click(screen.getByLabelText('Folders'))
+    await fireEvent.click(screen.getByLabelText('Pin folders pane'))
+    expect((screen.getByLabelText('Title') as HTMLInputElement).value).toBe('Keep this draft')
   })
 
   it('nudges the panes from the keyboard and resets them on double-click', async () => {
@@ -1271,6 +1359,23 @@ describe('App (compact layout)', () => {
     history.back()
     await waitFor(() => expect(listPane().hidden).toBe(false))
     expect(screen.queryByLabelText('Title')).toBeNull()
+    unmount()
+  })
+
+  it('keeps the unpinned preference across compact and wide mode changes', async () => {
+    localStorage.setItem(FOLDERS_PINNED_STORAGE_KEY, 'false')
+    const { unmount } = await mountCompact()
+    await fireEvent.click(screen.getByLabelText('Folders'))
+    expect(screen.queryByLabelText('Pin folders pane')).toBeNull()
+    await fireEvent.click(document.querySelector('.scrim')!)
+    await waitFor(() => expect(drawer().classList.contains('open')).toBe(false))
+    await fireEvent.click(screen.getByLabelText('Settings'))
+    await fireEvent.change(screen.getByLabelText('Layout'), { target: { value: 'wide' } })
+    expect(screen.getAllByRole('separator', { name: /Resize/ })).toHaveLength(1)
+    expect(drawer().getAttribute('aria-hidden')).toBe('true')
+    await fireEvent.change(screen.getByLabelText('Layout'), { target: { value: 'compact' } })
+    expect(screen.queryAllByRole('separator', { name: /Resize/ })).toHaveLength(0)
+    expect(localStorage.getItem(FOLDERS_PINNED_STORAGE_KEY)).toBe('false')
     unmount()
   })
 

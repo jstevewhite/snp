@@ -1867,14 +1867,14 @@ button.danger {
 /* Belt and braces: `hidden` is display:none by UA default, and .pane sets
  * no display of its own, but a future `display: flex` on .pane would
  * silently un-hide the inactive screen without this. */
-.app.compact .pane[hidden] {
+.app .pane[hidden] {
   display: none;
 }
 
 /* The drawer and its scrim are positioned inside .panes, which is the grid
  * row under the chrome (top bar, plus the offline banner when shown), so
  * they start exactly where the chrome ends without measuring it. */
-.app.compact .pane.folders {
+.app.folders-overlay .pane.folders {
   position: absolute;
   top: 0;
   bottom: 0;
@@ -1894,25 +1894,25 @@ button.danger {
   visibility: hidden;
 }
 
-.app.compact .pane.folders.open {
+.app.folders-overlay .pane.folders.open {
   transform: none;
   visibility: visible;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .app.compact .pane.folders {
+  .app.folders-overlay .pane.folders {
     transition: none;
   }
 }
 
-.app.compact .pane-head .close {
+.app.folders-overlay .pane-head .close {
   display: inline-block;
   min-width: 40px;
   font-size: calc(18px * var(--text-scale, 1));
   line-height: 1;
 }
 
-.app.compact .scrim {
+.app.folders-overlay .scrim {
   position: absolute;
   inset: 0;
   border: 0;
@@ -2107,3 +2107,23 @@ button.danger {
   border-color: #785438;
   box-shadow: inset 0 0 8px #ff781f18, 0 1px 2px #0006;
 }
+
+/* Wide layout with folders unpinned: the drawer uses the same focus and
+ * surface treatment as compact mode, while list + detail stay side by side. */
+.app.folders-overlay .panes { position: relative; }
+.app.folders-unpinned .panes {
+  grid-template-columns: var(--list-w, minmax(280px, 1fr)) var(--splitter-w, 6px) minmax(0, 2fr);
+}
+.pane-head { gap: 8px; flex-wrap: wrap; }
+.pane-head .folder-pin { padding: 5px; display: inline-flex; }
+.folder-pin svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.folder-pin[aria-pressed='true'] { color: var(--accent); border-color: var(--accent-border); }
+.folder-pin[aria-pressed='false'] svg { transform: rotate(40deg); }
