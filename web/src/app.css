@@ -169,6 +169,48 @@
   --danger: #f7768e;
 }
 
+/* Analog themes (spec §6): fixed dark palettes. Effects below are scoped
+ * to these IDs and never change the shared layout or font metrics. */
+:root[data-theme='nixie'] {
+  color-scheme: dark;
+  --text: #b9aa96;
+  --text-h: #eee0ca;
+  --bg: #1c1c19;
+  --bg-alt: #22221d;
+  --workspace-bg: #141612;
+  --border: #514737;
+  --code-bg: #171a11;
+  --accent: #ffad68;
+  --danger: #f59486;
+  --syn-keyword: #ffac77;
+  --syn-string: #ead18e;
+  --syn-comment: #b8ac8b;
+  --syn-function: #ffcb8c;
+  --syn-constant: #eebf90;
+  --phosphor: #edcc96;
+  --tube-glow: #ff791f;
+}
+
+:root[data-theme='crt'] {
+  color-scheme: dark;
+  --text: #a5b59a;
+  --text-h: #d7e8c6;
+  --bg: #151e15;
+  --bg-alt: #1b261a;
+  --workspace-bg: #0e160f;
+  --border: #42533a;
+  --code-bg: #14220f;
+  --accent: #b7e697;
+  --danger: #f3ac92;
+  --syn-keyword: #d5efad;
+  --syn-string: #b9de8f;
+  --syn-comment: #a0b58d;
+  --syn-function: #d8e9bd;
+  --syn-constant: #e5dca6;
+  --phosphor: #bfe7a4;
+  --tube-glow: #91ed62;
+}
+
 /* Slate Blue follows the system appearance, like the concept. Explicit
  * Light/Dark and the existing named themes retain their own palettes. */
 :root[data-theme='slate-blue'] {
@@ -2029,4 +2071,39 @@ button.danger {
     transition: background-color 120ms ease-out, border-color 120ms ease-out,
       color 120ms ease-out;
   }
+}
+
+/* Static scanlines sit behind glyphs so they remain visible without
+ * dimming text or intercepting selection/copy. Raw and rendered template
+ * bodies share the treatment. No overlay, animation, or geometry change. */
+:root:is([data-theme='nixie'], [data-theme='crt']) .detail :is(.body, .preview) {
+  color: var(--phosphor);
+  background-image:
+    repeating-linear-gradient(0deg, #0005 0, #0005 1px, transparent 1px, transparent 4px),
+    radial-gradient(ellipse at 50% 35%, color-mix(in srgb, var(--phosphor) 7%, var(--code-bg)), var(--code-bg) 85%);
+  box-shadow: inset 0 0 28px #0005, 0 1px 0 #ffffff08;
+  text-shadow: 0 0 5px color-mix(in srgb, var(--phosphor) 38%, transparent),
+    0 0 13px color-mix(in srgb, var(--tube-glow) 18%, transparent);
+}
+
+:root:is([data-theme='nixie'], [data-theme='crt']) :is(.brand, .version) {
+  color: var(--accent);
+  text-shadow: 0 0 3px color-mix(in srgb, var(--accent) 55%, transparent),
+    0 0 10px color-mix(in srgb, var(--tube-glow) 65%, transparent),
+    0 0 20px color-mix(in srgb, var(--tube-glow) 30%, transparent);
+}
+
+:root:is([data-theme='nixie'], [data-theme='crt']) .brand::before {
+  filter: drop-shadow(0 0 4px color-mix(in srgb, var(--tube-glow) 50%, transparent));
+}
+
+:root:is([data-theme='nixie'], [data-theme='crt']) .snippet-list .item.selected .title {
+  color: var(--accent);
+  text-shadow: 0 0 9px color-mix(in srgb, var(--tube-glow) 35%, transparent);
+}
+
+:root[data-theme='nixie'] .version {
+  background-image: linear-gradient(110deg, #ffffff0d, #21140b 45%, #422613);
+  border-color: #785438;
+  box-shadow: inset 0 0 8px #ff781f18, 0 1px 2px #0006;
 }

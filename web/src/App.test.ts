@@ -539,13 +539,13 @@ describe('App', () => {
     expect(screen.queryByLabelText('Theme')).toBeNull()
   })
 
-  it.each(['tokyo-night', 'slate-blue'])('choosing %s applies and persists it', async (theme) => {
+  it.each(['tokyo-night', 'slate-blue', 'nixie', 'crt'])('choosing %s applies and persists it', async (theme) => {
     stubFetch()
     const { unmount } = render(App)
     await waitFor(() => expect(screen.getByText('Caddyfile')).toBeDefined())
     await fireEvent.click(screen.getByLabelText('Settings'))
     const select = screen.getByLabelText('Theme') as HTMLSelectElement
-    expect(select.options.length).toBe(8)
+    expect(select.options.length).toBe(10)
     await fireEvent.change(select, { target: { value: theme } })
     await waitFor(() =>
       expect(document.documentElement.getAttribute('data-theme')).toBe(theme),

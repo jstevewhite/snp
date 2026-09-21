@@ -1696,3 +1696,48 @@ Spec: `docs/snp-design.md` · Plan: `docs/snp-implementation-plan.md`
   calls for rejected requests, and ordinary non-sensitive AI behavior.
   Go checks needed sandbox access to the build cache and test listeners.
   No browser/native smoke or web build; generated assets unchanged.
+
+### 2026-09-21 — Nixie / CRT theme mockup
+
+- Added a throwaway, fixture-only visual study at web/theme-prototype.html,
+  launched with `cd web && npm run prototype:theme`. Three URL variants:
+  A (amber three-pane workspace), B (green terminal with horizontal folders),
+  C (hybrid instrument header and green code display). Includes search,
+  selection, clipboard copy, and independent static glow/scanline controls.
+- Uses a separate Vite development HTML entry to avoid accessing live snippet
+  data or changing the application theme. No production entry or generated
+  assets changed. Layout experiments are proposals, not changes to spec §6;
+  a production theme should preserve existing geometry unless separately
+  approved. No winner selected; prototype remains uncommitted for review.
+- Validation: inspected all variants at desktop width and hybrid at 390px;
+  exercised search, selection, and effect toggles; browser reported no
+  warnings/errors. git diff --check clean. No automated tests added or run
+  for the isolated visual prototype. Clipboard copy was not exercised.
+- Gotcha: local Vite listener required sandbox escalation. Preview currently
+  runs on 127.0.0.1:5178, with variant C open in the in-app browser.
+
+### 2026-09-21 — Add Nixie and CRT appearance themes
+
+- Promoted the selected amber and green directions into opt-in Nixie and
+  CRT entries in Settings → Theme. Preserved layout, fonts, scaling, pane
+  geometry, and existing theme preferences. Added syntax palettes, soft
+  branding/code/selected-title glow, and a glass version badge for Nixie.
+- Strengthened scanlines and placed them behind code text, including both
+  raw templates and rendered previews. Effects are static and do not
+  intercept text selection or pointer events. Updated spec §6.
+- Preserved the original study and decision on local branch
+  `codex/prototype-nixie-crt` (d4d3bf4); removed its standalone HTML and npm
+  launcher from the production checkout. Both themes were selected; hybrid
+  layout and decorative counters were not promoted.
+- Validation: make test passed (382 Vitest tests, Go vet/tests, zero
+  Svelte/TypeScript errors/warnings); extended the existing settings test
+  for selection/persistence of both themes. Production build passed with
+  output under /tmp. Browser verified both palettes, visible scanlines,
+  identical pane/detail/code geometry against Auto, CRT persistence after
+  reload, and both themes on a 390px template detail view. No browser
+  warnings/errors. No native Wails smoke or deployment performed.
+- Preview uses a temporary starter-pack database, a loopback API on :8080,
+  and the production build on :5179. The existing Vite development entry
+  was blank, so visual verification used the production build. A separate
+  build changed the tracked web/dist stub during this session; it was not
+  modified or staged by this task.

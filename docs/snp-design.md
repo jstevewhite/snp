@@ -709,7 +709,7 @@ model** instead: one screen at a time, with the list as the root.
   server's, so a timestamp in the future reads "just now". The header label
   re-renders on a 30-second tick so the age does not go stale.
 - **Appearance** (settings panel, 2026-09-08): a **Theme** select —
-  auto (system), light, dark, Slate Blue (system), Solarized Light,
+  auto (system), light, dark, Slate Blue (system), Nixie, CRT, Solarized Light,
   Solarized Dark, Kimbie Dark, Tokyo Night — and an **Interface text size**
   slider (75–150%).
   Themes remap the CSS palette variables via `:root[data-theme=…]`
@@ -717,7 +717,11 @@ model** instead: one screen at a time, with the list as the root.
   Slate Blue has its own light/dark palettes, also selected by the system.
   All themes share the same geometry and surface treatments: quiet card
   borders, a bracket wordmark, accent selection markers, and neutral
-  metadata chips. The existing theme preference is preserved; Slate Blue
+  metadata chips. Nixie and CRT are fixed dark themes with amber and green
+  phosphor palettes respectively. They add static scanlines behind code,
+  soft code/selection glow, and illuminated branding, without changing
+  geometry or adding motion. Nixie also gives the version chip a glass
+  tube treatment. The existing theme preference is preserved; Slate Blue
   is opt-in. Derived surface colors follow the active palette.
   Text size scales every `font-size` through the `--text-scale` custom
   property. A **Two-line titles in the list** checkbox wraps a long list
