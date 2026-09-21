@@ -261,7 +261,7 @@ func TestImportBadVersion(t *testing.T) {
 	}
 }
 
-func TestImportTimestampsPreserved(t *testing.T) {
+func TestImportCreatedTimePreservedAndUpdateTimeAdvances(t *testing.T) {
 	s, _ := newTestStore(t)
 	x := mustCreate(t, s, SnippetInput{Title: "x", Body: "x1"})
 	doc := ImportDoc{
@@ -274,7 +274,7 @@ func TestImportTimestampsPreserved(t *testing.T) {
 		t.Fatal(err)
 	}
 	gx, _ := s.GetSnippet(x.ID)
-	if gx.CreatedAt != "2020-01-01T00:00:00Z" || gx.UpdatedAt != "2021-01-01T00:00:00Z" {
+	if gx.CreatedAt != "2020-01-01T00:00:00Z" || gx.UpdatedAt != ts(baseTime) {
 		t.Errorf("timestamps = %q / %q", gx.CreatedAt, gx.UpdatedAt)
 	}
 }

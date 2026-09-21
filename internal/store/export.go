@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"strings"
 )
 
 // ExportDoc is the export document (spec §5). Bodies are plaintext.
@@ -23,7 +24,12 @@ func (s *Store) Export() (ExportDoc, error) {
 		Snippets:   []SnippetOut{},
 	}
 
-	frows, err := s.db.QueryContext(ctx,
+	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		return doc, err
+	}
+	defer tx.Rollback()
+	frows, err := tx.QueryContext(ctx,
 		`SELECT id, parent_id, name, created_at, updated_at
 		 FROM folders WHERE deleted_at IS NULL ORDER BY name COLLATE NOCASE`)
 	if err != nil {
@@ -47,23 +53,23 @@ func (s *Store) Export() (ExportDoc, error) {
 	}
 	frows.Close()
 
-	srows, err := s.db.QueryContext(ctx,
+	srows, err := tx.QueryContext(ctx,
 		`SELECT id, title, body, language, notes, folder_id, is_sensitive, uses_variables, pinned,
-		 var_defaults, var_defaults_enc, created_at, updated_at
+		 var_defaults, var_defaults_enc, created_at, updated_at, tags
 		 FROM snippets WHERE deleted_at IS NULL ORDER BY updated_at DESC`)
 	if err != nil {
 		return doc, err
 	}
-	var ids []string
 	for srows.Next() {
 		var sn SnippetOut
 		var body []byte
 		var folder sql.NullString
 		var sens, uvars, pinned int
 		var vdPlain string
+		var tags string
 		var vdEnc sql.Null[[]byte]
 		if err := srows.Scan(&sn.ID, &sn.Title, &body, &sn.Language, &sn.Notes,
-			&folder, &sens, &uvars, &pinned, &vdPlain, &vdEnc, &sn.CreatedAt, &sn.UpdatedAt); err != nil {
+			&folder, &sens, &uvars, &pinned, &vdPlain, &vdEnc, &sn.CreatedAt, &sn.UpdatedAt, &tags); err != nil {
 			srows.Close()
 			return doc, err
 		}
@@ -101,7 +107,7 @@ func (s *Store) Export() (ExportDoc, error) {
 		}
 		sn.VarDefaults = vd
 		doc.Snippets = append(doc.Snippets, sn)
-		ids = append(ids, sn.ID)
+		doc.Snippets[len(doc.Snippets)-1].Tags = strings.Fields(tags)
 	}
 	if err := srows.Err(); err != nil {
 		srows.Close()
@@ -109,12 +115,8 @@ func (s *Store) Export() (ExportDoc, error) {
 	}
 	srows.Close()
 
-	tagMap, err := s.tagsFor(ctx, ids)
-	if err != nil {
+	if err := tx.Commit(); err != nil {
 		return doc, err
-	}
-	for i := range doc.Snippets {
-		doc.Snippets[i].Tags = tagMap[doc.Snippets[i].ID]
 	}
 	return doc, nil
 }

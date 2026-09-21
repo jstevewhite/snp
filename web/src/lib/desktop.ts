@@ -17,6 +17,9 @@ export interface DesktopCallResult {
 
 export interface DesktopApp {
   CallAPI(method: string, path: string, body: string): Promise<DesktopCallResult>
+  OpenImport?(): Promise<{ name: string; text: string } | null>
+  SaveEncryptedData?(kind: 'export' | 'backup', password: string): Promise<boolean>
+  SaveData?(kind: 'export' | 'backup'): Promise<boolean>
 }
 
 interface DesktopWindow {

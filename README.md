@@ -318,6 +318,59 @@ snippet sensitive. Historical content stays out of the offline cache.
 Database backups retain trash and history; JSON exports include only
 current live versions. Keep the encryption key with database backups.
 
+### Import, export and backup
+
+Open **Settings → Import, export & backup** (also in the command palette).
+All three operations require a connection; desktop uses native Open/Save
+dialogs, while browsers use their file picker and downloads.
+
+- **Import JSON:** choose a snp JSON export, up to 10 MiB, then **Preview
+  import**. Merge updates matching IDs and keeps other snippets. Replace
+  moves snippets missing from the file to Trash and requires an explicit
+  acknowledgement before **Import now**. Overwritten content is preserved
+  in revision history. IDs omitted from a file create new snippets each
+  time it is imported. Encrypted `.json.age` files prompt for their password
+  before preview (16 MiB encrypted-file limit). Use `snp decrypt` followed
+  by `snp import` for larger protected exports.
+- **Export JSON:** downloads current live snippets and folders, including
+  tags, favorites, notes and template defaults, including sensitive bodies.
+  Trash and history are excluded.
+- **Full backup:** downloads a ZIP with a verified SQLite snapshot, the
+  matching encryption key, and restore instructions. Includes Trash and
+  history, but not app preferences, configuration or Tailscale state.
+  Password protection covers the entire archive, including its key.
+
+**Encrypt exports and backups with a password** defaults on for every
+download, including backups with sensitive Trash or historical revisions.
+Enter and confirm a long, unique passphrase (at least 12 characters). Files
+use standard [age passphrase encryption](https://age-encryption.org/),
+saved as `.json.age` or `.zip.age`. snp does not store the password; it is
+separate from the database encryption key. Unchecking protection produces
+readable JSON or a ZIP containing the key; keep those files private.
+
+**If you forget this password, you're toast.** There is no password reset
+or recovery for the encrypted file. Save the password somewhere safe.
+
+To unlock a protected backup, run this in a terminal:
+
+```sh
+snp decrypt backup.zip.age restored.zip
+```
+
+The command prompts privately for the password, works without the original
+database/key, refuses to overwrite existing files, and publishes a private
+output only after verifying the complete encrypted file. Standard `age`
+tools can also decrypt these files. Keep the decrypted ZIP private.
+
+To restore a backup, stop snp, preserve your existing state directory,
+then extract `snp.db` and `key` into a new empty directory. Start snp with
+`--state-dir` pointing there and choose **Settings → Full resync** on each
+client. Detailed instructions are included in `RESTORE.txt`. JSON Import
+accepts JSON exports, not backup ZIPs.
+
+Imports preserve creation dates and set update dates to the import time
+so every client receives the imported changes through normal sync.
+
 ### Appearance and layout
 
 **Settings → Theme** offers Auto (system), Light, Dark, Slate Blue (system),
@@ -539,7 +592,8 @@ should use **Settings → Full resync**.
   script does this) and keep them equally safe.
 - **Export files are as sensitive as the database plus key.** `snp export`
   and `GET /api/export` write every body in plaintext, including sensitive
-  ones. Store and transfer them accordingly.
+  ones. App downloads default to password protection; disabling it produces
+  plaintext files. Store and transfer unprotected copies accordingly.
 - **Don't delete `state_dir/tsnet` casually.** It holds the node's tailnet
   membership. Deleting it forces the next start to re-join the tailnet,
   which needs `TS_AUTHKEY` again.

@@ -1,6 +1,8 @@
 package server
 
 import (
+	"bytes"
+	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
@@ -9,6 +11,7 @@ import (
 
 	"github.com/jstevewhite/snp/internal/ai"
 	"github.com/jstevewhite/snp/internal/buildinfo"
+	"github.com/jstevewhite/snp/internal/portable"
 	"github.com/jstevewhite/snp/internal/starter"
 	"github.com/jstevewhite/snp/internal/store"
 )
@@ -36,7 +39,10 @@ func (s *Server) apiMux() http.Handler {
 	mux.HandleFunc("GET /api/tags", s.handleListTags)
 	mux.HandleFunc("GET /api/sync", s.handleSync)
 	mux.HandleFunc("GET /api/export", s.handleExport)
+	mux.HandleFunc("POST /api/export", s.handleExport)
+	mux.HandleFunc("POST /api/decrypt-import", s.handleDecryptImport)
 	mux.HandleFunc("POST /api/import", s.handleImport)
+	mux.HandleFunc("POST /api/backup", s.handleBackup)
 	mux.HandleFunc("POST /api/seed", s.handleSeed)
 	mux.HandleFunc("GET /api/ai/status", s.handleAIStatus)
 	mux.HandleFunc("POST /api/ai/generate", s.handleAIGenerate)
@@ -281,17 +287,45 @@ func (s *Server) handleSync(w http.ResponseWriter, r *http.Request) {
 
 // handleExport returns the full export document, bodies decrypted.
 func (s *Server) handleExport(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
+	options, ok := s.downloadOptions(w, r)
+	if !ok {
+		return
+	}
+	if options.Encrypt {
+		if !s.beginCrypto(w) {
+			return
+		}
+		defer s.cryptoMu.Unlock()
+	}
 	out, err := s.store.Export()
 	if err != nil {
 		s.handleStoreErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, out)
+	if !options.Encrypt {
+		writeJSON(w, http.StatusOK, out)
+		return
+	}
+	plain, err := json.Marshal(out)
+	if err != nil {
+		s.handleStoreErr(w, err)
+		return
+	}
+	var encrypted bytes.Buffer
+	if err := portable.Encrypt(&encrypted, bytes.NewReader(plain), options.Password); err != nil {
+		s.handleStoreErr(w, err)
+		return
+	}
+	w.Header().Set("Content-Type", "application/octet-stream")
+	w.Header().Set("Content-Disposition", `attachment; filename="snp-export.json.age"`)
+	w.Write(encrypted.Bytes())
 }
 
 // handleImport applies an import document; ?mode=merge (default) or
 // replace.
 func (s *Server) handleImport(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
 	mode := r.URL.Query().Get("mode")
 	if mode == "" {
 		mode = "merge"
@@ -301,7 +335,17 @@ func (s *Server) handleImport(w http.ResponseWriter, r *http.Request) {
 		s.handleBodyErr(w, err)
 		return
 	}
-	out, err := s.store.Import(doc, mode)
+	if doc.Snippets == nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "snippets must be an explicit JSON array"})
+		return
+	}
+	var out store.ImportResult
+	var err error
+	if r.URL.Query().Get("preview") == "1" {
+		out, err = s.store.PreviewImport(doc, mode)
+	} else {
+		out, err = s.store.Import(doc, mode)
+	}
 	if err != nil {
 		s.handleStoreErr(w, err)
 		return

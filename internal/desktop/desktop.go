@@ -57,6 +57,7 @@ type App struct {
 	log       *slog.Logger
 	startedAt time.Time
 	firstCall sync.Once
+	dialogs   FileDialogs
 }
 
 // NewApp returns the desktop bridge over an existing handler. startedAt
@@ -64,6 +65,13 @@ type App struct {
 // (how long the window/page took to boot).
 func NewApp(handler http.Handler, log *slog.Logger) *App {
 	return &App{handler: handler, log: log, startedAt: time.Now()}
+}
+
+// NewAppWithDialogs adds native file selection without importing Wails here.
+func NewAppWithDialogs(handler http.Handler, log *slog.Logger, dialogs FileDialogs) *App {
+	app := NewApp(handler, log)
+	app.dialogs = dialogs
+	return app
 }
 
 // NewHandler opens the store under cfg (creating the state dir, the

@@ -14,6 +14,15 @@ Spec: `docs/snp-design.md` · Plan: `docs/snp-implementation-plan.md`
 
 ## Current status
 
+- Password-protection session (2026-09-21): app exports/backups default to
+  age encryption; encrypted JSON import and offline `snp decrypt` recovery
+  are implemented. Full tests and production builds pass. Preview is
+  updated; changes remain local and uncommitted. See newest log entry.
+
+- Data-management session (2026-09-21): snp JSON import/preview, export,
+  and full database/key backups are implemented locally after recovery
+  commit 42bfd53. Required checks and production builds pass. No release
+  or push in this session; see the newest log entry for validation limits.
 - Recovery session (2026-09-21): Trash/Restore and 50-version history are
   implemented in the working tree after v0.4.0. Full checks and browser
   smoke pass; see the newest entry. No new release/tag/push in this session.
@@ -1834,3 +1843,96 @@ Spec: `docs/snp-design.md` · Plan: `docs/snp-implementation-plan.md`
   exact string names without Playwright's exact option. After a preview
   rebuild the service worker can refresh once more during initial actions.
   web/dist/index.html was left untouched; all builds used temporary output.
+
+### 2026-09-21 — In-app import, export and full backup
+
+- User chose snp JSON for the first import format. Added Settings and
+  command-palette access to a responsive Import, export & backup dialog.
+  Browser uses file input/downloads; desktop has native Open/Save dialogs,
+  injected into the testable desktop bridge without Wails dependencies.
+- JSON import validates the file shape/10 MiB app limit, defaults to merge,
+  and previews through POST /api/import?preview=1. The complete import
+  transaction rolls back for preview, including FTS, tags and revisions.
+  Replace previews the count moving to Trash and requires acknowledgement.
+  Apply refreshes the local cache under the existing write/sync exclusion.
+  If commit succeeds but refresh fails, the UI reports the import as saved
+  and clears the file instead of encouraging a duplicate retry.
+- Imported created_at is normalized to UTC seconds; updated_at now uses
+  import time. Preserving old updated_at was a sync bug: other clients
+  with newer cursors missed imported rows. Updated the timestamp regression
+  and documented the intentional behavior change. Combined folder trees
+  reject cycles/duplicate sibling names; replace keeps ancestors of live
+  folders, including folder_path-created trees.
+- Export now reads folders/snippets/tags in one transaction and uses
+  no-store responses. JSON remains live current content, including plaintext
+  sensitive bodies/defaults; it excludes Trash and history.
+- Added POST /api/backup: verified VACUUM INTO snapshot, ZIP with snp.db,
+  matching key, and RESTORE.txt. Private temporary paths are cleaned up;
+  concurrent backups on the same server are rejected. Archive includes
+  Trash/revisions, not preferences/config/tsnet state. ZIP is not password
+  encrypted; the UI explains that its holder can read sensitive content.
+  Restore instructions require stopping snp and using an empty state dir.
+- Native file saves generate only known export/backup content after the
+  user chooses a destination. Writes use a private temp file and atomic
+  rename, preserving existing files on failure; cancellation is a no-op.
+  Binary backup bytes never pass through the text-only CallAPI result.
+- Validation: make test passed (Go vet/tests, 409 Vitest tests in 34 files,
+  zero Svelte/TypeScript diagnostics). Production web, headless Go, and
+  macOS desktop production builds passed. README Markdown lint and
+  git diff --check passed. Backup tests reopened the archive as a fresh
+  store and verified sensitive content/history, Trash and the matching key;
+  native tests verified JSON/ZIP writes, 0600 mode, cancellation and failure.
+- Browser smoke: chose a temporary JSON file, previewed 1 new snippet,
+  applied it successfully, and checked the panel at 390px. Both download
+  controls reached Download started without console errors; the in-app
+  browser did not emit the awaited download event, so browser file delivery
+  was not independently confirmed. Direct live endpoint downloads verified
+  valid JSON (6 snippets/1 folder) and ZIP integrity/database/key/instructions.
+  Native OS dialog interaction was not smoke-tested; its wiring compiled
+  and file-operation regressions passed. Preview remains at :5179 with
+  the updated loopback API on :8080, using only temporary data.
+- Gotchas: the automation file-picker call took unusually long to return.
+  Viewport changes need a settled observation before judging screenshots.
+  Build outputs stayed in /tmp; web/dist/index.html was not changed. README,
+  spec and plan were updated. Changes remain in the working tree.
+
+
+### 2026-09-21 — Password-protected export and backup
+
+- Added the standard age Go library (v1.3.2), using its default scrypt
+  passphrase recipient and ASCII armor. Complete JSON/ZIP files are
+  encrypted, including the backup key, Trash and revision history. Fresh
+  salt and file key for every download; no custom encryption format.
+- UI protection defaults on for all downloads. Password/confirmation
+  require at least 12 characters, with the requested warning: "If you
+  forget this password, you're toast." Turning protection off shows a
+  plaintext warning. Passwords are only in memory/request bodies, cleared
+  after attempts and on close. Native saves preserve raw encrypted bytes.
+- Encrypted JSON files unlock before the normal preview/apply sequence.
+  Decryption performs no store writes and never returns partial plaintext.
+  Armored input is capped at 16 MiB and decrypted JSON at 10 MiB; excessive
+  scrypt work is rejected and one password operation per server bounds RAM.
+  Owner/JSON CSRF checks and no-store headers apply to new endpoints.
+- Added `snp decrypt input.zip.age output.zip` (also works for JSON), with
+  a non-echoing terminal password prompt independent of the original store
+  and key. Stages private output, verifies through EOF, then publishes with
+  a non-overwriting link; errors remove partial files. Restore remains an
+  explicit stopped-app procedure. Standard age APIs also recover output.
+- Validation: make test passed (Go vet/all Go tests, 414 frontend tests,
+  zero Svelte/TypeScript diagnostics). Tests cover randomization, standard
+  age interoperability, wrong passwords, truncated/tampered payloads,
+  excessive KDF work, native encrypted output, import unlock, confirmation,
+  plaintext opt-out and password clearing. Production frontend, headless Go
+  and macOS desktop builds passed; desktop emits an existing Wails/AppKit
+  deprecation warning. README lint and git diff --check passed.
+- Live smoke: disposable preview generated an encrypted backup; downloaded
+  it directly from the API and recovered it through the CLI's private
+  terminal prompt. Verified ZIP CRC, database header, matching key entry
+  and 0600 output permissions. Browser download control reached success,
+  and visible password fields were cleared. Native dialog interaction and
+  browser file delivery were not independently verified (same limits as
+  previous session); native-save and API files have automated coverage.
+- Updated README, spec and plan. Existing plaintext CLI/API formats remain
+  compatible. UI built only into /tmp, preserving web/dist/index.html.
+  Preview stays at :5179 with the updated loopback API on :8080. No commit,
+  tag, push or release was performed in this session.

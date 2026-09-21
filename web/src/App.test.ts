@@ -894,6 +894,41 @@ describe('App', () => {
     db.close()
   })
 
+  it('imports through Settings with preview, then refreshes the library', async () => {
+    let imported = false
+    const calls: string[] = []
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input)
+      calls.push(url)
+      if (url.includes('/api/sync')) {
+        const payload = syncPayload()
+        if (imported) payload.snippets[0].title = 'Imported title'
+        return new Response(JSON.stringify(payload))
+      }
+      if (url.startsWith('/api/import')) {
+        if (!url.includes('preview=1')) imported = true
+        return new Response(JSON.stringify({ created: 0, updated: 1, trashed: 0 }))
+      }
+      return new Response('null')
+    }))
+    render(App)
+    await screen.findByText('Caddyfile')
+    await fireEvent.click(screen.getByLabelText('Settings'))
+    await fireEvent.click(screen.getByRole('button', { name: 'Import, export & backup' }))
+    await screen.findByRole('dialog', { name: 'Import, export & backup' })
+    const text = JSON.stringify({ version: 1, snippets: [{ id: 's1', title: 'Imported title', body: 'hello' }] })
+    const file = new File([text], 'import.json', { type: 'application/json' })
+    Object.defineProperty(file, 'text', { value: async () => text })
+    await fireEvent.change(screen.getByLabelText('Import JSON file'), { target: { files: [file] } })
+    await fireEvent.click(await screen.findByRole('button', { name: 'Preview import' }))
+    await fireEvent.click(await screen.findByRole('button', { name: 'Import now' }))
+    await screen.findByText(/Import complete/)
+    expect(calls).toContain('/api/import?mode=merge&preview=1')
+    expect(calls).toContain('/api/import?mode=merge')
+    await fireEvent.click(screen.getByLabelText('Close data management'))
+    await screen.findByText('Imported title')
+  })
+
   it('protects dirty drafts before opening Trash', async () => {
     const fetchMock = stubFetch()
     const base = fetchMock.getMockImplementation()!

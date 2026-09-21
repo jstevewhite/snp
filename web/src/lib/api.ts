@@ -278,3 +278,20 @@ export const getRevision = (id: string, revision: number, reveal = false): Promi
   request(`/snippets/${encodeURIComponent(id)}/revisions/${revision}${reveal ? '?reveal=1' : ''}`)
 export const restoreRevision = (id: string, revision: number): Promise<Snippet> =>
   request(`/snippets/${encodeURIComponent(id)}/revisions/${revision}/restore`, { method: 'POST' })
+
+export interface ImportDocument {
+  version: 1
+  snippets: Record<string, unknown>[]
+  folders?: Record<string, unknown>[]
+  [key: string]: unknown
+}
+export type ImportMode = 'merge' | 'replace'
+export interface ImportResult { created: number; updated: number; trashed: number }
+export function importSnippets(document: ImportDocument, mode: ImportMode, preview = false): Promise<ImportResult> {
+  return request(`/import?mode=${mode}${preview ? '&preview=1' : ''}`, { method: 'POST', body: document })
+}
+
+/** Decryption only; preview/apply still require explicit user actions. */
+export function decryptImport(data: string, password: string): Promise<ImportDocument> {
+  return request('/decrypt-import', { method: 'POST', body: { data, password } })
+}

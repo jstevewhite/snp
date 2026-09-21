@@ -165,8 +165,8 @@ func run(cfg config.Config, log *slog.Logger) error {
 	purgerCtx, cancelPurger := context.WithCancel(context.Background())
 	purgerDone := st.StartPurger(purgerCtx, log)
 
-	app := desktop.NewApp(handler, log)
 	closeGuard := &CloseGuard{}
+	app := desktop.NewAppWithDialogs(handler, log, nativeFileDialogs(func() context.Context { return closeGuard.ctx }))
 	opts := &options.App{
 		Title:  "snp",
 		Width:  1150,

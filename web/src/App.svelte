@@ -73,6 +73,7 @@
   import OfflineBanner from './lib/OfflineBanner.svelte'
   import SnippetDetail from './lib/SnippetDetail.svelte'
   import RecoveryDialog from './lib/RecoveryDialog.svelte'
+  import DataDialog from './lib/DataDialog.svelte'
   import SnippetForm from './lib/SnippetForm.svelte'
   import SnippetList from './lib/SnippetList.svelte'
   import TagList from './lib/TagList.svelte'
@@ -96,6 +97,8 @@
   let detailEpoch = 0
   let dirty = $state(false)
   let saving = $state(false)
+  let dataOpen = $state(false)
+  let dataBusy = $state(false)
   let saveError = $state<string | null>(null)
   let editorKey = $state(0)
 
@@ -106,7 +109,7 @@
   }
 
   function leaveEditor(proceed: () => void): void {
-    if (saving) return
+    if (saving || dataBusy) return
     if (editing && dirty) dialog = { kind: 'discard', proceed }
     else proceed()
   }
@@ -114,13 +117,13 @@
   $effect(() => registerDesktopClose(() => leaveEditor(() => void closeDesktop())))
   $effect(() => {
     const beforeReload = (e: Event): void => {
-      if (dirty || saving) e.preventDefault()
+      if (dirty || saving || dataBusy) e.preventDefault()
     }
     window.addEventListener('snp:before-reload', beforeReload)
     return () => window.removeEventListener('snp:before-reload', beforeReload)
   })
   $effect(() => {
-    if (!dirty && !saving) window.dispatchEvent(new Event('snp:reload-ready'))
+    if (!dirty && !saving && !dataBusy) window.dispatchEvent(new Event('snp:reload-ready'))
   })
   let online = $state(true)
   /**
@@ -217,7 +220,7 @@
   })
 
   $effect(() => {
-    if (compact || !flyoutOpen || !foldersEl || dialog !== null || paletteOpen || recovery !== null) return
+    if (compact || !flyoutOpen || !foldersEl || dialog !== null || paletteOpen || recovery !== null || dataOpen) return
     const panel = foldersEl
     const opener = foldersToggle
     const dismiss = (event: MouseEvent): void => {
@@ -250,7 +253,7 @@
   $effect(() => {
     const onPop = (e: PopStateEvent): void => {
       nav.onPopState(e.state)
-      if (compact && editing && nav.state.screen === 'list' && (dirty || saving)) {
+      if (compact && editing && nav.state.screen === 'list' && (dirty || saving || dataBusy)) {
         // The browser already moved back. Restore the detail entry before
         // asking, so Keep editing leaves both the form and history intact.
         nav.openDetail()
@@ -610,6 +613,44 @@
     const timer = setTimeout(() => { undoDelete = null }, 10000)
     return () => clearTimeout(timer)
   })
+
+  function openData(): void {
+    if (!online || saving) return
+    leaveEditor(() => {
+      editing = false
+      editingSnippet = null
+      clearRevealed()
+      settingsOpen = false
+      closeFolders()
+      dataOpen = true
+    })
+  }
+
+  async function applyImport(doc: api.ImportDocument, mode: api.ImportMode): Promise<api.ImportResult & { refreshWarning?: string }> {
+    if (!db || !online || saving) throw new Error('Reconnect before importing.')
+    saving = true
+    try {
+      await syncDone
+      if (!online) throw new Error('Reconnect before importing.')
+      const result = await api.importSnippets(doc, mode)
+      clearRevealed()
+      selectedSnippetId = null
+      selectedFolderId = null
+      activeTags = []
+      query = ''
+      try {
+        await syncLocal(db)
+        await loadLocal()
+        syncedAt = Date.now()
+        error = null
+      } catch (e) {
+        fail(e)
+        // The server committed: never invite a retry that could duplicate ID-less rows.
+        return { ...result, refreshWarning: 'Import was saved, but the local view could not refresh. Use Resync after reconnecting.' }
+      }
+      return result
+    } finally { saving = false }
+  }
 
   function openRecovery(snippet: Snippet | null = null): void {
     if (!online || saving) return
@@ -1109,6 +1150,7 @@
     const offline = saving ? 'Saving…' : online ? undefined : 'Offline'
     const needSelection = s === null ? 'Select a snippet first' : undefined
     const list: Command[] = [
+      { id: 'data', label: 'Import, export & backup', group: 'snippet', disabled: offline, run: openData },
       { id: 'trash', label: 'Open Trash', group: 'snippet', disabled: offline, run: () => openRecovery() },
     ]
     if (!editing) {
@@ -1209,6 +1251,10 @@
    * (spec §6 keyboard discipline).
    */
   function onGlobalKeydown(e: KeyboardEvent): void {
+    if (dataOpen) {
+      if (e.key === 'Escape') { e.preventDefault(); if (!dataBusy && !saving) dataOpen = false }
+      return
+    }
     if (recovery !== null) {
       if (e.key === 'Escape') { e.preventDefault(); if (!saving) recovery = null }
       return
@@ -1300,13 +1346,13 @@
      handler but the focus shortcut is scoped to the search field so the
      snippet editor keeps its own keys. -->
 <svelte:window onkeydown={onGlobalKeydown} onbeforeunload={(e) => {
-  if (!dirty && !saving) return
+  if (!dirty && !saving && !dataBusy) return
   e.preventDefault()
   e.returnValue = ''
 }} />
 
 <div class="app" class:compact class:folders-overlay={foldersOverlay} class:folders-unpinned={!foldersPinned && !compact}>
-  <div class="chrome" inert={dialog !== null || paletteOpen || recovery !== null}>
+  <div class="chrome" inert={dialog !== null || paletteOpen || recovery !== null || dataOpen}>
     <header class="topbar">
       {#if compact}
         <!-- One control at the left: Back whenever there is a level to
@@ -1418,6 +1464,7 @@
               <kbd>{searchShortcutLabel()}</kbd> search · <kbd>{paletteShortcutLabel()}</kbd> commands
             </p>
             <div class="actions">
+              <button onclick={openData} disabled={!online || saving}>Import, export &amp; backup</button>
               <button onclick={() => void addStarterSnippets()} disabled={!online || seedBusy}>
                 {seedBusy ? 'Adding…' : 'Add starter snippets'}
               </button>
@@ -1486,7 +1533,7 @@
 
   <main
     class="panes"
-    inert={dialog !== null || paletteOpen || recovery !== null}
+    inert={dialog !== null || paletteOpen || recovery !== null || dataOpen}
     class:resizing={dragging !== null}
     bind:this={panesEl}
     style={compact ? '' : paneStyleVars(activePaneWidths)}
@@ -1502,7 +1549,7 @@
       id="folders-pane"
       bind:this={foldersEl}
       aria-label="Folders, favorites, and tags"
-      use:modal={foldersOverlay && foldersOpen && dialog === null && !paletteOpen && recovery === null}
+      use:modal={foldersOverlay && foldersOpen && dialog === null && !paletteOpen && recovery === null && !dataOpen}
       class:open={foldersOpen}
       aria-hidden={foldersOverlay && !foldersOpen ? 'true' : undefined}
       inert={foldersOverlay && !foldersOpen}
@@ -1633,11 +1680,14 @@
     </section>
   </main>
 
+  {#if dataOpen}
+    <DataDialog {online} bind:busy={dataBusy} onimport={applyImport} onclose={() => { if (!dataBusy) dataOpen = false }} />
+  {/if}
   {#if recovery !== null}
     <RecoveryDialog snippet={recovery.snippet} {folders} {online} {saving} onrestore={restoreContent} onclose={() => { if (!saving) recovery = null }} />
   {/if}
   {#if undoDelete}
-    <div class="undo-trash" role="status" inert={dialog !== null || paletteOpen || recovery !== null}>
+    <div class="undo-trash" role="status" inert={dialog !== null || paletteOpen || recovery !== null || dataOpen}>
       <span>“{undoDelete.title}” moved to Trash.</span>
       <button disabled={!online || saving} onclick={undoDeletion}>Undo</button>
       <button aria-label="Dismiss undo" onclick={() => { undoDelete = null }}>×</button>

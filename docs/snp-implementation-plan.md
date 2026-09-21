@@ -779,3 +779,29 @@ web/desktop builds succeed, and compact navigation still preserves drafts.
   explicit sensitive reveal, restore, and a delete Undo action.
 - Done when store/API and UI regressions pass make test, production build
   succeeds, and recovery is smoke-tested without caching historical bodies.
+
+## Data management — snp JSON and full backup (2026-09-21)
+
+- Add Settings/command-palette access to JSON import, JSON export and a
+  complete database/key backup. Native desktop uses file dialogs.
+- Preview imports through the same validation/transaction path with rollback;
+  merge is default, replace explicitly previews snippets moving to Trash.
+- Import writes use current updated_at for sync; retain valid created_at.
+  Export reads a consistent snapshot. Backup includes history, trash, key,
+  and restore instructions; restoration is performed with the app stopped.
+- Done when API/store, desktop file operations and UI regressions pass
+  make test; production builds and local browser smoke pass.
+
+## Password-protected data files (2026-09-21)
+
+- Default app exports/backups to standard age passphrase encryption over the
+  whole JSON/ZIP. Confirm passwords and show explicit forgotten-password and
+  plaintext warnings; never persist passwords or unlocked import content.
+- Unlock encrypted JSON before the existing preview/apply flow. Provide
+  offline backup/JSON recovery through a private `snp decrypt` prompt with
+  authenticated, private, non-overwriting output.
+- Bound password KDF work/concurrency and decrypted import size; preserve
+  owner/CSRF guards and plaintext API/CLI compatibility.
+- Done when full checks/builds pass, wrong-password/damaged-file recovery
+  leaves no published output, native protected saves work, and UI password
+  confirmation, clearing and encrypted import have regression coverage.

@@ -1104,3 +1104,61 @@ write response, redacting sensitive bodies and defaults. Revision records
 are deleted with their snippet at hard purge. Database backups include
 history (and still require the key); JSON exports contain only live current
 versions. History begins with the first change after this migration.
+
+## Data management in the app
+
+Settings and the command palette expose Import, export & backup, online
+only. Import accepts snp version-1 JSON (10 MiB maximum in the app) with
+an explicit snippets array. Preview uses POST /api/import?preview=1 and
+runs the import transaction with rollback, reporting new, existing and
+trashed snippet counts. Merge is default; replace also requires explicit
+acknowledgement in the UI. Preview is advisory; the final transaction
+validates again, and counts can change if another client writes meanwhile.
+Imported rows use the server's current updated_at so all clients sync them;
+created_at is preserved when supplied and normalized to UTC seconds.
+
+GET /api/export returns one consistent snapshot of current live content,
+including plaintext sensitive bodies/defaults, without history or Trash.
+POST /api/backup returns a ZIP containing a verified standalone snp.db,
+the matching key, and restore instructions. The archive includes Trash
+and revisions, but no appearance preferences, tsnet state or configuration.
+The app defaults to password protection for both downloads, including all
+backup contents (key, Trash, protected revisions). A shared checkbox can
+explicitly select plaintext with an explanatory warning. POST /api/export
+and POST /api/backup accept {encrypt, password}; GET /api/export and an
+unprotected backup remain compatible with existing clients. Responses use
+no-store headers. Backups restore by stopping snp, preserving the old
+state directory, placing snp.db and key in an empty state directory, then
+starting snp and full-resyncing clients. Do not replace a running database.
+
+Browser downloads use Blob URLs, released after use; desktop export/backup
+uses native Save dialogs and private temporary files with atomic rename.
+Native import uses an Open dialog; cancelling leaves state unchanged.
+Imported file content is kept in dialog memory only, never offline storage.
+
+Password-protected downloads use ASCII-armored age v1 passphrase encryption
+(scrypt default work factor 18, authenticated streaming payloads), with fresh
+salt/file key each time. No custom cryptographic envelope; filenames end in
+.json.age or .zip.age. Passwords require 12 Unicode characters, at most 1024
+UTF-8 bytes, and UI confirmation. The warning says: "If you forget this
+password, you're toast." No reset/recovery; save it somewhere safe. Passwords
+are separate from the database key, sent only in request bodies/in-process
+bridge calls, never logged or persisted by snp, and cleared from dialog
+state after attempts and on close. This is file protection, not an app lock.
+
+POST /api/decrypt-import accepts armored data/password with a 16 MiB request
+limit (armoring overhead), enforces at most 10 MiB decrypted JSON, and returns
+a version-1 document without writing the store. The usual import preview
+and apply remain separate. Wrong passwords, tampering, truncation and
+unsupported work factors return a generic error without decrypted content.
+One password operation per server bounds scrypt memory; competing requests
+receive 409. Input cannot request work factors above the writer's default.
+
+Backups unlock offline with `snp decrypt input.zip.age output.zip`, a private
+terminal password prompt independent of the database/configuration/key.
+Decryption stages a 0600 temporary output in the destination directory,
+authenticates through EOF, then publishes without overwriting an existing
+path; failures remove the staged file. Restore follows the stopped-app
+procedure above. This command also unlocks JSON exports of any size; the
+app handles armored JSON files only. Standard age tools can recover either
+file type. CLI export/backup/import formats are otherwise unchanged.

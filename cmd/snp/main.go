@@ -43,6 +43,8 @@ func main() {
 		runExport(args)
 	case "import":
 		runImport(args)
+	case "decrypt":
+		runDecrypt(args)
 	case "seed":
 		runSeed(args)
 	case "key":
@@ -68,6 +70,7 @@ commands:
   backup      write a consistent database copy (VACUUM INTO + quick_check)
   export      write a full JSON export (plaintext bodies)
   import      import a JSON export document
+  decrypt     unlock a password-protected JSON export or backup ZIP
   seed        add the bundled starter snippets (nothing seeds by itself)
   key         key management (show-path)
   version     print the snp version

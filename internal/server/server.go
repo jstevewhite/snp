@@ -17,6 +17,7 @@ import (
 	"log/slog"
 	"mime"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/jstevewhite/snp/internal/ai"
@@ -56,7 +57,9 @@ type Server struct {
 	staticFS http.FileSystem
 	// ai is the optional one-shot snippet-generation client (spec §13);
 	// nil means the AI feature is not configured.
-	ai *ai.Client
+	ai       *ai.Client
+	backupMu sync.Mutex
+	cryptoMu sync.Mutex
 }
 
 // New builds a Server. owner is the Tailscale login allowed in; pass "" to
@@ -163,7 +166,12 @@ func (s *Server) guardMW(next http.Handler) http.Handler {
 			return
 		}
 		if (r.Method == http.MethodPost || r.Method == http.MethodPut) && r.Body != nil {
-			r.Body = http.MaxBytesReader(w, r.Body, maxBodyBytes)
+			limit := int64(maxBodyBytes)
+			// Armoring adds ~36%; decrypted JSON remains limited to 10 MiB.
+			if r.URL.Path == "/api/decrypt-import" {
+				limit = 16 << 20
+			}
+			r.Body = http.MaxBytesReader(w, r.Body, limit)
 		}
 		next.ServeHTTP(w, r)
 	})

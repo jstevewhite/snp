@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/oklog/ulid"
 )
@@ -57,12 +58,22 @@ type ImportDoc struct {
 type ImportResult struct {
 	Created int `json:"created"`
 	Updated int `json:"updated"`
+	Trashed int `json:"trashed"`
 }
 
 // Import applies doc with mode "merge" (upsert by id) or "replace"
 // (upsert everything in the doc, then soft-delete live rows not in it),
 // in a single transaction.
 func (s *Store) Import(doc ImportDoc, mode string) (ImportResult, error) {
+	return s.importDocument(doc, mode, false)
+}
+
+// PreviewImport validates the full import but rolls back all writes, including history.
+func (s *Store) PreviewImport(doc ImportDoc, mode string) (ImportResult, error) {
+	return s.importDocument(doc, mode, true)
+}
+
+func (s *Store) importDocument(doc ImportDoc, mode string, preview bool) (ImportResult, error) {
 	if doc.Version != 1 {
 		return ImportResult{}, fmt.Errorf("%w: unsupported version %d", ErrImport, doc.Version)
 	}
@@ -90,6 +101,10 @@ func (s *Store) Import(doc ImportDoc, mode string) (ImportResult, error) {
 	}
 	defer tx.Rollback()
 	now := s.now()
+	var liveBefore int
+	if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM snippets WHERE deleted_at IS NULL`).Scan(&liveBefore); err != nil {
+		return ImportResult{}, err
+	}
 
 	for _, f := range folders {
 		if f.ParentID != nil {
@@ -136,6 +151,16 @@ func (s *Store) Import(doc ImportDoc, mode string) (ImportResult, error) {
 	}
 
 	if mode == "replace" {
+		var toTrash int
+		if len(keptIDs) > 0 {
+			// Only live snippets outside the incoming set will move to Trash.
+			if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM snippets WHERE deleted_at IS NULL AND id NOT IN (`+placeholders(len(keptIDs))+`)`, toAny(keptIDs)...).Scan(&toTrash); err != nil {
+				return ImportResult{}, err
+			}
+			res.Trashed = toTrash
+		} else {
+			res.Trashed = liveBefore
+		}
 		if err := s.softDeleteMissingTx(ctx, tx, "snippets", keptIDs, now); err != nil {
 			return ImportResult{}, err
 		}
@@ -156,6 +181,21 @@ func (s *Store) Import(doc ImportDoc, mode string) (ImportResult, error) {
 		}
 	}
 
+	if mode == "replace" {
+		if _, err := tx.ExecContext(ctx, `WITH RECURSIVE kept(id) AS (
+            SELECT id FROM folders WHERE deleted_at IS NULL
+            UNION SELECT f.parent_id FROM folders f JOIN kept k ON f.id=k.id WHERE f.parent_id IS NOT NULL
+        ) UPDATE folders SET deleted_at=NULL, updated_at=? WHERE deleted_at IS NOT NULL AND id IN (SELECT id FROM kept)`, now); err != nil {
+			return ImportResult{}, err
+		}
+	}
+	if err := validateImportedFolders(ctx, tx); err != nil {
+		return ImportResult{}, err
+	}
+
+	if preview {
+		return res, nil
+	}
 	if err := tx.Commit(); err != nil {
 		return ImportResult{}, err
 	}
@@ -251,18 +291,18 @@ func (s *Store) importSnippetTx(ctx context.Context, tx *sql.Tx, in ImportSnippe
 	}
 	exists := existingCreated.Valid
 
-	var createdTS, updatedTS string
+	var createdTS string
+	updatedTS := now
 	if in.CreatedAt != "" {
-		createdTS = in.CreatedAt
+		parsed, err := time.Parse(time.RFC3339, in.CreatedAt)
+		if err != nil {
+			return "", false, fmt.Errorf("%w: invalid created_at", ErrImport)
+		}
+		createdTS = parsed.UTC().Truncate(time.Second).Format("2006-01-02T15:04:05Z")
 	} else if exists {
 		createdTS = existingCreated.String
 	} else {
 		createdTS = now
-	}
-	if in.UpdatedAt != "" {
-		updatedTS = in.UpdatedAt
-	} else {
-		updatedTS = now
 	}
 
 	body, err := s.storeBody(id, in.Body, in.IsSensitive)
@@ -369,4 +409,58 @@ func (s *Store) resolveFolderPathTx(ctx context.Context, tx *sql.Tx, path string
 		parentPtr = &parent
 	}
 	return parent, nil
+}
+
+// Validate the combined live tree, including references outside the import file.
+func validateImportedFolders(ctx context.Context, tx *sql.Tx) error {
+	var duplicates int
+	if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM (
+     SELECT 1 FROM folders WHERE deleted_at IS NULL GROUP BY parent_id, name COLLATE NOCASE HAVING count(*)>1
+ )`).Scan(&duplicates); err != nil {
+		return err
+	}
+	if duplicates > 0 {
+		return fmt.Errorf("%w: duplicate sibling folder names; use matching folder IDs", ErrImport)
+	}
+	rows, err := tx.QueryContext(ctx, `SELECT id,parent_id FROM folders WHERE deleted_at IS NULL`)
+	if err != nil {
+		return err
+	}
+	parents := map[string]sql.NullString{}
+	for rows.Next() {
+		var id string
+		var parent sql.NullString
+		if err := rows.Scan(&id, &parent); err != nil {
+			rows.Close()
+			return err
+		}
+		parents[id] = parent
+	}
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
+		return err
+	}
+	done := map[string]bool{}
+	for id := range parents {
+		path := map[string]bool{}
+		for current := id; current != "" && !done[current]; {
+			if path[current] {
+				return fmt.Errorf("%w: folder parent cycle", ErrImport)
+			}
+			path[current] = true
+			parent, exists := parents[current]
+			if !exists {
+				return fmt.Errorf("%w: folder references a deleted parent", ErrImport)
+			}
+			if !parent.Valid {
+				break
+			}
+			current = parent.String
+		}
+		for member := range path {
+			done[member] = true
+		}
+	}
+	return nil
 }
