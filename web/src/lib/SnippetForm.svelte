@@ -55,6 +55,9 @@
   let body = $state(seed.body)
   let notes = $state(seed.notes)
   let isSensitive = $state(seed.sensitive)
+  // Invalidate pending body-AI results even if Sensitive is toggled back
+  // off before the response arrives. Requests already sent cannot be recalled.
+  let sensitivityVersion = 0
   let usesVariables = $state(seed.usesVariables)
 
   // A body containing {{var}} placeholders is a template (spec §4). Keep the
@@ -159,15 +162,18 @@
   }
 
   async function suggestTags(): Promise<void> {
-    if (tagsBusy || aiBusy || explainBusy || saving || offline || body.trim() === '') return
+    if (isSensitive || tagsBusy || aiBusy || explainBusy || saving || offline || body.trim() === '') return
+    const version = sensitivityVersion
     tagsBusy = true
     tagsError = null
     try {
       const res = await api.suggestTags({
         body,
+        is_sensitive: isSensitive,
         title: title.trim() === '' ? undefined : title.trim(),
         language: language.trim() === '' ? undefined : language.trim(),
       })
+      if (version !== sensitivityVersion) return
       const current = tagsText
         .split(',')
         .map((t) => t.trim().toLowerCase())
@@ -178,18 +184,20 @@
       }
       tagsText = current.join(', ')
     } catch (e) {
-      tagsError = e instanceof Error ? e.message : String(e)
+      if (version === sensitivityVersion) tagsError = e instanceof Error ? e.message : String(e)
     } finally {
       tagsBusy = false
     }
   }
 
   async function explain(): Promise<void> {
-    if (explainBusy || aiBusy || tagsBusy || saving || offline || body.trim() === '') return
+    if (isSensitive || explainBusy || aiBusy || tagsBusy || saving || offline || body.trim() === '') return
+    const version = sensitivityVersion
     explainBusy = true
     explainError = null
     try {
-      const res = await api.explainSnippet(body)
+      const res = await api.explainSnippet({ body, is_sensitive: isSensitive })
+      if (version !== sensitivityVersion) return
       if (res.notes.trim() === '') throw new Error('AI returned an empty explanation')
       // Replace, keeping what was there so the overwrite is reversible.
       // The snapshot is taken only on success, so a failed run leaves both
@@ -197,7 +205,7 @@
       explainUndo = notes
       notes = res.notes
     } catch (e) {
-      explainError = e instanceof Error ? e.message : String(e)
+      if (version === sensitivityVersion) explainError = e instanceof Error ? e.message : String(e)
     } finally {
       explainBusy = false
     }
@@ -300,9 +308,10 @@
   </label>
   {#if aiKnown && aiEnabled}
     <div class="tags-ai">
-      <button type="button" disabled={offline || aiPending || body.trim() === ''} onclick={() => void suggestTags()}>
+      <button type="button" disabled={isSensitive || offline || aiPending || body.trim() === ''} onclick={() => void suggestTags()}>
         {tagsBusy ? 'Suggesting…' : 'Suggest tags'}
       </button>
+      {#if isSensitive}<span>Unavailable for sensitive snippets.</span>{/if}
       {#if tagsError}<span class="ai-error">{tagsError}</span>{/if}
     </div>
   {/if}
@@ -318,9 +327,10 @@
   </label>
   {#if aiKnown && aiEnabled}
     <div class="tags-ai">
-      <button type="button" disabled={offline || aiPending || body.trim() === ''} onclick={() => void explain()}>
+      <button type="button" disabled={isSensitive || offline || aiPending || body.trim() === ''} onclick={() => void explain()}>
         {explainBusy ? 'Explaining…' : 'Explain'}
       </button>
+      {#if isSensitive}<span>Unavailable for sensitive snippets.</span>{/if}
       {#if explainUndo !== null}
         <button
           type="button"
@@ -335,7 +345,11 @@
     </div>
   {/if}
   <label class="check">
-    <input type="checkbox" bind:checked={isSensitive} />
+    <input type="checkbox" bind:checked={isSensitive} onchange={() => {
+      sensitivityVersion++
+      tagsError = null
+      explainError = null
+    }} />
     <span>Sensitive — body is never cached offline</span>
   </label>
   <label class="check">

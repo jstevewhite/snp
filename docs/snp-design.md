@@ -988,16 +988,21 @@ un-reviewed.
   case-insensitive and surrounding whitespace is ignored, and any
   other value is a 400 rather than a silent command. `POST /api/ai/tags`
   with
-  `{"body", "title"?, "language"?}` → `{"tags": [...]}` (2-3 relevant
+  `{"body", "is_sensitive", "title"?, "language"?}` → `{"tags": [...]}` (2-3 relevant
   tags; the server sends the user's existing tag vocabulary so the model
   can reuse or extend it). Suggested tags are filtered to the store's
   tag grammar before being returned. `POST /api/ai/explain` with
-  `{"body"}` → `{"notes": "…"}` — a Markdown explanation (what it
+  `{"body", "is_sensitive"}` → `{"notes": "…"}` — a Markdown explanation (what it
   does, gotchas, important info) for the snippet's Notes field; the
   prompt asks for a reply under 500 tokens rather than a hard API cap,
   so reasoning tokens are not truncated. Not configured → status `enabled:false`
   and the endpoints return 503; missing/oversized prompt or body → 400;
   provider/parse failures → 502 (detail logged, never returned).
+  Tags and Explain require an explicit boolean `is_sensitive`: true →
+  403; missing, null, or invalid → 400. Only false permits a provider
+  call. This is the current draft's classification supplied by the client,
+  not automatic detection of secrets in arbitrary text. Older clients
+  omitting the field fail closed and must refresh to use these actions.
 - **Statelessness**: every call is one system+user message pair sent to
   the configured endpoint; nothing about prior conversations, other
   snippets, or sensitive content is ever included. Prompts and bodies
@@ -1038,6 +1043,13 @@ un-reviewed.
   explanation is one click to back out of rather than something to delete
   by hand; editing Notes by hand drops that undo point, so Undo can never
   discard typing that came after the overwrite.
+  Suggest tags and Explain are disabled whenever Sensitive is checked,
+  including on unsaved drafts, with "Unavailable for sensitive snippets."
+  beside each control. Their action handlers also refuse sensitive drafts.
+  Changing sensitivity invalidates pending results and errors from either
+  action, even if the checkbox is toggled back before the response arrives.
+  This cannot recall content already sent. Ask AI generation continues to
+  send only its separate prompt and options, never the existing snippet body.
 - **Privacy**: requests leave the machine for the configured provider;
   a self-hosted OpenAI-compatible endpoint (e.g. ollama) is supported
   by pointing `ai_endpoint` at it. Treat generated snippets like any

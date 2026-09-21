@@ -1674,3 +1674,25 @@ Spec: `docs/snp-design.md` · Plan: `docs/snp-implementation-plan.md`
   Svelte/TypeScript errors/warnings); git diff --check clean. Initial Go
   HTTP tests hit sandbox listener restrictions; rerun with access passed.
   No new tests for this visual-only change; no generated assets changed.
+
+### 2026-09-21 — Block body AI actions for sensitive snippets
+
+- Reproduced the spec §13 violation with failing component and HTTP tests:
+  Suggest tags/Explain accepted sensitive bodies, and pending responses
+  still changed Tags/Notes after the user checked Sensitive.
+- Both buttons now disable immediately for sensitive drafts (new or saved),
+  with an explanatory hint; action handlers independently refuse calls.
+  Sensitivity changes invalidate pending results and errors, including an
+  on/off toggle before completion. Already-sent content cannot be recalled.
+- Both API requests now require an explicit is_sensitive boolean. True
+  returns 403; omitted, null, or invalid returns 400 without contacting the
+  provider. Browser and desktop use the same handlers. This trusts the
+  draft's declared classification; it does not detect arbitrary secrets.
+  Older clients must refresh before these actions work. Updated spec §13.
+- Validation: failing regressions passed after the fix; make test passed
+  (Go vet/tests, 380 Vitest tests, zero Svelte/TypeScript errors/warnings).
+  Coverage includes handler guards even when DOM disabling is bypassed,
+  re-enabling after unchecking, late success/error responses, zero provider
+  calls for rejected requests, and ordinary non-sensitive AI behavior.
+  Go checks needed sandbox access to the build cache and test listeners.
+  No browser/native smoke or web build; generated assets unchanged.

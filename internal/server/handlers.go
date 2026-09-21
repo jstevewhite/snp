@@ -440,9 +440,24 @@ func (s *Server) logAIError(err error) {
 
 // aiTagsReq is the body of POST /api/ai/tags.
 type aiTagsReq struct {
-	Body     string `json:"body"`
-	Title    string `json:"title"`
-	Language string `json:"language"`
+	Body        string `json:"body"`
+	Title       string `json:"title"`
+	Language    string `json:"language"`
+	IsSensitive *bool  `json:"is_sensitive"`
+}
+
+// allowAIBody requires the draft's sensitivity explicitly (spec §13).
+// Older clients must fail closed rather than silently send sensitive bodies.
+func allowAIBody(w http.ResponseWriter, sensitive *bool) bool {
+	if sensitive == nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "is_sensitive is required"})
+		return false
+	}
+	if *sensitive {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "AI actions are unavailable for sensitive snippets"})
+		return false
+	}
+	return true
 }
 
 // aiTagsOut lists the suggested tag names (validated against the store
@@ -465,6 +480,9 @@ func (s *Server) handleAISuggestTags(w http.ResponseWriter, r *http.Request) {
 	var req aiTagsReq
 	if err := decodeJSON(r, &req); err != nil {
 		s.handleBodyErr(w, err)
+		return
+	}
+	if !allowAIBody(w, req.IsSensitive) {
 		return
 	}
 	if strings.TrimSpace(req.Body) == "" {
@@ -509,7 +527,8 @@ func (s *Server) handleAISuggestTags(w http.ResponseWriter, r *http.Request) {
 
 // aiExplainReq is the body of POST /api/ai/explain.
 type aiExplainReq struct {
-	Body string `json:"body"`
+	Body        string `json:"body"`
+	IsSensitive *bool  `json:"is_sensitive"`
 }
 
 // aiExplainOut carries the plain-text explanation for the Notes field.
@@ -532,6 +551,9 @@ func (s *Server) handleAIExplain(w http.ResponseWriter, r *http.Request) {
 	var req aiExplainReq
 	if err := decodeJSON(r, &req); err != nil {
 		s.handleBodyErr(w, err)
+		return
+	}
+	if !allowAIBody(w, req.IsSensitive) {
 		return
 	}
 	if strings.TrimSpace(req.Body) == "" {

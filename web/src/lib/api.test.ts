@@ -270,11 +270,11 @@ describe('ai', () => {
 describe('ai tags', () => {
   it('suggestTags POSTs body/title/language to /api/ai/tags', async () => {
     const fn = mockFetch(() => json(200, { tags: ['python', 'network'] }))
-    const out = await api.suggestTags({ body: 'python -m http.server', language: 'python' })
+    const out = await api.suggestTags({ body: 'python -m http.server', language: 'python', is_sensitive: false })
     const { url, init } = lastCall(fn)
     expect(url).toBe('/api/ai/tags')
     expect(init.method).toBe('POST')
-    expect(JSON.parse(init.body ?? '')).toEqual({ body: 'python -m http.server', language: 'python' })
+    expect(JSON.parse(init.body ?? '')).toEqual({ body: 'python -m http.server', language: 'python', is_sensitive: false })
     expect(out.tags).toEqual(['python', 'network'])
   })
 })
@@ -282,11 +282,11 @@ describe('ai tags', () => {
 describe('ai explain', () => {
   it('explainSnippet POSTs the body to /api/ai/explain', async () => {
     const fn = mockFetch(() => json(200, { notes: 'It copies files.' }))
-    const out = await api.explainSnippet('cp -rf src dst')
+    const out = await api.explainSnippet({ body: 'cp -rf src dst', is_sensitive: false })
     const { url, init } = lastCall(fn)
     expect(url).toBe('/api/ai/explain')
     expect(init.method).toBe('POST')
-    expect(JSON.parse(init.body ?? '')).toEqual({ body: 'cp -rf src dst' })
+    expect(JSON.parse(init.body ?? '')).toEqual({ body: 'cp -rf src dst', is_sensitive: false })
     expect(out.notes).toBe('It copies files.')
   })
 })

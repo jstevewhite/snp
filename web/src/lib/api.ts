@@ -236,6 +236,7 @@ export function generateSnippet(input: AIGenerateInput): Promise<AIGenerateResul
 
 export interface AITagSuggestInput {
   body: string
+  is_sensitive: boolean
   title?: string
   language?: string
 }
@@ -253,7 +254,12 @@ export interface AIExplainResult {
   notes: string
 }
 
+export interface AIExplainInput {
+  body: string
+  is_sensitive: boolean
+}
+
 /** One-shot explanation of a command, for the Notes field (spec §13). */
-export function explainSnippet(body: string): Promise<AIExplainResult> {
-  return request<AIExplainResult>('/ai/explain', { method: 'POST', body: { body } })
+export function explainSnippet(input: AIExplainInput): Promise<AIExplainResult> {
+  return request<AIExplainResult>('/ai/explain', { method: 'POST', body: input })
 }

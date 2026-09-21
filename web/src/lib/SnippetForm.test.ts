@@ -357,6 +357,66 @@ describe('SnippetForm', () => {
     expect(screen.queryByText('Generated — review and save.')).toBeNull()
   })
 
+  it.each(['new', 'existing'])('blocks body AI actions for a sensitive %s snippet', async (mode) => {
+    mockedApi.aiStatus.mockResolvedValue({ enabled: true, model: 'm' })
+    mockedApi.suggestTags.mockClear()
+    mockedApi.explainSnippet.mockClear()
+    render(SnippetForm, {
+      initial: mode === 'existing' ? snippet({ is_sensitive: true }) : null,
+      folders: [], onsave: vi.fn(), oncancel: () => {},
+    })
+    await waitFor(() => expect(screen.getByText('Suggest tags')).toBeDefined())
+    const sensitive = screen.getByRole('checkbox', { name: /Sensitive/ })
+    if (mode === 'new') {
+      await fireEvent.input(screen.getByLabelText('Body'), { target: { value: 'secret' } })
+      expect((screen.getByRole('button', { name: 'Suggest tags' }) as HTMLButtonElement).disabled).toBe(false)
+      expect((screen.getByRole('button', { name: 'Explain' }) as HTMLButtonElement).disabled).toBe(false)
+      await fireEvent.click(sensitive)
+    }
+    for (const name of ['Suggest tags', 'Explain']) {
+      const button = screen.getByRole('button', { name }) as HTMLButtonElement
+      expect(button.disabled).toBe(true)
+      // Bypass the DOM affordance to exercise the action's own guard.
+      button.disabled = false
+      await fireEvent.click(button)
+      button.disabled = true
+    }
+    expect(mockedApi.suggestTags).not.toHaveBeenCalled()
+    expect(mockedApi.explainSnippet).not.toHaveBeenCalled()
+    expect(screen.getAllByText('Unavailable for sensitive snippets.').length).toBe(2)
+
+    await fireEvent.click(sensitive)
+    expect((screen.getByRole('button', { name: 'Suggest tags' }) as HTMLButtonElement).disabled).toBe(false)
+    expect((screen.getByRole('button', { name: 'Explain' }) as HTMLButtonElement).disabled).toBe(false)
+  })
+
+  it.each([
+    ['Suggest tags', false, false], ['Explain', false, false],
+    ['Suggest tags', true, false], ['Explain', true, false],
+    ['Suggest tags', true, true], ['Explain', true, true],
+  ] as const)('ignores pending %s after a sensitivity change (toggle back: %s, error: %s)', async (action, toggleBack, fail) => {
+    mockedApi.aiStatus.mockResolvedValue({ enabled: true, model: 'm' })
+    let resolve!: (value: { tags: string[]; notes: string }) => void
+    let reject!: (reason: Error) => void
+    const pending = new Promise<{ tags: string[]; notes: string }>((res, rej) => { resolve = res; reject = rej })
+    if (action === 'Suggest tags') mockedApi.suggestTags.mockReturnValueOnce(pending)
+    else mockedApi.explainSnippet.mockReturnValueOnce(pending)
+    render(SnippetForm, { initial: snippet(), folders: [], onsave: vi.fn(), oncancel: () => {} })
+    await waitFor(() => expect(screen.getByText(action)).toBeDefined())
+    await fireEvent.click(screen.getByRole('button', { name: action }))
+    expect(screen.getByText(action === 'Explain' ? 'Explaining…' : 'Suggesting…')).toBeDefined()
+    const sensitive = screen.getByRole('checkbox', { name: /Sensitive/ })
+    await fireEvent.click(sensitive)
+    if (toggleBack) await fireEvent.click(sensitive)
+    if (fail) reject(new Error('late provider error'))
+    else resolve({ tags: ['leaked'], notes: 'leaked explanation' })
+    await waitFor(() => expect(screen.getByRole('button', { name: action })).toBeDefined())
+    expect((screen.getByLabelText('Tags') as HTMLInputElement).value).toBe('a')
+    expect((screen.getByLabelText('Notes') as HTMLTextAreaElement).value).toBe('old notes')
+    expect(screen.queryByText('Undo')).toBeNull()
+    expect(screen.queryByText('late provider error')).toBeNull()
+  })
+
   it('Suggest tags merges the model tags into the Tags field', async () => {
     mockedApi.aiStatus.mockResolvedValue({ enabled: true, model: 'm' })
     mockedApi.suggestTags.mockResolvedValue({ tags: ['python', 'network'] })
@@ -375,6 +435,7 @@ describe('SnippetForm', () => {
     )
     expect(mockedApi.suggestTags).toHaveBeenCalledWith({
       body: 'python -m http.server',
+      is_sensitive: false,
       title: undefined,
       language: undefined,
     })
@@ -421,7 +482,7 @@ describe('SnippetForm', () => {
         'Recursively copies the file and overwrites the destination.',
       ),
     )
-    expect(mockedApi.explainSnippet).toHaveBeenCalledWith('cp -rf {{file}} ~/')
+    expect(mockedApi.explainSnippet).toHaveBeenCalledWith({ body: 'cp -rf {{file}} ~/', is_sensitive: false })
   })
 
   it('Undo puts back the notes Explain replaced', async () => {

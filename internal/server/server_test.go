@@ -11,6 +11,7 @@ import (
 	"net/http/httptest"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	fstest "testing/fstest"
@@ -1059,13 +1060,45 @@ func TestStaticFallback(t *testing.T) {
 	}
 }
 
+func TestAIBodyRequiresNonSensitive(t *testing.T) {
+	var calls atomic.Int32
+	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		w.WriteHeader(http.StatusBadGateway)
+	}))
+	t.Cleanup(up.Close)
+	h := newTestServerWithAIUpstream(t, up).Handler()
+	for _, endpoint := range []string{"tags", "explain"} {
+		for _, tc := range []struct {
+			name string
+			body map[string]any
+			code int
+		}{
+			{"sensitive", map[string]any{"body": "secret", "is_sensitive": true}, http.StatusForbidden},
+			{"missing", map[string]any{"body": "secret"}, http.StatusBadRequest},
+			{"null", map[string]any{"body": "secret", "is_sensitive": nil}, http.StatusBadRequest},
+			{"invalid", map[string]any{"body": "secret", "is_sensitive": "false"}, http.StatusBadRequest},
+		} {
+			t.Run(endpoint+"/"+tc.name, func(t *testing.T) {
+				w := doReq(t, h, "POST", "/api/ai/"+endpoint, tc.body, jsonCT)
+				if w.Code != tc.code {
+					t.Errorf("status = %d, want %d: %s", w.Code, tc.code, w.Body.String())
+				}
+				if got := calls.Load(); got != 0 {
+					t.Errorf("provider received %d blocked requests", got)
+				}
+			})
+		}
+	}
+}
+
 func TestAISuggestTags(t *testing.T) {
 	srv, _ := newTestServerWithAI(t, `["python","network","Bad Tag!"]`, http.StatusOK)
 	h := srv.Handler()
 
 	// Happy path: valid suggestions come through, invalid ones (space in
 	// name) are filtered before the client ever sees them.
-	w := doReq(t, h, "POST", "/api/ai/tags", map[string]any{"body": "python -m http.server"}, jsonCT)
+	w := doReq(t, h, "POST", "/api/ai/tags", map[string]any{"is_sensitive": false, "body": "python -m http.server"}, jsonCT)
 	if w.Code != http.StatusOK {
 		t.Fatalf("suggest: %d %s", w.Code, w.Body.String())
 	}
@@ -1078,14 +1111,14 @@ func TestAISuggestTags(t *testing.T) {
 	}
 
 	// Missing body is a 400.
-	w = doReq(t, h, "POST", "/api/ai/tags", map[string]any{"body": "  "}, jsonCT)
+	w = doReq(t, h, "POST", "/api/ai/tags", map[string]any{"is_sensitive": false, "body": "  "}, jsonCT)
 	if w.Code != http.StatusBadRequest {
 		t.Errorf("empty body: %d", w.Code)
 	}
 
 	// Unconfigured is a 503.
 	h2 := newTestServer(t, "", &fakeResolver{id: tsauth.Identity{Login: "dev@local"}}).Handler()
-	w = doReq(t, h2, "POST", "/api/ai/tags", map[string]any{"body": "x"}, jsonCT)
+	w = doReq(t, h2, "POST", "/api/ai/tags", map[string]any{"is_sensitive": false, "body": "x"}, jsonCT)
 	if w.Code != http.StatusServiceUnavailable {
 		t.Errorf("unconfigured: %d", w.Code)
 	}
@@ -1095,7 +1128,7 @@ func TestAIExplain(t *testing.T) {
 	srv, _ := newTestServerWithAI(t, "It copies files recursively and overwrites.", http.StatusOK)
 	h := srv.Handler()
 
-	w := doReq(t, h, "POST", "/api/ai/explain", map[string]any{"body": "cp -rf src dst"}, jsonCT)
+	w := doReq(t, h, "POST", "/api/ai/explain", map[string]any{"is_sensitive": false, "body": "cp -rf src dst"}, jsonCT)
 	if w.Code != http.StatusOK {
 		t.Fatalf("explain: %d %s", w.Code, w.Body.String())
 	}
@@ -1107,13 +1140,13 @@ func TestAIExplain(t *testing.T) {
 		t.Errorf("notes = %q", out.Notes)
 	}
 
-	w = doReq(t, h, "POST", "/api/ai/explain", map[string]any{"body": "  "}, jsonCT)
+	w = doReq(t, h, "POST", "/api/ai/explain", map[string]any{"is_sensitive": false, "body": "  "}, jsonCT)
 	if w.Code != http.StatusBadRequest {
 		t.Errorf("empty body: %d", w.Code)
 	}
 
 	h2 := newTestServer(t, "", &fakeResolver{id: tsauth.Identity{Login: "dev@local"}}).Handler()
-	w = doReq(t, h2, "POST", "/api/ai/explain", map[string]any{"body": "x"}, jsonCT)
+	w = doReq(t, h2, "POST", "/api/ai/explain", map[string]any{"is_sensitive": false, "body": "x"}, jsonCT)
 	if w.Code != http.StatusServiceUnavailable {
 		t.Errorf("unconfigured: %d", w.Code)
 	}
