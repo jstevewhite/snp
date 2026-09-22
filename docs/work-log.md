@@ -14,6 +14,11 @@ Spec: `docs/snp-design.md` · Plan: `docs/snp-implementation-plan.md`
 
 ## Current status
 
+- v0.5.0 release preparation (2026-09-22): Trash/revision recovery,
+  import/export/backup with password protection, and snippet duplication
+  are committed on main. Fresh make test passes (419 frontend tests).
+  Publishing uses the existing tag-triggered multi-platform release workflow.
+
 - Duplicate-snippet session (2026-09-21): toolbar/palette duplication opens
   a guarded create draft with copied metadata and sensitivity. Full checks,
   production UI build and browser create/history smoke pass. Changes remain
@@ -1966,3 +1971,19 @@ Spec: `docs/snp-design.md` · Plan: `docs/snp-implementation-plan.md`
   original, and verified its empty initial revision history. README/spec/
   plan updated; build output stayed in /tmp, leaving the embed stub intact.
   No commit, tag, push or release performed in this session.
+
+
+### 2026-09-22 — v0.5.0 release preparation
+
+- User authorized tagging v0.5.0 and pushing to build the release. Verified
+  a clean working tree at a5f7fee, matching origin/main, and no existing
+  local or remote v0.5.0 tag. All requested features are already committed.
+- Fresh make test passed: Go vet and all Go tests, 419 frontend tests in
+  34 files, and zero Svelte/TypeScript diagnostics. Updated the README's
+  release-command example to v0.5.0; no source or embedded assets changed.
+- Confirmed release.yml triggers on v* tag pushes and invokes the reusable
+  build workflow. It uploads all platform assets before publishing the
+  release; successful tagging/dispatch alone does not imply a finished build.
+- Release operation: annotate v0.5.0 with the recovery, data-management,
+  password-protection and duplication features, then push main and that
+  specific tag together. GitHub Actions is the source of build status.

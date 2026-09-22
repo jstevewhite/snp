@@ -154,8 +154,8 @@ Both macOS archives support Apple silicon and Intel. The desktop archive
 contains `snp.app`, signed and notarized when the repo's Apple secrets are
 set; otherwise it is ad-hoc signed and Gatekeeper asks you to allow it.
 
-Cutting a release: push a `v*` tag (`git tag v0.4.0 && git push origin
-v0.4.0`). `.github/workflows/release.yml` builds every platform in
+Cutting a release: push a `v*` tag (`git tag v0.5.0 && git push origin
+v0.5.0`). `.github/workflows/release.yml` builds every platform in
 parallel and publishes the release only once all of them succeed.
 The `beta` workflow in the Actions tab does the same for a manually
 entered `v*-beta.N` label and marks it a prerelease. See the header of
