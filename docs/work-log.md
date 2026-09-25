@@ -14,13 +14,14 @@ Spec: `docs/snp-design.md` · Plan: `docs/snp-implementation-plan.md`
 
 ## Current status
 
-- `snp doctor` D1 (2026-09-25): the health check and index repair landed as a
-  store layer (`internal/store/doctor.go`) plus the CLI (`snp doctor`, with
-  `--repair`, `--reindex`, `--only`, `--json`, `--strict`, `--full`,
-  `--fix-orphans`; exit 0/1/2). Three assumptions about FTS5 turned out to be
-  wrong and were settled against a real database — see the newest entry and
-  the AGENTS.md/CLAUDE.md invariant. D2 (the `/api/doctor` endpoints) and D3
-  (the health dialog) remain.
+- `snp doctor` (2026-09-25): complete on branch `feat/doctor`, awaiting
+  review. The store layer (`internal/store/doctor.go`), the CLI (`snp doctor`,
+  with `--repair`, `--reindex`, `--only`, `--json`, `--strict`, `--full`,
+  `--fix-orphans`; exit 0/1/2), the `/api/doctor` + `/api/doctor/repair`
+  endpoints, and the health dialog in Settings and the command palette.
+  Three assumptions about FTS5 turned out to be wrong and were settled against
+  a real database — see the newest entry and the AGENTS.md/CLAUDE.md
+  invariant. `--deep` (the key-requiring check) remains deferred.
 - v0.5.0 release preparation (2026-09-22): Trash/revision recovery,
   import/export/backup with password protection, and snippet duplication
   are committed on main. Fresh make test passes (419 frontend tests).
@@ -45,9 +46,9 @@ Spec: `docs/snp-design.md` · Plan: `docs/snp-implementation-plan.md`
   smoke pass; see the newest entry. No new release/tag/push in this session.
 - Updated: 2026-09-13 (auto-deploy from the checkout on the dev box; command palette)
 - Phase: review fixes + desktop app (macOS **and Linux** builds) + appearance + AI generation (command/script/function kinds) + tag filter + .app bundle + **bundled starter pack** merged to main; **Markdown notes**, **read-view syntax highlighting**, **notarization in `make app`**, the **Linux desktop build/launcher** and **`snp seed`** landed; the **GitHub release workflows** and the **header version chip** (`GET /api/version`) landed; **v0.1.0 shipped** (signed + notarized macOS bundle, 7 assets, verified after publish); **draggable pane dividers** landed (spec §6, `web/src/lib/panes.ts`) and **Explain now replaces Notes** with an undo (spec §13); **Phase 10, the UI refinement pass**, is on branch `feat/ui-refinements` (**pushed**, and deployed to the tailnet from a dirty tree — `/api/version` reports `v0.1.0-14-g8e82a64-dirty`): explicit copy actions, distinct create labels, simplified timestamps, the search keyboard workflow, visible saved-default state, two-line titles, and the **Favorites** list on a new `pinned` column; plus the **service-worker update check** and **create/cancel test coverage** added while chasing a stale-shell report; `make test` green (go test + vet + 298 Vitest + svelte-check 0 errors / 0 warnings). The Linux desktop binary **build was verified on an ARM Ubuntu 24 host** (git bundle → `make desktop`), after a first attempt failed because that work was still uncommitted and the bundle therefore carried the old darwin-only tree.
-- Next: **`snp doctor` D2/D3** on branch `feat/doctor` (D1 is committed): the
-  `GET /api/doctor` + `POST /api/doctor/repair` endpoints with a `doctorMu`,
-  then `DoctorDialog.svelte` from Settings and the command palette. Then, as
+- Next: **review `feat/doctor`**, then D2/D3 follow-ons if wanted (`--deep`,
+  orphan repair from the UI, a search-failure hint pointing at the health
+  check). Then, as
   before: **Phase 11 on-device checklist** (plan Phase 11 T7; branch `claude/eloquent-maxwell-bcugjn`, T1–T6 built and green): iOS Safari as a tab and as the installed PWA (swipe-back at each depth), Android Chrome hardware back (drawer → detail → leaves the app), the wails app with Settings → Layout = Compact; then merge. After that, as before: **Linux desktop container build + verification** (podman; `libgtk-3-dev` + `libwebkit2gtk-4.1-dev` + Go, `make web` then the desktop build, and exercise `install-desktop.sh` with a scratch `PREFIX=`); then the Windows port, desktop follow-ons (real app icon, startup-error surfacing in the window); then remaining v1 follow-ons (CLI client, SnippetsLab converter, named variable presets per machine — the follow-on named in Phase 10 T5). `feat/ui-refinements` is merged to main and two betas are published (`v0.2.0-beta.1`, and `v0.2.0-beta.2` as the CI validation build); cutting `v0.2.0` is the next release step whenever wanted
 
 ## Log
@@ -2045,3 +2046,37 @@ Spec: `docs/snp-design.md` · Plan: `docs/snp-implementation-plan.md`
   which the key check correctly flags, so `testConfig` now chmods the state dir
   the way snp creates it. D2 needs a key path on `Server` for the key check —
   a setter is the least invasive way in.
+
+### 2026-09-25 — `snp doctor` D2/D3: the endpoints and the health dialog
+
+- D2: `GET /api/doctor` (a read-only report; `?only=` and `?full=` narrow it)
+  and `POST /api/doctor/repair`, which applies the derived repairs and returns
+  the state checked, what changed, and the state afterwards. Both are
+  owner-guarded and no-store, behind a new `doctorMu` with `TryLock` → 409.
+  The mutex is separate from `backupMu` because the two do not contend on the
+  same resources. No CSRF change was needed: repair is a POST, so the existing
+  JSON content-type rule already covers it.
+- The key check needed the key file path, which `Server` did not have. Added
+  `SetKeyPath`, wired from `snp serve` (the same `keyPath(cfg)` the key
+  command uses) and from `internal/desktop.NewHandler`. Without it the check
+  reports itself as skipped rather than guessing, and a server test asserts
+  exactly that for the unset case.
+- D3: `DoctorDialog.svelte`, opened from Settings ("Check library health") and
+  the command palette ("Run health check"), with the same `bind:busy` contract
+  as `DataDialog`, so an in-flight check or repair defers the service-worker
+  reload and the desktop close. The Repair button names the failing repairable
+  checks before running, then reports `N → M errors` plus what changed.
+  Findings that cannot be repaired (orphans, a key that is not 0600, a schema
+  newer than the binary) are shown with no button; orphan repair stays
+  CLI-only behind `--fix-orphans`.
+- The two labels are deliberately different: the palette is action-oriented
+  ("Run health check"), the Settings button is the noun ("Check library
+  health"), matching the spec and plan text.
+- Verified: `make test` green (Go vet/tests, 428 frontend tests in 35 files,
+  svelte-check 0 errors / 0 warnings), including 7 new `DoctorDialog` tests
+  and 2 App-level tests covering both entry points. Live against the real
+  binary: `GET /api/doctor` reports 9 checks and healthy; a deleted index row
+  makes `fts` and `fts_count` error; `POST /api/doctor/repair` returns
+  `rebuilt_fts: true` and flips unhealthy → healthy; a POST with no
+  `Content-Type` still gets 415; an unknown `?only=` gets 400 with the list of
+  known checks. `web/dist/index.html` was not touched.

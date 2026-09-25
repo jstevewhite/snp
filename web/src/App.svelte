@@ -74,6 +74,7 @@
   import SnippetDetail from './lib/SnippetDetail.svelte'
   import RecoveryDialog from './lib/RecoveryDialog.svelte'
   import DataDialog from './lib/DataDialog.svelte'
+  import DoctorDialog from './lib/DoctorDialog.svelte'
   import SnippetForm from './lib/SnippetForm.svelte'
   import SnippetList from './lib/SnippetList.svelte'
   import TagList from './lib/TagList.svelte'
@@ -100,6 +101,8 @@
   let saving = $state(false)
   let dataOpen = $state(false)
   let dataBusy = $state(false)
+  let doctorOpen = $state(false)
+  let doctorBusy = $state(false)
   let saveError = $state<string | null>(null)
   let editorKey = $state(0)
 
@@ -110,7 +113,7 @@
   }
 
   function leaveEditor(proceed: () => void): void {
-    if (saving || dataBusy) return
+    if (saving || dataBusy || doctorBusy) return
     if (editing && dirty) dialog = { kind: 'discard', proceed }
     else proceed()
   }
@@ -118,13 +121,13 @@
   $effect(() => registerDesktopClose(() => leaveEditor(() => void closeDesktop())))
   $effect(() => {
     const beforeReload = (e: Event): void => {
-      if (dirty || saving || dataBusy) e.preventDefault()
+      if (dirty || saving || dataBusy || doctorBusy) e.preventDefault()
     }
     window.addEventListener('snp:before-reload', beforeReload)
     return () => window.removeEventListener('snp:before-reload', beforeReload)
   })
   $effect(() => {
-    if (!dirty && !saving && !dataBusy) window.dispatchEvent(new Event('snp:reload-ready'))
+    if (!dirty && !saving && !dataBusy && !doctorBusy) window.dispatchEvent(new Event('snp:reload-ready'))
   })
   let online = $state(true)
   /**
@@ -221,7 +224,7 @@
   })
 
   $effect(() => {
-    if (compact || !flyoutOpen || !foldersEl || dialog !== null || paletteOpen || recovery !== null || dataOpen) return
+    if (compact || !flyoutOpen || !foldersEl || dialog !== null || paletteOpen || recovery !== null || dataOpen || doctorOpen) return
     const panel = foldersEl
     const opener = foldersToggle
     const dismiss = (event: MouseEvent): void => {
@@ -254,7 +257,7 @@
   $effect(() => {
     const onPop = (e: PopStateEvent): void => {
       nav.onPopState(e.state)
-      if (compact && editing && nav.state.screen === 'list' && (dirty || saving || dataBusy)) {
+      if (compact && editing && nav.state.screen === 'list' && (dirty || saving || dataBusy || doctorBusy)) {
         // The browser already moved back. Restore the detail entry before
         // asking, so Keep editing leaves both the form and history intact.
         nav.openDetail()
@@ -626,6 +629,19 @@
       settingsOpen = false
       closeFolders()
       dataOpen = true
+    })
+  }
+
+  function openDoctor(): void {
+    if (!online || saving) return
+    leaveEditor(() => {
+      editing = false
+      editingSnippet = null
+      duplicateDraft = null
+      clearRevealed()
+      settingsOpen = false
+      closeFolders()
+      doctorOpen = true
     })
   }
 
@@ -1194,6 +1210,7 @@
     const needSelection = s === null ? 'Select a snippet first' : undefined
     const list: Command[] = [
       { id: 'data', label: 'Import, export & backup', group: 'snippet', disabled: offline, run: openData },
+      { id: 'doctor', label: 'Run health check', group: 'app', disabled: offline ? 'Offline' : undefined, run: openDoctor },
       { id: 'trash', label: 'Open Trash', group: 'snippet', disabled: offline, run: () => openRecovery() },
     ]
     if (!editing) {
@@ -1295,6 +1312,10 @@
    * (spec §6 keyboard discipline).
    */
   function onGlobalKeydown(e: KeyboardEvent): void {
+    if (doctorOpen) {
+      if (e.key === 'Escape') { e.preventDefault(); if (!doctorBusy && !saving) doctorOpen = false }
+      return
+    }
     if (dataOpen) {
       if (e.key === 'Escape') { e.preventDefault(); if (!dataBusy && !saving) dataOpen = false }
       return
@@ -1396,7 +1417,7 @@
 }} />
 
 <div class="app" class:compact class:folders-overlay={foldersOverlay} class:folders-unpinned={!foldersPinned && !compact}>
-  <div class="chrome" inert={dialog !== null || paletteOpen || recovery !== null || dataOpen}>
+  <div class="chrome" inert={dialog !== null || paletteOpen || recovery !== null || dataOpen || doctorOpen}>
     <header class="topbar">
       {#if compact}
         <!-- One control at the left: Back whenever there is a level to
@@ -1509,6 +1530,7 @@
             </p>
             <div class="actions">
               <button onclick={openData} disabled={!online || saving}>Import, export &amp; backup</button>
+              <button onclick={openDoctor} disabled={!online || saving}>Check library health</button>
               <button onclick={() => void addStarterSnippets()} disabled={!online || seedBusy}>
                 {seedBusy ? 'Adding…' : 'Add starter snippets'}
               </button>
@@ -1577,7 +1599,7 @@
 
   <main
     class="panes"
-    inert={dialog !== null || paletteOpen || recovery !== null || dataOpen}
+    inert={dialog !== null || paletteOpen || recovery !== null || dataOpen || doctorOpen}
     class:resizing={dragging !== null}
     bind:this={panesEl}
     style={compact ? '' : paneStyleVars(activePaneWidths)}
@@ -1593,7 +1615,7 @@
       id="folders-pane"
       bind:this={foldersEl}
       aria-label="Folders, favorites, and tags"
-      use:modal={foldersOverlay && foldersOpen && dialog === null && !paletteOpen && recovery === null && !dataOpen}
+      use:modal={foldersOverlay && foldersOpen && dialog === null && !paletteOpen && recovery === null && !dataOpen && !doctorOpen}
       class:open={foldersOpen}
       aria-hidden={foldersOverlay && !foldersOpen ? 'true' : undefined}
       inert={foldersOverlay && !foldersOpen}
@@ -1729,11 +1751,14 @@
   {#if dataOpen}
     <DataDialog {online} bind:busy={dataBusy} onimport={applyImport} onclose={() => { if (!dataBusy) dataOpen = false }} />
   {/if}
+  {#if doctorOpen}
+    <DoctorDialog {online} bind:busy={doctorBusy} {saving} onclose={() => { if (!doctorBusy) doctorOpen = false }} />
+  {/if}
   {#if recovery !== null}
     <RecoveryDialog snippet={recovery.snippet} {folders} {online} {saving} onrestore={restoreContent} onclose={() => { if (!saving) recovery = null }} />
   {/if}
   {#if undoDelete}
-    <div class="undo-trash" role="status" inert={dialog !== null || paletteOpen || recovery !== null || dataOpen}>
+    <div class="undo-trash" role="status" inert={dialog !== null || paletteOpen || recovery !== null || dataOpen || doctorOpen}>
       <span>“{undoDelete.title}” moved to Trash.</span>
       <button disabled={!online || saving} onclick={undoDeletion}>Undo</button>
       <button aria-label="Dismiss undo" onclick={() => { undoDelete = null }}>×</button>

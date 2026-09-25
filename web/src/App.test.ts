@@ -63,6 +63,18 @@ function syncPayload() {
   }
 }
 
+/** A healthy /api/doctor report, for the health dialog's entry points. */
+function doctorPayload() {
+  return {
+    healthy: true,
+    checked_at: '2026-09-25T00:00:00Z',
+    schema_version: 5,
+    binary_schema: 5,
+    counts: { snippets: 2, trashed: 1, folders: 1, tags: 1, revisions: 0 },
+    checks: [{ name: 'fts', status: 'ok', repairable: true, detail: 'integrity-check ok' }],
+  }
+}
+
 function stubFetch() {
   const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
     const url = String(input)
@@ -74,6 +86,12 @@ function stubFetch() {
     }
     if (url.includes('/api/version')) {
       return new Response(JSON.stringify({ version: 'v9.9.9-test' }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      })
+    }
+    if (url.includes('/api/doctor')) {
+      return new Response(JSON.stringify({ report: doctorPayload() }), {
         status: 200,
         headers: { 'Content-Type': 'application/json' },
       })
@@ -1701,5 +1719,49 @@ describe('Duplicate snippet', () => {
     await fireEvent.click(screen.getAllByText('Deploy')[0])
     window.dispatchEvent(new Event('offline'))
     await waitFor(() => expect((screen.getByRole('button', { name: 'Duplicate' }) as HTMLButtonElement).disabled).toBe(true))
+  })
+})
+
+/**
+ * Library health (snp doctor): reachable from Settings and the command
+ * palette, online only, and it never touches snippet content.
+ */
+describe('App (library health)', () => {
+  beforeEach(async () => {
+    await indexedDB.deleteDatabase('snp')
+    localStorage.removeItem('snp.version')
+    localStorage.removeItem(LAYOUT_STORAGE_KEY)
+  })
+
+  afterEach(() => {
+    cleanup()
+    vi.restoreAllMocks()
+    vi.unstubAllGlobals()
+  })
+
+  it('opens the health dialog from Settings', async () => {
+    stubFetch()
+    render(App)
+    await screen.findByText('Caddyfile')
+
+    await fireEvent.click(screen.getByLabelText('Settings'))
+    await fireEvent.click(screen.getByRole('button', { name: 'Check library health' }))
+
+    await screen.findByRole('dialog', { name: 'Library health' })
+    await screen.findByText(/No problems found/)
+  })
+
+  it('runs the health check from the command palette', async () => {
+    stubFetch()
+    render(App)
+    await screen.findByText('Caddyfile')
+
+    await fireEvent.keyDown(window, { key: 'P', code: 'KeyP', ctrlKey: true, shiftKey: true })
+    const option = screen
+      .getByText('Run health check', { selector: '.palette .label' })
+      .closest('[role="option"]') as HTMLElement
+    await fireEvent.click(option)
+
+    await screen.findByRole('dialog', { name: 'Library health' })
   })
 })

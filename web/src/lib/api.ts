@@ -295,3 +295,63 @@ export function importSnippets(document: ImportDocument, mode: ImportMode, previ
 export function decryptImport(data: string, password: string): Promise<ImportDocument> {
   return request('/decrypt-import', { method: 'POST', body: { data, password } })
 }
+
+// --- Library health (snp doctor) ---
+
+export type DoctorStatus = 'ok' | 'warn' | 'error'
+
+export interface DoctorCheck {
+  name: string
+  status: DoctorStatus
+  detail?: string
+  /** Whether a repair can fix this finding (derived data only). */
+  repairable: boolean
+  rows?: number
+}
+
+export interface DoctorCounts {
+  snippets: number
+  trashed: number
+  folders: number
+  tags: number
+  revisions: number
+}
+
+export interface DoctorReport {
+  healthy: boolean
+  checked_at: string
+  schema_version: number
+  binary_schema: number
+  counts: DoctorCounts
+  checks: DoctorCheck[]
+}
+
+export interface DoctorRepairResult {
+  cleared_sensitive_mirrors: number
+  resynced_tag_mirrors: number
+  rebuilt_fts: boolean
+}
+
+/** One shape whether or not a repair ran: the state checked, and on a
+ * repair what changed plus the state afterwards. */
+export interface DoctorResponse {
+  report: DoctorReport
+  repair?: DoctorRepairResult
+  after?: DoctorReport
+}
+
+/** GET /api/doctor: a read-only health report. */
+export function doctor(only?: string[]): Promise<DoctorResponse> {
+  const usp = new URLSearchParams()
+  if (only !== undefined && only.length > 0) usp.set('only', only.join(','))
+  const qs = usp.toString()
+  return request<DoctorResponse>(qs === '' ? '/doctor' : `/doctor?${qs}`)
+}
+
+/** POST /api/doctor/repair: the derived repairs, with a fresh report. */
+export function repairDoctor(only?: string[]): Promise<DoctorResponse> {
+  return request<DoctorResponse>('/doctor/repair', {
+    method: 'POST',
+    body: only !== undefined && only.length > 0 ? { only } : {},
+  })
+}

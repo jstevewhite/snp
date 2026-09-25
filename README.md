@@ -682,6 +682,11 @@ Other flags: `--only=<checks>` narrows the run, `--json` is for scripts,
 row's reference to a folder that no longer exists (this one does change
 data, so it is never part of `--repair`).
 
+The app runs the same checks: **Settings → Check library health**, or
+**Run health check** in the command palette. The dialog shows each check,
+names what a repair will change before it runs, and reports the result. It
+is a server operation, so it needs a connection.
+
 Exit status is `0` healthy, `1` problems found, `2` could not run, so it can
 run from cron or a monitor. If `schema` reports the database is newer than
 the binary, upgrade snp first: migrations are forward-only.
