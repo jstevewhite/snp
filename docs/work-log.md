@@ -14,14 +14,15 @@ Spec: `docs/snp-design.md` · Plan: `docs/snp-implementation-plan.md`
 
 ## Current status
 
-- `snp doctor` (2026-09-25): complete on branch `feat/doctor`, awaiting
-  review. The store layer (`internal/store/doctor.go`), the CLI (`snp doctor`,
-  with `--repair`, `--reindex`, `--only`, `--json`, `--strict`, `--full`,
+- `snp doctor` (2026-09-25): **merged to main and pushed** (`cfc2d87`). The
+  store layer (`internal/store/doctor.go`), the CLI (`snp doctor`, with
+  `--repair`, `--reindex`, `--only`, `--json`, `--strict`, `--full`,
   `--fix-orphans`; exit 0/1/2), the `/api/doctor` + `/api/doctor/repair`
   endpoints, and the health dialog in Settings and the command palette.
   Three assumptions about FTS5 turned out to be wrong and were settled against
-  a real database — see the newest entry and the AGENTS.md/CLAUDE.md
-  invariant. `--deep` (the key-requiring check) remains deferred.
+  a real database — see the entries below and the AGENTS.md/CLAUDE.md
+  invariant. `make test` green on main (428 frontend tests). No release has
+  been cut for it: main is 4 commits past the `v0.5.0` tag.
 - v0.5.0 release preparation (2026-09-22): Trash/revision recovery,
   import/export/backup with password protection, and snippet duplication
   are committed on main. Fresh make test passes (419 frontend tests).
@@ -46,10 +47,13 @@ Spec: `docs/snp-design.md` · Plan: `docs/snp-implementation-plan.md`
   smoke pass; see the newest entry. No new release/tag/push in this session.
 - Updated: 2026-09-13 (auto-deploy from the checkout on the dev box; command palette)
 - Phase: review fixes + desktop app (macOS **and Linux** builds) + appearance + AI generation (command/script/function kinds) + tag filter + .app bundle + **bundled starter pack** merged to main; **Markdown notes**, **read-view syntax highlighting**, **notarization in `make app`**, the **Linux desktop build/launcher** and **`snp seed`** landed; the **GitHub release workflows** and the **header version chip** (`GET /api/version`) landed; **v0.1.0 shipped** (signed + notarized macOS bundle, 7 assets, verified after publish); **draggable pane dividers** landed (spec §6, `web/src/lib/panes.ts`) and **Explain now replaces Notes** with an undo (spec §13); **Phase 10, the UI refinement pass**, is on branch `feat/ui-refinements` (**pushed**, and deployed to the tailnet from a dirty tree — `/api/version` reports `v0.1.0-14-g8e82a64-dirty`): explicit copy actions, distinct create labels, simplified timestamps, the search keyboard workflow, visible saved-default state, two-line titles, and the **Favorites** list on a new `pinned` column; plus the **service-worker update check** and **create/cancel test coverage** added while chasing a stale-shell report; `make test` green (go test + vet + 298 Vitest + svelte-check 0 errors / 0 warnings). The Linux desktop binary **build was verified on an ARM Ubuntu 24 host** (git bundle → `make desktop`), after a first attempt failed because that work was still uncommitted and the bundle therefore carried the old darwin-only tree.
-- Next: **review `feat/doctor`**, then D2/D3 follow-ons if wanted (`--deep`,
-  orphan repair from the UI, a search-failure hint pointing at the health
-  check). Then, as
-  before: **Phase 11 on-device checklist** (plan Phase 11 T7; branch `claude/eloquent-maxwell-bcugjn`, T1–T6 built and green): iOS Safari as a tab and as the installed PWA (swipe-back at each depth), Android Chrome hardware back (drawer → detail → leaves the app), the wails app with Settings → Layout = Compact; then merge. After that, as before: **Linux desktop container build + verification** (podman; `libgtk-3-dev` + `libwebkit2gtk-4.1-dev` + Go, `make web` then the desktop build, and exercise `install-desktop.sh` with a scratch `PREFIX=`); then the Windows port, desktop follow-ons (real app icon, startup-error surfacing in the window); then remaining v1 follow-ons (CLI client, SnippetsLab converter, named variable presets per machine — the follow-on named in Phase 10 T5). `feat/ui-refinements` is merged to main and two betas are published (`v0.2.0-beta.1`, and `v0.2.0-beta.2` as the CI validation build); cutting `v0.2.0` is the next release step whenever wanted
+- Next: **Phase 11 on-device checklist** (plan Phase 11 T7; branch `claude/eloquent-maxwell-bcugjn`, T1–T6 built and green): iOS Safari as a tab and as the installed PWA (swipe-back at each depth), Android Chrome hardware back (drawer → detail → leaves the app), the wails app with Settings → Layout = Compact; then merge. After that, as before: **Linux desktop container build + verification** (podman; `libgtk-3-dev` + `libwebkit2gtk-4.1-dev` + Go, `make web` then the desktop build, and exercise `install-desktop.sh` with a scratch `PREFIX=`); then the Windows port, desktop follow-ons (real app icon, startup-error surfacing in the window); then remaining v1 follow-ons (CLI client, SnippetsLab converter, named variable presets per machine — the follow-on named in Phase 10 T5). `feat/ui-refinements` is merged to main and two betas are published (`v0.2.0-beta.1`, and `v0.2.0-beta.2` as the CI validation build); cutting `v0.2.0` is the next release step whenever wanted
+- Deferred from `snp doctor`, in rough priority order: `--deep` (the
+  key-requiring `revisions` check, which is what would turn today's generic
+  500 on a wrong or replaced key file into a specific diagnosis); pointing a
+  search that fails with index corruption at the health check; and offering
+  the orphan repair in the UI, which currently stays CLI-only behind
+  `--fix-orphans` because it changes real data.
 
 ## Log
 
