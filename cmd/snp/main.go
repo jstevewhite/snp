@@ -47,6 +47,8 @@ func main() {
 		runDecrypt(args)
 	case "seed":
 		runSeed(args)
+	case "doctor":
+		runDoctor(args)
 	case "key":
 		runKey(args)
 	case "version", "-v", "--version":
@@ -72,6 +74,7 @@ commands:
   import      import a JSON export document
   decrypt     unlock a password-protected JSON export or backup ZIP
   seed        add the bundled starter snippets (nothing seeds by itself)
+  doctor      check library health and repair the search index
   key         key management (show-path)
   version     print the snp version
 

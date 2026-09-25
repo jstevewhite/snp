@@ -1204,8 +1204,8 @@ failure as well.
 | Check | Severity | Repairable | Needs key |
 |---|---|---|---|
 | `sqlite` — `PRAGMA quick_check`, or `integrity_check` with `--full` | error | no | no |
-| `fts` — FTS5's `integrity-check` special command | error | yes | no |
-| `fts_count` — one `snippets_fts` row per `snippets` row | error | yes | no |
+| `fts` — FTS5's `integrity-check`, plus a probe that indexed terms still match the content | error | yes | no |
+| `fts_count` — index row count from the FTS5 `docsize` shadow table, against `snippets` | error | yes | no |
 | `tags` — `snippet_tags` vs the `snippets.tags` mirror | warn | yes | no |
 | `sensitive` — no sensitive row with `body_text` or `var_defaults` set | error | yes | no |
 | `orphans` — live snippet or folder under a deleted/missing parent | error | flag only | no |
@@ -1214,15 +1214,26 @@ failure as well.
 | `key` — present, 32 bytes, mode 0600, parent directory 0700 | warn | no | no |
 | `revisions` — payloads decrypt; at most 50 per snippet | error | no | **yes** (`--deep`) |
 
-`fts` and `fts_count` are complementary rather than redundant. Row counts can
-match while the indexed content is stale — a replacement that updated the main
-row but left the old index terms in place keeps the counts equal — so the
-count cannot certify the index, and FTS5's own `integrity-check` is the
-authoritative probe. The count is the cheap corroborating signal.
+`fts` and `fts_count` are complementary rather than redundant, and neither
+alone certifies the index.
 
-`fts_count` encodes the schema's invariant that there is exactly one FTS row
-per `snippets` row, live *or* soft-deleted: soft delete leaves the index row
-alone, restore reuses it, and purge removes both together.
+FTS5's `integrity-check` covers the index's **internal structure** — the
+damage that surfaces as `database disk image is malformed`. It does *not*
+compare the index against the content table, so a row whose content was
+rewritten without touching the index keeps passing it while searches return
+the old terms. The second half of `fts` therefore probes the content: for up
+to 500 snippets it takes a distinctive ASCII token from the row's current
+`title` and `body_text` and asks the index for that token **restricted to
+that column**, so an occurrence in another column cannot mask a stale one. A
+miss means the index holds terms the content no longer has.
+
+`fts_count` needs the `docsize` shadow table, not the virtual table:
+`snippets_fts` is external-content, so `COUNT(*)` against it reads the
+content table and can never disagree with `snippets`. The shadow table holds
+one row per indexed document, which is what makes a missing or extra index
+row visible. It encodes the schema's invariant that there is exactly one
+index row per `snippets` row, live *or* soft-deleted: soft delete leaves the
+index row alone, restore reuses it, and purge removes both together.
 
 Only `--deep` needs the encryption key. Every other check reads plaintext
 columns, so doctor opens the store the way `snp backup` does — without the key
@@ -1244,6 +1255,16 @@ order:
 The order of step 1 is load-bearing: `rebuild` reads the content table, so a
 leaked `body_text` left in place would be re-indexed by the very command meant
 to clean it up.
+
+Two rules follow from the index being built out of the mirror columns, and
+both are enforced regardless of which checks `--only` selects:
+
+- **A rebuild always normalizes the mirrors first**, so selecting `fts` alone
+  cannot bake a leaked body or a stale tag mirror into the index.
+- **Any mirror change forces a rebuild.** Clearing a leaked `body_text` is not
+  enough on its own: the leaked term may already be in the index, where it
+  stays searchable until the index is rebuilt from the cleaned column. So
+  `--repair --only=sensitive` clears *and* rebuilds when it clears something.
 
 `--repair` never touches real content. An orphan — a live row pointing at a
 deleted folder — is fixed only by an explicit `--fix-orphans`, which nulls the

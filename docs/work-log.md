@@ -14,6 +14,13 @@ Spec: `docs/snp-design.md` · Plan: `docs/snp-implementation-plan.md`
 
 ## Current status
 
+- `snp doctor` D1 (2026-09-25): the health check and index repair landed as a
+  store layer (`internal/store/doctor.go`) plus the CLI (`snp doctor`, with
+  `--repair`, `--reindex`, `--only`, `--json`, `--strict`, `--full`,
+  `--fix-orphans`; exit 0/1/2). Three assumptions about FTS5 turned out to be
+  wrong and were settled against a real database — see the newest entry and
+  the AGENTS.md/CLAUDE.md invariant. D2 (the `/api/doctor` endpoints) and D3
+  (the health dialog) remain.
 - v0.5.0 release preparation (2026-09-22): Trash/revision recovery,
   import/export/backup with password protection, and snippet duplication
   are committed on main. Fresh make test passes (419 frontend tests).
@@ -38,7 +45,10 @@ Spec: `docs/snp-design.md` · Plan: `docs/snp-implementation-plan.md`
   smoke pass; see the newest entry. No new release/tag/push in this session.
 - Updated: 2026-09-13 (auto-deploy from the checkout on the dev box; command palette)
 - Phase: review fixes + desktop app (macOS **and Linux** builds) + appearance + AI generation (command/script/function kinds) + tag filter + .app bundle + **bundled starter pack** merged to main; **Markdown notes**, **read-view syntax highlighting**, **notarization in `make app`**, the **Linux desktop build/launcher** and **`snp seed`** landed; the **GitHub release workflows** and the **header version chip** (`GET /api/version`) landed; **v0.1.0 shipped** (signed + notarized macOS bundle, 7 assets, verified after publish); **draggable pane dividers** landed (spec §6, `web/src/lib/panes.ts`) and **Explain now replaces Notes** with an undo (spec §13); **Phase 10, the UI refinement pass**, is on branch `feat/ui-refinements` (**pushed**, and deployed to the tailnet from a dirty tree — `/api/version` reports `v0.1.0-14-g8e82a64-dirty`): explicit copy actions, distinct create labels, simplified timestamps, the search keyboard workflow, visible saved-default state, two-line titles, and the **Favorites** list on a new `pinned` column; plus the **service-worker update check** and **create/cancel test coverage** added while chasing a stale-shell report; `make test` green (go test + vet + 298 Vitest + svelte-check 0 errors / 0 warnings). The Linux desktop binary **build was verified on an ARM Ubuntu 24 host** (git bundle → `make desktop`), after a first attempt failed because that work was still uncommitted and the bundle therefore carried the old darwin-only tree.
-- Next: **Phase 11 on-device checklist** (plan Phase 11 T7; branch `claude/eloquent-maxwell-bcugjn`, T1–T6 built and green): iOS Safari as a tab and as the installed PWA (swipe-back at each depth), Android Chrome hardware back (drawer → detail → leaves the app), the wails app with Settings → Layout = Compact; then merge. After that, as before: **Linux desktop container build + verification** (podman; `libgtk-3-dev` + `libwebkit2gtk-4.1-dev` + Go, `make web` then the desktop build, and exercise `install-desktop.sh` with a scratch `PREFIX=`); then the Windows port, desktop follow-ons (real app icon, startup-error surfacing in the window); then remaining v1 follow-ons (CLI client, SnippetsLab converter, named variable presets per machine — the follow-on named in Phase 10 T5). `feat/ui-refinements` is merged to main and two betas are published (`v0.2.0-beta.1`, and `v0.2.0-beta.2` as the CI validation build); cutting `v0.2.0` is the next release step whenever wanted
+- Next: **`snp doctor` D2/D3** on branch `feat/doctor` (D1 is committed): the
+  `GET /api/doctor` + `POST /api/doctor/repair` endpoints with a `doctorMu`,
+  then `DoctorDialog.svelte` from Settings and the command palette. Then, as
+  before: **Phase 11 on-device checklist** (plan Phase 11 T7; branch `claude/eloquent-maxwell-bcugjn`, T1–T6 built and green): iOS Safari as a tab and as the installed PWA (swipe-back at each depth), Android Chrome hardware back (drawer → detail → leaves the app), the wails app with Settings → Layout = Compact; then merge. After that, as before: **Linux desktop container build + verification** (podman; `libgtk-3-dev` + `libwebkit2gtk-4.1-dev` + Go, `make web` then the desktop build, and exercise `install-desktop.sh` with a scratch `PREFIX=`); then the Windows port, desktop follow-ons (real app icon, startup-error surfacing in the window); then remaining v1 follow-ons (CLI client, SnippetsLab converter, named variable presets per machine — the follow-on named in Phase 10 T5). `feat/ui-refinements` is merged to main and two betas are published (`v0.2.0-beta.1`, and `v0.2.0-beta.2` as the CI validation build); cutting `v0.2.0` is the next release step whenever wanted
 
 ## Log
 
@@ -1987,3 +1997,51 @@ Spec: `docs/snp-design.md` · Plan: `docs/snp-implementation-plan.md`
 - Release operation: annotate v0.5.0 with the recovery, data-management,
   password-protection and duplication features, then push main and that
   specific tag together. GitHub Actions is the source of build status.
+
+### 2026-09-25 — `snp doctor` D1: health check and index repair
+
+- Added `internal/store/doctor.go` (a `DoctorReport` with per-check
+  `ok`/`warn`/`error`, nine checks — `sqlite`, `fts`, `fts_count`, `tags`,
+  `sensitive`, `orphans`, `timestamps`, `schema`, `key` — and the derived
+  repairs) plus `snp doctor` (`cmd/snp/doctor.go`) with `--repair`,
+  `--reindex`, `--only`, `--json`, `--strict`, `--full` and `--fix-orphans`,
+  exiting 0 healthy / 1 problems / 2 could not run. The spec section and the
+  plan phase (D1–D3) were written first, on this branch.
+- Doctor opens the store **without** the key on purpose: every default check
+  reads plaintext columns, so it still runs when the key file is missing or
+  wrong. `--deep` (the key-requiring `revisions` check) is deferred to its own
+  slice.
+- Three assumptions were wrong, and each was caught by probing a real database
+  rather than by reasoning:
+  1. `COUNT(*)` on `snippets_fts` reads the **content table** (the table is
+     external-content), so it can never disagree with `snippets` — a deleted
+     index row left the count at 2/2. The index's own row count has to come
+     from the `docsize` shadow table.
+  2. FTS5's `integrity-check` returned no error for either a deleted index row
+     or content rewritten underneath the index. It covers structure only.
+     Detecting stale terms needs a column-restricted MATCH probe: asking for a
+     token from the row's *current* title as `title:"token"` fails while the
+     index still holds the old ones. Restricting to the column matters, because
+     an unrestricted match is satisfied by the same word appearing in the body.
+  3. Clearing a leaked sensitive `body_text` without rebuilding left the leaked
+     term **searchable**: the mirror was clean and the check reported `ok` while
+     the secret stayed in the index. Any mirror change now forces a rebuild, and
+     a rebuild normalizes the mirrors first so it cannot bake a leak in.
+- The content probe takes one ASCII alphanumeric token of 3–64 characters per
+  column, which is what unicode61 indexes as a token; ASCII keeps it clear of
+  diacritic folding, and runs longer than 64 characters are skipped rather than
+  truncated (a prefix is not a token and would never match). It probes up to
+  500 snippets, since it is a tripwire and the count check is what finds
+  missing or extra rows.
+- Verified: `make test` green (Go vet/tests, 419 frontend tests, svelte-check
+  0 errors / 0 warnings). End to end against the real binary in a scratch state
+  dir: a deleted index row reported by both `fts` and `fts_count`, with
+  `--reindex` repairing it to healthy; a leaked-and-already-indexed sensitive
+  term gone from the index after `--repair --only=sensitive`; exit codes 0/1/2
+  for the healthy, damaged and missing-database cases. `web/dist/index.html`
+  was not touched.
+- Gotchas for the next session: the Go build cache lives outside the sandbox
+  and has to be redirected (`GOCACHE=$TMPDIR/...`); `t.TempDir()` is not 0700,
+  which the key check correctly flags, so `testConfig` now chmods the state dir
+  the way snp creates it. D2 needs a key path on `Server` for the key check —
+  a setter is the least invasive way in.

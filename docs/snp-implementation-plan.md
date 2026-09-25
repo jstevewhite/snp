@@ -828,16 +828,31 @@ shell access may not be at hand.
 
 - D1 — `internal/store/doctor.go`: a `DoctorReport` carrying `ok`/`warn`/`error`
   per check, one function per check, and the repair primitives
-  (`clearSensitiveMirrorsTx`, `resyncTagMirrorTx`, `rebuildFTSTx`). Checks:
+  (`clearSensitiveMirrorsTx`, `resyncTagMirrorsTx`, `rebuildFTSTx`). Checks:
   `sqlite` (`quick_check`, or `integrity_check` under `--full`), `fts` (FTS5's
-  `integrity-check` special command), `fts_count` (one `snippets_fts` row per
-  `snippets` row), `tags`, `sensitive`, `orphans`, `timestamps`, `schema`,
-  `key`. Repair order is clear-sensitive-mirrors → resync-tag-mirror → rebuild
-  FTS, because `rebuild` reads the content table and would otherwise re-index a
-  leak. `--fix-orphans` nulls a live row's dead folder/parent reference and is
-  never part of `--repair`. The CLI registers config flags, takes no
-  positionals, opens without the key, and exits 0 (healthy), 1 (an `error`, or
-  any `warn` under `--strict`), or 2 (usage, IO or open failure).
+  `integrity-check`, which covers structure only, plus a bounded
+  column-restricted content probe — see the note below), `fts_count` (the
+  FTS5 `docsize` shadow table against `snippets`), `tags`, `sensitive`,
+  `orphans`, `timestamps`, `schema`, `key`. Repair order is
+  clear-sensitive-mirrors → resync-tag-mirror → rebuild FTS, because `rebuild`
+  reads the content table and would otherwise re-index a leak; a rebuild
+  normalizes the mirrors first, and any mirror change forces a rebuild.
+  `--fix-orphans` nulls a live row's dead folder/parent reference and is never
+  part of `--repair`. The CLI registers config flags, takes no positionals,
+  opens without the key, and exits 0 (healthy), 1 (an `error`, or any `warn`
+  under `--strict`), or 2 (usage, IO or open failure).
+- Note from building D1, verified against the real database and now recorded
+  in `AGENTS.md`/`CLAUDE.md`. Three assumptions did not survive contact:
+  `COUNT(*)` against `snippets_fts` reads the *content* table because it is
+  external-content, so it can never disagree with `snippets` — the index's own
+  row count has to come from the `docsize` shadow table; FTS5's
+  `integrity-check` passes both a deleted index row and content rewritten
+  underneath the index, so it covers structure only and the content probe is
+  what detects drift; and clearing a leaked sensitive mirror without rebuilding
+  leaves the leaked term searchable, so a mirror change must force a rebuild.
+  The probe takes one token per column and restricts the MATCH to that column,
+  because an unrestricted match is satisfied by an occurrence in any column and
+  masks the stale one.
 - D2 — `internal/server/doctor.go`: `GET /api/doctor` (read-only report) and
   `POST /api/doctor/repair`, registered in `internal/server/handlers.go`, with
   a new `doctorMu` on `Server` alongside `backupMu`/`cryptoMu` (`TryLock` →

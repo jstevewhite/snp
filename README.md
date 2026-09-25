@@ -41,6 +41,8 @@ The server is one binary, `snp`:
   commands). Nothing seeds by itself; it is also a button in the app's
   settings panel.
 - `snp key show-path` — prints the encryption key path, for backup scripts.
+- `snp doctor` — check library health and repair the search index, see
+  [Troubleshooting](#troubleshooting).
 
 `cmd/snp-desktop` is a second binary: the same store and UI in a native
 macOS/Linux window, local-only — see
@@ -632,6 +634,57 @@ journalctl -u snp --since "1 hour ago"
 
 Request logs include method, path, status, and duration — never query
 strings or bodies.
+
+## Troubleshooting
+
+### Search is broken, or the log says "database disk image is malformed"
+
+Search runs on a full-text index beside the database. That index can always
+be rebuilt from the database, and a damaged one is the failure this project
+has hit most. Check it:
+
+```sh
+snp doctor
+```
+
+Each check reports `ok`, `warn` or `error`:
+
+| Check | What it looks at |
+|---|---|
+| `sqlite` | The file-level integrity pragma (`--full` for the slow one) |
+| `fts` | The index's own structure, and whether its terms still match the snippets they came from |
+| `fts_count` | One index row per snippet, live or trashed |
+| `tags` | The tag mirror the index reads, against `snippet_tags` |
+| `sensitive` | No plaintext body or defaults on an encrypted snippet's indexed columns |
+| `orphans` | No live row pointing at a deleted folder (this is what stops Trash draining) |
+| `timestamps` | Every stored time is RFC3339 UTC seconds |
+| `schema` | The database's schema against this binary's migrations |
+| `key` | The key file exists, is 32 bytes, and is private |
+
+Repair what is repairable:
+
+```sh
+snp doctor --repair      # the derived repairs: the index and the mirrors it reads
+snp doctor --reindex     # the same, narrowed to checking and rebuilding the index
+```
+
+Repair rewrites only derived data — the index and the plaintext columns it
+reads — and never a snippet's title, body, notes, folder or tags. It takes a
+brief write lock, so it is safe to run with the server up; nothing your
+snippets contain changes, and clients need no resync. It also needs no
+encryption key, so it runs when the key file is missing or wrong. If a
+sensitive snippet's plaintext had leaked into those columns, the repair
+clears it *and* rebuilds the index, because clearing alone would leave the
+leaked text searchable.
+
+Other flags: `--only=<checks>` narrows the run, `--json` is for scripts,
+`--strict` treats warnings as failures, and `--fix-orphans` clears a live
+row's reference to a folder that no longer exists (this one does change
+data, so it is never part of `--repair`).
+
+Exit status is `0` healthy, `1` problems found, `2` could not run, so it can
+run from cron or a monitor. If `schema` reports the database is newer than
+the binary, upgrade snp first: migrations are forward-only.
 
 ## Development
 

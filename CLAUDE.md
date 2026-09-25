@@ -61,7 +61,7 @@ curl localhost:8080/api/me
 ## Architecture
 
 ```
-cmd/snp/         subcommand dispatch: serve, backup, export, import, seed, key
+cmd/snp/         subcommand dispatch: serve, backup, export, import, decrypt, seed, doctor, key
 cmd/snp-desktop/ wails desktop binary (darwin/linux; spec §12) +
                  platform_{darwin,linux}.go per-OS options
 internal/config/ TOML + flags + SNP_* env; precedence flag > env > file > default
@@ -141,7 +141,20 @@ and surfaces as `SQLITE_CORRUPT` / "database disk image is malformed".
 - Create: `insertFTSTx` only, never a delete first.
 - Replace: `deleteFTSTx` **before** the main-row UPDATE, then insert.
 - Remove/purge: `deleteFTSTx` before deleting the main row, same tx.
-- Recovery: `INSERT INTO snippets_fts(snippets_fts) VALUES('rebuild')`.
+- Recovery: `snp doctor --repair` (or `snp doctor --reindex`), which
+  normalizes the mirror columns first and then rebuilds; the raw statement is
+  `INSERT INTO snippets_fts(snippets_fts) VALUES('rebuild')`. Any change to a
+  mirror column requires that rebuild — clearing a leaked sensitive
+  `body_text` is **not** enough on its own, because the leaked term may already
+  be in the index and stays searchable until it is rebuilt.
+
+Two traps when inspecting the index. `COUNT(*)` on `snippets_fts` reads the
+**content table** (it is external-content), so it can never reveal a missing
+or extra index row; the index's own row count is one row per document in the
+`docsize` shadow table. And FTS5's `integrity-check` covers the index's
+internal structure, not whether it still agrees with the content — a row
+whose content was rewritten without touching the index passes it while
+searches return the old terms. `internal/store/doctor.go` handles both.
 
 **Mirror columns.** `snippets.body_text` and `snippets.tags` exist only so
 external-content FTS can read every indexed column back from the main table

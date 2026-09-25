@@ -13,13 +13,19 @@ import (
 	"github.com/jstevewhite/snp/internal/store"
 )
 
-// testConfig returns a config pointing at a fresh temp state dir.
+// testConfig returns a config pointing at a fresh temp state dir. The
+// directory is made 0700 the way snp creates it, so doctor's key check
+// sees the permissions production does.
 func testConfig(t *testing.T) config.Config {
 	t.Helper()
+	dir := t.TempDir()
+	if err := os.Chmod(dir, 0o700); err != nil {
+		t.Fatalf("chmod state dir: %v", err)
+	}
 	return config.Config{
 		Hostname: "snp",
 		Owner:    "alice@example.com",
-		StateDir: t.TempDir(),
+		StateDir: dir,
 		LogLevel: "error",
 	}
 }
