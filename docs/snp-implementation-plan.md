@@ -815,3 +815,59 @@ web/desktop builds succeed, and compact navigation still preserves drafts.
   sensitive fetches; clear discarded seeds and preserve cache redaction.
 - Done when source-preservation, create/cancel, offline and sensitive-copy
   regressions pass make test and production UI build/smoke pass.
+
+## Health check and index repair — `snp doctor` (2026-09-25)
+
+One command, flags for the sub-features: `doctor` is the only interface,
+`--repair` fixes, `--only=<check>` narrows the run, `--reindex` is shorthand
+for `--repair --only=fts`, `--deep` adds the key-requiring checks, and
+`--json` / `--strict` serve scripting and cron. Build it as three slices: D1 is
+useful on its own over SSH, and D2/D3 are what make it usable from a phone,
+which is the moment index corruption actually bites — search is broken and
+shell access may not be at hand.
+
+- D1 — `internal/store/doctor.go`: a `DoctorReport` carrying `ok`/`warn`/`error`
+  per check, one function per check, and the repair primitives
+  (`clearSensitiveMirrorsTx`, `resyncTagMirrorTx`, `rebuildFTSTx`). Checks:
+  `sqlite` (`quick_check`, or `integrity_check` under `--full`), `fts` (FTS5's
+  `integrity-check` special command), `fts_count` (one `snippets_fts` row per
+  `snippets` row), `tags`, `sensitive`, `orphans`, `timestamps`, `schema`,
+  `key`. Repair order is clear-sensitive-mirrors → resync-tag-mirror → rebuild
+  FTS, because `rebuild` reads the content table and would otherwise re-index a
+  leak. `--fix-orphans` nulls a live row's dead folder/parent reference and is
+  never part of `--repair`. The CLI registers config flags, takes no
+  positionals, opens without the key, and exits 0 (healthy), 1 (an `error`, or
+  any `warn` under `--strict`), or 2 (usage, IO or open failure).
+- D2 — `internal/server/doctor.go`: `GET /api/doctor` (read-only report) and
+  `POST /api/doctor/repair`, registered in `internal/server/handlers.go`, with
+  a new `doctorMu` on `Server` alongside `backupMu`/`cryptoMu` (`TryLock` →
+  409). Owner-guarded, no-store, JSON content type via the existing guard — no
+  change to the CSRF rule.
+- D3 — `web/src/lib/DoctorDialog.svelte` plus `api.ts` types and tests. Opened
+  from Settings ("Check library health") and the command palette ("Run health
+  check"), greyed with the palette's existing offline reason. Runs the check on
+  open, conveys status as text as well as colour, names the changes before
+  applying them, re-checks afterwards to show before/after, and offers the
+  derived repairs only. Reuse `modal.ts` focus behaviour, `data-modal-initial`
+  on Close, `role=status`/`role=alert`, and the inert-background pattern.
+- Deferred — `--deep`, the `revisions` check (protected payloads decrypt, at
+  most 50 versions per snippet). It is the only check that needs the
+  encryption key and the slowest, and it is additive: D1–D3 are unaffected by
+  leaving it out. Its value is diagnosing a wrong or replaced key file, which
+  currently surfaces as a generic 500; add it as its own slice once the rest
+  has seen use.
+- Docs — `AGENTS.md` and `CLAUDE.md` both present
+  `INSERT INTO snippets_fts(snippets_fts) VALUES('rebuild')` as the recovery
+  path with no command behind it (`AGENTS.md:107`, `CLAUDE.md:144`); both must
+  name `snp doctor --repair` instead, in the same change, per the rule that a
+  change to one is mirrored in the other. The README gains a troubleshooting
+  entry; the spec gains "Health check and index repair (`snp doctor`)".
+
+- Done when: a store with a deleted FTS row and a store with stale indexed
+  content (row counts equal, title changed underneath) are each detected — the
+  second proving `fts_count` alone cannot certify the index; a leaked sensitive
+  `body_text` is detected and its term is not searchable after repair (the
+  ordering test); a non-conforming timestamp and a newer `schema_version` are
+  reported and never rewritten; doctor completes with no key set; `snp doctor`
+  returns 0/1/2 as specified; the health dialog repairs from the UI and shows
+  the before/after; `make test` is green and `web/dist/index.html` is unchanged.

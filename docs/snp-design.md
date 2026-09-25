@@ -15,6 +15,7 @@ Revised: 2026-09-11 (§4/§5 `pinned`; §6 Favorites, explicit copy actions, the
 Revised: 2026-09-12 (§6 service-worker update check, so a stale precached shell cannot linger)
 Revised: 2026-09-12 (§5/§6 search: prefix terms, terms ANDed, operators literal — online and offline now match the same set)
 Revised: 2026-09-12 (§6 compact layout: the single-pane phone/narrow-window mode and the Layout setting — built, Phase 11; verified in headless Chromium, on-device checklist pending)
+Revised: 2026-09-25 (health check and index repair: `snp doctor`, `GET /api/doctor`, `POST /api/doctor/repair`, and the health dialog)
 Status: approved design, revised after review, implemented
 
 > Revision note (2026-09-06): §6 originally specified a CodeMirror 6
@@ -1179,3 +1180,95 @@ Sensitive copies fetch their source body/defaults on demand and retain the
 sensitive flag. They never write decrypted content into the offline cache.
 Failed fetches do not open blank drafts; selection/editor changes invalidate
 pending fetch results. Offline duplication is disabled.
+
+## Health check and index repair (`snp doctor`)
+
+The FTS5 index is the one structure snp can rebuild from its own tables, and
+the write-ordering rules in §4 exist because it has corrupted before. Until
+now the documented recovery was a raw SQL statement with no code behind it,
+which meant reaching for the `sqlite3` CLI against a live database — on a host
+whose whole premise is one binary with no external services. `snp doctor`
+supplies the check and the repair, and `GET /api/doctor` /
+`POST /api/doctor/repair` expose them to the app, because index corruption
+breaks search and the fix must not require shell access to the host.
+
+**One command, flags for the sub-features.** `doctor` is the only interface;
+`--repair` fixes, `--only=<check>` narrows the run, `--reindex` is shorthand
+for `--repair --only=fts`, `--deep` adds the key-requiring checks, and
+`--json` / `--strict` serve scripting and cron.
+
+**Checks.** All of them run by default and each reports `ok`, `warn` or
+`error`. Only `error` fails the run (exit 1); `--strict` promotes `warn` to a
+failure as well.
+
+| Check | Severity | Repairable | Needs key |
+|---|---|---|---|
+| `sqlite` — `PRAGMA quick_check`, or `integrity_check` with `--full` | error | no | no |
+| `fts` — FTS5's `integrity-check` special command | error | yes | no |
+| `fts_count` — one `snippets_fts` row per `snippets` row | error | yes | no |
+| `tags` — `snippet_tags` vs the `snippets.tags` mirror | warn | yes | no |
+| `sensitive` — no sensitive row with `body_text` or `var_defaults` set | error | yes | no |
+| `orphans` — live snippet or folder under a deleted/missing parent | error | flag only | no |
+| `timestamps` — every `*_at` is RFC3339 UTC second precision | warn | no | no |
+| `schema` — `schema_version` against this binary's migrations | error | no | no |
+| `key` — present, 32 bytes, mode 0600, parent directory 0700 | warn | no | no |
+| `revisions` — payloads decrypt; at most 50 per snippet | error | no | **yes** (`--deep`) |
+
+`fts` and `fts_count` are complementary rather than redundant. Row counts can
+match while the indexed content is stale — a replacement that updated the main
+row but left the old index terms in place keeps the counts equal — so the
+count cannot certify the index, and FTS5's own `integrity-check` is the
+authoritative probe. The count is the cheap corroborating signal.
+
+`fts_count` encodes the schema's invariant that there is exactly one FTS row
+per `snippets` row, live *or* soft-deleted: soft delete leaves the index row
+alone, restore reuses it, and purge removes both together.
+
+Only `--deep` needs the encryption key. Every other check reads plaintext
+columns, so doctor opens the store the way `snp backup` does — without the key
+— and still works when the key file is missing or wrong, which is the state in
+which it is most needed. `--deep` itself is a follow-on slice (see the
+implementation plan): the checks above ship without it, and leaving it out does
+not affect them.
+
+**Repairs.** `--repair` applies only what is derived and recomputable, in this
+order:
+
+1. Clear the sensitive mirror columns (`body_text`, `var_defaults`) on rows
+   whose `is_sensitive` is set.
+2. Resync the `snippets.tags` mirror from `snippet_tags`, which is
+   authoritative.
+3. Rebuild the FTS index (`INSERT INTO snippets_fts(snippets_fts)
+   VALUES('rebuild')`).
+
+The order of step 1 is load-bearing: `rebuild` reads the content table, so a
+leaked `body_text` left in place would be re-indexed by the very command meant
+to clean it up.
+
+`--repair` never touches real content. An orphan — a live row pointing at a
+deleted folder — is fixed only by an explicit `--fix-orphans`, which nulls the
+reference, exactly as `RestoreSnippet` does when a snippet's folder is gone. A
+key mismatch, a schema newer than the binary, and non-conforming timestamps
+are reported and never rewritten: changing `updated_at` would change what sync
+sends.
+
+A content restore through `Export` / `Import` keeps the index consistent by
+construction, because every row goes through the FTS helpers. A row-level
+restore that inserts rows directly is the case that needs this rebuild.
+
+**Exit codes.** `0` healthy; `1` at least one `error`, or any `warn` under
+`--strict`; `2` usage, IO or database-open failure. `--json` emits the report
+for scripting.
+
+**API.** `GET /api/doctor` returns the report and is read-only. `POST
+/api/doctor/repair` applies the safe repairs and returns what changed plus a
+fresh report. Both are owner-guarded and no-store; repair uses the same
+single-flight discipline as backup (a new `doctorMu`, 409 while one is
+running). Repair changes no snippet content, so clients keep their cache and
+no resync is required.
+
+**UI.** Settings ("Check library health") and the command palette ("Run health
+check") open a health dialog that runs the check on open, names exactly what a
+repair will change before it runs, applies it, and re-checks to show the
+result. The dialog offers the derived repairs only — the orphan fix stays on
+the CLI, where a second explicit flag guards it.
