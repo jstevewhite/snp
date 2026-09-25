@@ -106,7 +106,10 @@ func NewHandler(cfg config.Config, log *slog.Logger) (http.Handler, *store.Store
 	} else {
 		log.Debug("desktop: AI configured", "model", aiClient.Model, "endpoint", aiClient.Endpoint)
 	}
-	return server.NewWithAI(st, tsauth.NewDev(), "", log, aiClient).Handler(), st, nil
+	srv := server.NewWithAI(st, tsauth.NewDev(), "", log, aiClient)
+	// The doctor endpoint inspects the key file's permissions.
+	srv.SetKeyPath(keyPath)
+	return srv.Handler(), st, nil
 }
 
 // Log forwards a page-side diagnostic line to the app log. The wails

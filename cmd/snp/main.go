@@ -246,6 +246,9 @@ func runServe(args []string) {
 	}
 
 	srv := server.NewWithAI(st, resolv, owner, log, ai.FromConfig(cfg, log))
+	// The doctor endpoint inspects the key file's permissions; without the
+	// path it would report that check as skipped.
+	srv.SetKeyPath(keyPath(cfg))
 	purgerDone := st.StartPurger(ctx, log)
 
 	// Any tailnet peer can reach the listener, so header reads and idle

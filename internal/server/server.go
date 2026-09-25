@@ -60,7 +60,16 @@ type Server struct {
 	ai       *ai.Client
 	backupMu sync.Mutex
 	cryptoMu sync.Mutex
+	doctorMu sync.Mutex
+	// keyPath is the encryption key file, inspected by the doctor
+	// endpoint. Empty reports that check as skipped.
+	keyPath string
 }
+
+// SetKeyPath tells the server where the encryption key file lives so the
+// doctor endpoint can inspect its permissions. It is optional: without it
+// the key check reports itself as skipped rather than guessing.
+func (s *Server) SetKeyPath(path string) { s.keyPath = path }
 
 // New builds a Server. owner is the Tailscale login allowed in; pass "" to
 // disable the owner check (dev mode, where the resolver is a fixed

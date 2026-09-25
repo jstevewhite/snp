@@ -44,6 +44,8 @@ func (s *Server) apiMux() http.Handler {
 	mux.HandleFunc("POST /api/import", s.handleImport)
 	mux.HandleFunc("POST /api/backup", s.handleBackup)
 	mux.HandleFunc("POST /api/seed", s.handleSeed)
+	mux.HandleFunc("GET /api/doctor", s.handleDoctor)
+	mux.HandleFunc("POST /api/doctor/repair", s.handleDoctorRepair)
 	mux.HandleFunc("GET /api/ai/status", s.handleAIStatus)
 	mux.HandleFunc("POST /api/ai/generate", s.handleAIGenerate)
 	mux.HandleFunc("POST /api/ai/tags", s.handleAISuggestTags)
