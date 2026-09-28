@@ -14,6 +14,14 @@ Spec: `docs/snp-design.md` · Plan: `docs/snp-implementation-plan.md`
 
 ## Current status
 
+- `snp pick` (2026-09-28): shell picker. Draws on `/dev/tty` (Bubble Tea +
+  Lip Gloss, app palette) and prints the accepted command on stdout.
+  `snp widget` / `deploy/snp.zsh` bind Ctrl-G for in-line insert and wrap
+  `snp pick` with `print -z` so a typed invocation lands on the next
+  prompt. Rebind with `bindkey` when Ctrl-G is taken (`^Xs` works).
+  Library: `--url` / `SNP_URL` / config `url`, else the local database;
+  `--local` forces the file. README section "From the shell". See the log
+  entry below.
 - `snp doctor` (2026-09-25): **merged to main and pushed** (`cfc2d87`). The
   store layer (`internal/store/doctor.go`), the CLI (`snp doctor`, with
   `--repair`, `--reindex`, `--only`, `--json`, `--strict`, `--full`,
@@ -2084,3 +2092,43 @@ Spec: `docs/snp-design.md` · Plan: `docs/snp-implementation-plan.md`
   `rebuilt_fts: true` and flips unhealthy → healthy; a POST with no
   `Content-Type` still gets 415; an unknown `?only=` gets 400 with the list of
   known checks. `web/dist/index.html` was not touched.
+
+### 2026-09-28 — `snp pick`, the shell client
+
+- `snp pick` is a terminal list plus a variable form. Stdout receives only
+  the accepted command, so `deploy/snp.zsh` (`snp widget`, Ctrl-G) can append
+  it to the zsh line. Cancel prints nothing. A sensitive command is prefixed
+  with a space for `HIST_IGNORE_SPACE`.
+- Library: `--url` / `SNP_URL` / config `url`, otherwise `state_dir/snp.db`.
+  `--local` forces the file. URL mode is GET `/api/snippets` and GET by id
+  for a sensitive body, with no extra credential. Local mode does not create
+  a database or a key. `snp serve` ignores `url`. Config loads like the
+  desktop app, so a client does not need `owner`.
+- Placeholder grammar lives in `internal/template`, matching
+  `web/src/lib/templates.ts`. A box starts from the saved default, then the
+  inline default. Clearing a box leaves that spot empty, and that text is
+  what gets printed.
+- Gotcha: Bubble Tea's default output is stdout, which a widget captures.
+  The program opens `/dev/tty` for the screen and leaves stdout for the
+  command. Bubble Tea v2 (`charm.land/bubbletea/v2`) is pure Go, so `cmd/snp`
+  still cross-compiles without cgo.
+- Verified this session: `go test` for template, pick, config, store, and
+  `cmd/snp`; `go vet` on the picker; `GOOS=linux GOARCH=amd64 go build` of
+  `cmd/snp`. Full `make test` was not re-run; the web tree was not changed.
+  A controlling pty drove `snp pick --local`: the list showed both seeded
+  rows, Enter opened the variable form prefilled `root` / `gx10`, and stdout
+  was exactly `ssh root@gx10` with an empty stderr.
+- Follow-up the same day: running the binary as a normal command prints the
+  command with no trailing newline, and Starship then paints `%` and a new
+  prompt, so the line is not left in the editor. `snp widget` now wraps
+  `snp pick` with `print -z`, and Ctrl-G only updates `LBUFFER` (no
+  `zle reset-prompt`). Re-source the widget to pick it up.
+- The screen is a Lip Gloss panel in the app palette (purple accent,
+  rounded frame, highlighted row, shaded command). Truecolor is forced:
+  a pty that answers no color query makes the renderer drop every color.
+  The frame is one column short of the terminal so the bottom-right corner
+  does not wrap.
+- Ctrl-G stays the widget's own binding. When it is taken globally, bind
+  another chord after sourcing (`bindkey '^Xs' snp-pick` is the one that
+  was confirmed). README section "From the shell" documents the picker,
+  the wrapper, and the rebind.

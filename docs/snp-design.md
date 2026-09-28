@@ -61,7 +61,7 @@ machine on the tailnet can use through a browser or an installed PWA.
 | Editor | read view highlights the body (highlight.js, by language); the editor stays a plain textarea |
 | Offline | installable PWA; offline read of everything; writes online only |
 | Sensitive snippets | flag + AES-256-GCM encryption at rest with a server-held key |
-| Other clients | JSON API from day one; CLI is a follow-on |
+| Other clients | JSON API from day one; `snp pick` is the shell client |
 | Import | JSON document matching the export format, plus a bundled starter pack (`snp seed`); SnippetsLab converter later |
 | Sharing | none |
 | Config | on-disk config lives under `~/.config/snp/` |
@@ -91,6 +91,8 @@ Other subcommands:
 - `snp seed` — add the bundled starter snippets (explicit; nothing seeds
   by itself).
 - `snp key show-path` — prints the key file path, for backup scripts.
+- `snp pick` — terminal picker; prints the chosen command on stdout.
+- `snp widget` — prints the zsh binding that drops that command onto the line.
 
 No reverse proxy, container, or external services.
 
@@ -307,8 +309,8 @@ treats the body as opaque text; the flag only drives frontend behavior
 (the variables panel in the detail view and the rendered copy). A body
 containing `{{name}}` or `{{name|default}}` is a template; the edit form
 keeps the flag in sync with the body's placeholders. Variable names match
-`[A-Za-z_][A-Za-z0-9_]*`. Parsing lives in the frontend (and later the
-CLI). A variable without a default that is left blank in the copy panel
+`[A-Za-z_][A-Za-z0-9_]*`. Parsing lives in the frontend and in
+`internal/template`, which `snp pick` uses. A variable without a default that is left blank in the copy panel
 renders as an empty string; in the panel's live preview it stays visible
 as `{{name}}`.
 
@@ -902,9 +904,10 @@ Makefile                 build/test/dev plus desktop/app targets
 
 ## 11. Out of scope for v1
 
-Multi-user, sharing, offline writes, CLI client,
+Multi-user, sharing, offline writes,
 SnippetsLab converter, semantic search, encryption with a user passphrase.
-The CLI and the SnippetsLab converter are the first follow-ons.
+The SnippetsLab converter is the remaining named follow-on. The shell
+client is `snp pick`, below.
 
 ## 12. Desktop app (Wails)
 
@@ -1293,3 +1296,60 @@ check") open a health dialog that runs the check on open, names exactly what a
 repair will change before it runs, applies it, and re-checks to show the
 result. The dialog offers the derived repairs only — the orphan fix stays on
 the CLI, where a second explicit flag guards it.
+
+## Shell picker (`snp pick`)
+
+`snp pick` is the shell client. It takes over the terminal, and the only
+thing it writes to stdout is the finished command when you accept. A zsh
+widget, printed by `snp widget` and kept in `deploy/snp.zsh`, captures
+that and appends it to the line you had already typed. Nothing runs until
+you press Enter at the prompt. Cancel and any error write nothing and
+exit non-zero, so the widget leaves the line alone.
+
+```zsh
+source <(snp widget)   # binds Ctrl-G, and wraps `snp pick`
+```
+
+Ctrl-G inserts into the line already being edited. Typing `snp pick` as a
+command is wrapped the same way: the function pushes the command onto the
+next prompt with `print -z`. The binary by itself can only print the text.
+Under Starship that print has no trailing newline, so the shell paints a
+`%` and moves to a fresh prompt, which is why the wrapper exists.
+
+The screen draws on `/dev/tty`, which is why `out=$(snp pick)` still
+shows the picker. Run with no widget, it prints the command after the
+screen closes.
+
+**Where the library is.** `--url`, then `SNP_URL`, then `url` in the
+config file, then the local database in `state_dir`. `--local` skips the
+URL for that invocation. `url` is optional and `snp serve` ignores it.
+The command loads config the way the desktop app does, so a client
+machine does not need `owner`. A URL is `GET /api/snippets?q=` (at most
+200 rows, the existing cap) and, for a sensitive row, `GET
+/api/snippets/{id}` when you accept it. There is no extra credential:
+on the tailnet, WhoIs sees the machine you are on. `http://127.0.0.1:8080`
+is the same client pointed at `--dev-listen`. No URL opens `snp.db` the
+way `snp export` does, including the key file when it is already there,
+so a sensitive body can be decrypted. The picker does not create a
+database or a key. A keystroke waits briefly before a search, and a late
+response is discarded.
+
+**List.** The filter uses the same query language as the app. An empty
+filter lists snippets by most recently updated. Up and down move and
+wrap. The highlighted row's body and notes sit under the list. Enter on
+a plain snippet prints its body. Enter on a row whose body has
+placeholders opens the form. A sensitive body stays out of the list;
+Enter fetches it first. Esc clears the filter, then closes the picker.
+
+**Form.** Every variable is a single-line box, in order of first
+appearance. A box starts with the saved default, or the inline
+`{{name|default}}` when nothing is saved. Tab and Shift-Tab move between
+boxes. The rendered command under the boxes updates as you type, and
+Enter prints that text from whichever box you are in. Clearing a box
+leaves that spot empty. Esc returns to the list.
+
+A sensitive command is printed with a leading space when it does not
+already start with whitespace, and the screen says that zsh history skips
+it when `HIST_IGNORE_SPACE` is set.
+
+Creating and editing stay in the app. The first widget is zsh.

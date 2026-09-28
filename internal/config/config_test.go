@@ -20,6 +20,7 @@ func newFS() *flag.FlagSet {
 	fs.String("ai-endpoint", "", "")
 	fs.String("ai-model", "", "")
 	fs.String("ai-key", "", "")
+	fs.String("url", "", "")
 	return fs
 }
 
@@ -61,6 +62,37 @@ func TestDefaults(t *testing.T) {
 	}
 	if c.LogLevel != "info" {
 		t.Errorf("log_level = %q", c.LogLevel)
+	}
+}
+
+func TestURLPrecedence(t *testing.T) {
+	home := isolateHome(t)
+	writeConfig(t, filepath.Join(home, ".config", "snp"), "owner = \"o\"\nurl = \"https://file.example\"\n")
+	fs := newFS()
+	c, err := LoadDesktop(fs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.URL != "https://file.example" {
+		t.Fatalf("file url = %q", c.URL)
+	}
+	t.Setenv("SNP_URL", "https://env.example")
+	fs = newFS()
+	c, err = LoadDesktop(fs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.URL != "https://env.example" {
+		t.Fatalf("env url = %q", c.URL)
+	}
+	fs = newFS()
+	fs.Set("url", "https://flag.example")
+	c, err = LoadDesktop(fs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.URL != "https://flag.example" {
+		t.Fatalf("flag url = %q", c.URL)
 	}
 }
 

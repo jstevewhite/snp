@@ -36,6 +36,10 @@ type Config struct {
 	// AIKey is the bearer API key. The AI feature is enabled when the
 	// key is set; the key is never exposed over the API.
 	AIKey string
+
+	// URL is the shell picker's remote library. Empty means `snp pick`
+	// opens the local database. `snp serve` ignores it.
+	URL string
 }
 
 // AIEnabled reports whether the AI feature is configured.
@@ -51,6 +55,7 @@ const (
 	EnvAIEndpoint = "SNP_AI_ENDPOINT"
 	EnvAIModel    = "SNP_AI_MODEL"
 	EnvAIKey      = "SNP_AI_KEY"
+	EnvURL        = "SNP_URL"
 )
 
 // Defaults returns the built-in default configuration.
@@ -72,6 +77,7 @@ type fileConfig struct {
 	AIEndpoint string `toml:"ai_endpoint"`
 	AIModel    string `toml:"ai_model"`
 	AIKey      string `toml:"ai_key"`
+	URL        string `toml:"url"`
 }
 
 // Load resolves the configuration. fs must contain the string flags
@@ -129,6 +135,9 @@ func load(fs *flag.FlagSet, requireOwner bool) (Config, error) {
 		if f.AIKey != "" {
 			c.AIKey = f.AIKey
 		}
+		if f.URL != "" {
+			c.URL = f.URL
+		}
 	}
 
 	// 2. Environment.
@@ -152,6 +161,9 @@ func load(fs *flag.FlagSet, requireOwner bool) (Config, error) {
 	}
 	if v := os.Getenv(EnvAIKey); v != "" {
 		c.AIKey = v
+	}
+	if v := os.Getenv(EnvURL); v != "" {
+		c.URL = v
 	}
 
 	// 3. Flags (only if explicitly set).
@@ -178,6 +190,9 @@ func load(fs *flag.FlagSet, requireOwner bool) (Config, error) {
 	}
 	if v := flagValue(fs, set, "ai-key"); v != "" {
 		c.AIKey = v
+	}
+	if v := flagValue(fs, set, "url"); v != "" {
+		c.URL = v
 	}
 
 	// Normalize and validate.

@@ -15,14 +15,23 @@ type Key struct {
 	key []byte
 }
 
+// LoadKey reads an existing 32-byte key file. It does not create one.
+func LoadKey(path string) (*Key, error) {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	if len(b) != 32 {
+		return nil, fmt.Errorf("key file %s: expected 32 bytes, got %d", path, len(b))
+	}
+	return &Key{key: b}, nil
+}
+
 // LoadOrCreateKey reads the key from path, creating it (random, mode
 // 0600) if it does not exist.
 func LoadOrCreateKey(path string) (*Key, error) {
-	if b, err := os.ReadFile(path); err == nil {
-		if len(b) != 32 {
-			return nil, fmt.Errorf("key file %s: expected 32 bytes, got %d", path, len(b))
-		}
-		return &Key{key: b}, nil
+	if k, err := LoadKey(path); err == nil {
+		return k, nil
 	} else if !os.IsNotExist(err) {
 		return nil, err
 	}

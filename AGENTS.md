@@ -50,7 +50,7 @@ never expose it): `./bin/snp serve --dev-listen :8080 && curl localhost:8080/api
 ## Architecture
 
 ```
-cmd/snp/          subcommands: serve, backup, export, import, decrypt, seed, doctor, key
+cmd/snp/          subcommands: serve, backup, export, import, decrypt, seed, doctor, key, pick, widget
 cmd/snp-desktop/  wails desktop binary (darwin/linux, spec §12) +
                   platform_{darwin,linux}.go per-OS options
 internal/config/  TOML + flags + SNP_* env; precedence flag > env > file > default

@@ -41,6 +41,9 @@ The server is one binary, `snp`:
   commands). Nothing seeds by itself; it is also a button in the app's
   settings panel.
 - `snp key show-path` — prints the encryption key path, for backup scripts.
+- `snp pick` — terminal picker. See [From the shell](#from-the-shell).
+- `snp widget` — prints the zsh setup that leaves the chosen command on
+  the prompt. Nothing runs until you press Enter.
 - `snp doctor` — check library health and repair the search index, see
   [Troubleshooting](#troubleshooting).
 
@@ -299,6 +302,67 @@ settings sheet shows both shortcuts.
 some everyday commands. Applying the starter pack again overwrites edits
 to its bundled snippets and restores any you deleted.
 
+### From the shell
+
+`snp pick` opens a picker in the terminal. The screen is a rounded panel:
+search at the top, the highlighted row filled in, language and tags faded
+on the right, and the command in a shaded block underneath. Search uses
+the same query language as the app (`tag:`, `lang:`, prefix terms).
+
+Enter on a plain snippet takes its body. Enter on a template opens every
+`{{var}}` as its own box, in the order it first appears. Tab and Shift-Tab
+move between the boxes. Each box starts from the saved default, then the
+inline `{{name|default}}` text. The rendered command under the boxes
+updates as you type, and clearing a box leaves that spot empty. Enter
+accepts that rendered text. Esc returns to the list, then closes the
+picker. Nothing runs until you press Enter back at the shell prompt.
+
+A sensitive command is inserted with a leading space, so zsh history can
+skip it when `HIST_IGNORE_SPACE` is set. The list does not show a
+sensitive body; Enter fetches it first.
+
+The picker looks for snippets in this order:
+
+1. `--url`, then `SNP_URL`, then `url` in the config file. On the tailnet
+   that is `https://snp.<your-tailnet>.ts.net`. Tailscale WhoIs is the
+   login, the same as the browser, so there is no extra credential.
+   `http://127.0.0.1:8080` points the picker at `snp serve --dev-listen`.
+2. With no URL, the local database in `state_dir`. That is what the dev
+   server and the desktop app use. `--local` forces that file even when a
+   URL is set.
+
+The picker does not create a database or a key. `snp serve` ignores `url`.
+A machine that only runs the picker does not need `owner`.
+
+In zsh, load the binding and the `snp pick` wrapper:
+
+```sh
+source <(snp widget)
+```
+
+The same text is in `deploy/snp.zsh`. Add the `source` line to `~/.zshrc`.
+
+The widget binds Ctrl-G to `snp-pick`, which inserts the command into the
+line you are already editing. A prefix such as `sudo ` stays in front of
+it. Typing `snp pick` and pressing Enter is the other way in: the wrapper
+runs the picker, then pushes the command onto the next prompt with
+`print -z`. Without that wrapper the binary can only print the text, and
+Starship marks the end of that line with `%` and draws a fresh prompt.
+
+Ctrl-G is often already taken. Bind another chord after the `source` line.
+Ctrl-X then S is a free one:
+
+```zsh
+source <(snp widget)
+bindkey '^G' send-break   # give Ctrl-G back, when zsh had it
+bindkey '^Xs' snp-pick
+```
+
+`cat -v` prints the sequence for a different chord: run it, press the
+chord, then Ctrl-D. A shortcut grabbed by the Mac or the terminal never
+reaches zsh, so only the new `bindkey` is required in that case. Cancel
+prints nothing and leaves the line you had alone.
+
 ### Duplicate a snippet
 
 Select a snippet and click **Duplicate**, or choose **Duplicate snippet**
@@ -499,10 +563,12 @@ beats file:
 | `ai_endpoint` | `--ai-endpoint` | `SNP_AI_ENDPOINT` | [OpenAI][ai-default] |
 | `ai_model` | `--ai-model` | `SNP_AI_MODEL` | `gpt-4o-mini` |
 | `ai_key` | `--ai-key` | `SNP_AI_KEY` | (AI disabled until set) |
+| `url` | `--url` | `SNP_URL` | (local database; `snp pick` only) |
 
 [ai-default]: https://api.openai.com/v1
 
-`owner` is optional for the desktop app and dev mode.
+`owner` is optional for the desktop app, dev mode, and `snp pick`.
+`snp serve` ignores `url`.
 
 For the systemd service, `HOME=/var/lib/snp`, so the defaults resolve to
 `/var/lib/snp/.config/snp/config.toml` and `/var/lib/snp/.local/share/snp`.

@@ -51,6 +51,10 @@ func main() {
 		runDoctor(args)
 	case "key":
 		runKey(args)
+	case "pick":
+		runPick(args)
+	case "widget":
+		runWidget(args)
 	case "version", "-v", "--version":
 		fmt.Println("snp", buildinfo.String())
 	case "help", "-h", "--help":
@@ -76,6 +80,8 @@ commands:
   seed        add the bundled starter snippets (nothing seeds by itself)
   doctor      check library health and repair the search index
   key         key management (show-path)
+  pick        choose a snippet in the terminal and print it
+  widget      print the zsh binding for pick
   version     print the snp version
 
 run "snp <command> -h" for command flags.
