@@ -2402,3 +2402,17 @@ Spec: `docs/snp-design.md` · Plan: `docs/snp-implementation-plan.md`
 - Verified: `go vet ./...`, `go test ./...`,
   `GOOS=linux GOARCH=amd64 go build ./cmd/snp` (the no-wails rule
   holds), and `make test` green — no `web/dist` drift.
+
+### 2026-09-29 — Roadmap: CLI AI (`snp ask` + Ask-AI in the editor)
+
+- Docs only. The roadmap's "Next" gained item 3: bring AI to the
+  terminal at parity with the web form (spec §13) — `snp ask` for
+  one-shot generation (stdout, or `--add` into a prefilled create
+  panel), plus Ask-AI / suggest-tags / explain-with-undo inside the
+  editor panel. Transport follows the library (`--url` → the server's
+  `/api/ai/*` endpoints and its key; local → `internal/ai`
+  in-process), and §13's rules carry over unchanged (one-shot, no
+  history, no snippet content in prompts, nothing logged, key-gated,
+  never for sensitive snippets). Suggested slices A1–A3, to be written
+  up fully when picked up.
+- No code changed; `go test` not run.

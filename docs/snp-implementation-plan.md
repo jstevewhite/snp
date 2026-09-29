@@ -40,12 +40,31 @@ last commits (the doctor work, the shell picker, and the CLI editor) are
    `main` is 21 commits past `v0.5.0`. Use the existing tag-triggered
    multi-platform workflow, and smoke `snp add` / `snp edit` (pty, both `--url`
    and local) as part of it.
-3. **Linux desktop container build + verification** — podman with
-   `libgtk-3-dev` + `libwebkit2gtk-4.1-dev` + Go; `make web`, then the desktop
-   build; exercise `install-desktop.sh` with a scratch `PREFIX=`.
-4. **Windows desktop port.**
-5. **Desktop follow-ons** — real app icon; surface startup errors in the window.
-6. **`snp doctor` deferred work** (its "Deferred" bullet below): `--deep`, the
+3. **CLI AI — `snp ask` and Ask-AI in the terminal editor** (planned
+   2026-09-29): AI is first-class in the web UI (spec §13 — Ask-AI fills
+   the body with a chosen output kind, Suggest-tags merges into the tag
+   field, Explain writes notes with Undo); the terminal gets the same.
+   `snp ask [--kind command|script|function] <prompt>` prints one
+   generation to stdout (or `--add` to open the `snp add` panel with the
+   body prefilled), and the editor panel gains the three controls:
+   Ctrl+A opens the Ask-AI prompt over the body, a suggest-tags action
+   over the tags field, an explain-with-undo over notes — the web form's
+   behaviors, key for key. Transport follows the library: `--url` uses
+   the server's `/api/ai/{status,generate,tags,explain}` (its key, its
+   policy — the status endpoint says whether it is on); local mode calls
+   `internal/ai` in-process from the local config (the `--ai-*` flags
+   already registered). Spec §13's rules carry over unchanged: strictly
+   one-shot, no history, no existing snippet content in a prompt, never
+   log prompts / responses / the key, off when no key is configured, and
+   never offered for a sensitive snippet. Suggested slices: A1 the client
+   surface (status/generate/tags/explain over both transports, the
+   `Editor` pattern), A2 `snp ask`, A3 the in-panel controls.
+4. **Linux desktop container build + verification** — podman with
+   `libgtk-3-dev` + `libwebkit2gtk-4.1-dev` + Go; `make web`, then the
+   desktop build; exercise `install-desktop.sh` with a scratch `PREFIX=`.
+5. **Windows desktop port.**
+6. **Desktop follow-ons** — real app icon; surface startup errors in the window.
+7. **`snp doctor` deferred work** (its "Deferred" bullet below): `--deep`, the
    key-requiring `revisions` check that turns a wrong or replaced key file into a
    specific diagnosis instead of a generic 500; point a search that fails with
    index corruption at the health check; offer orphan repair in the UI, today
