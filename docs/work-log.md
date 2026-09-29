@@ -14,6 +14,9 @@ Spec: `docs/snp-design.md` · Plan: `docs/snp-implementation-plan.md`
 
 ## Current status
 
+- CLI editor planned (2026-09-29): `snp add` / `snp edit` are on the roadmap
+  (plan "CLI snippet editor") — a Bubble Tea panel mirroring the GUI editor on
+  the picker's plumbing. No code yet; see the newest log entry.
 - Docs reorg (2026-09-29): the implementation plan gained a "Status and
   roadmap" section; `snp doctor` and `snp pick` are recorded there as complete;
   the stale `Next:` line below now points at it. README's "From the shell" notes
@@ -2171,3 +2174,28 @@ Spec: `docs/snp-design.md` · Plan: `docs/snp-implementation-plan.md`
 - Docs only — no Go or web code touched, so `go test`/`go vet` were not run. The
   roadmap tables restate phase/session status; keep them in step when the next
   phase lands.
+
+### 2026-09-29 — roadmap: CLI snippet editor (`snp add` / `snp edit`)
+
+- Gap: the CLI can only *read* snippets (`snp pick`) and bulk-load them (`snp
+  import`); there is no `snp add`. Creation lives in the web and desktop apps.
+- Plan: added a "CLI snippet editor — `snp add` / `snp edit` (planned)" section
+  and a roadmap item (Next #3). Design is a Bubble Tea panel that mirrors the
+  GUI editor. The GUI editor is already plain inputs (spec §6 — two textareas, a
+  language text input, a folder picker, a comma-separated tag input, a sensitive
+  checkbox, a synced template checkbox), so the form ports near 1:1; the only
+  divergences are the read/render layer (highlighting, Markdown notes) and the
+  mouse-driven chrome, neither of which is the editor. A parity table lists what
+  matches and what cannot.
+- Slices E1–E4: a write path on the picker's read-only `Library` (`Create` /
+  `Update`; URL `POST`/`PUT /api/snippets`, local `store.Create`/`Update`); the
+  editor panel (`internal/edit`, with `internal/template` driving the template
+  flag and `var_defaults` pruning); the folder / tag / language pickers in the
+  picker's palette; and the CLI + docs.
+- Gotcha flagged in the plan: unlike `snp pick`, local mode must **open-or-create**
+  the database and key (`store.LoadOrCreateKey`) — a new sensitive snippet needs
+  the key, so the picker's "never create" rule does not carry over.
+- Shell scope: `snp add` / `snp edit` are self-contained full-screen TUIs with no
+  shell widget, so they work in any shell; only `snp pick`'s inline binding is
+  zsh-only (backlog: bash / fish picker integration).
+- Docs only — no code yet, so `go test`/`go vet` were not run.

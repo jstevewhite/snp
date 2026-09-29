@@ -38,12 +38,17 @@ follow-on session work. `main` is at `v0.5.0-8-gd14e82f` — 8 commits past the
    the wails app with Settings → Layout = Compact.
 2. **Cut a release** covering `snp doctor` and `snp pick` — `main` is 8 commits
    past `v0.5.0`. Use the existing tag-triggered multi-platform workflow.
-3. **Linux desktop container build + verification** — podman with
+3. **CLI snippet editor — `snp add` / `snp edit`** (planned below): a Bubble Tea
+   panel that mirrors the GUI editor — the same fields, the same validation, the
+   same template / `var_defaults` rules. The API (`POST` and `PUT
+   /api/snippets`) and the picker's library plumbing already exist; the new work
+   is a write path and the form.
+4. **Linux desktop container build + verification** — podman with
    `libgtk-3-dev` + `libwebkit2gtk-4.1-dev` + Go; `make web`, then the desktop
    build; exercise `install-desktop.sh` with a scratch `PREFIX=`.
-4. **Windows desktop port.**
-5. **Desktop follow-ons** — real app icon; surface startup errors in the window.
-6. **`snp doctor` deferred work** (its "Deferred" bullet below): `--deep`, the
+5. **Windows desktop port.**
+6. **Desktop follow-ons** — real app icon; surface startup errors in the window.
+7. **`snp doctor` deferred work** (its "Deferred" bullet below): `--deep`, the
    key-requiring `revisions` check that turns a wrong or replaced key file into a
    specific diagnosis instead of a generic 500; point a search that fails with
    index corruption at the health check; offer orphan repair in the UI, today
@@ -981,3 +986,72 @@ capture the command.
   `go vet` clean on the picker; `GOOS=linux GOARCH=amd64 go build` of `cmd/snp`;
   a pty run of `snp pick --local` prints exactly the rendered command with empty
   stderr. `make test` was green on `main` at merge.
+
+## CLI snippet editor — `snp add` / `snp edit` (planned)
+
+Goal: create and edit snippets from the terminal in a Bubble Tea panel that
+mirrors the GUI editor. The GUI editor is already plain inputs (spec §6: "a
+plain textarea for the body, a plain textarea for notes, a language text input,
+a folder picker, a comma-separated tag input with a sensitive checkbox, and a
+template checkbox that stays in sync with the body's `{{var}}` placeholders"),
+so the form ports cleanly. The work is the panel, the pickers, and a write path
+the picker does not have today. Reuse `internal/pick` for the Bubble Tea setup,
+the palette and `/dev/tty` handling, and its library resolution (`--url` /
+`SNP_URL` / config `url`, else `state_dir/snp.db`).
+
+### Parity target (GUI → TUI)
+
+| GUI (spec §6) | TUI panel | Fidelity |
+|---|---|---|
+| Title (create draft) | single-line input | full |
+| Body | multi-line editor | full (the GUI editor is a plain textarea too; no highlighting either side) |
+| Notes | multi-line editor | full (Markdown rendering lives in the GUI read view, not the editor) |
+| Language | text input with the known-language list | full |
+| Folder | keyboard picker over the live tree, nested `parent/child` labels | full |
+| Tags | comma-separated input with suggestions from the tag list | full |
+| Sensitive | toggle; masked until revealed; reveal fetches the decrypted body first | full |
+| Template | derived from `template.HasVars(body)`, shown with the variable list (not hand-set) | full |
+| Favorite / pin | toggle | full |
+| Save (button, `Cmd/Ctrl+Enter`) | `Ctrl+S` / `Ctrl+Enter` | full |
+| Cancel (`Esc`; Back = Cancel) | `Esc`, with the dirty guard | full |
+| Failed write keeps the editor state | status line; the panel stays open | full |
+| Read view: syntax highlighting, Markdown notes, 10-line cap + Show all | none | **diverges** — plain text |
+| Three-pane mouse UI, palette, dialogs | keyboard only | **diverges** |
+
+The form and its rules can match the GUI nearly one-for-one; the read/render
+layer, which is not part of the editor, cannot.
+
+### Slices
+
+- **E1 — write path.** `internal/pick`'s `Library` is read-only (`Search`,
+  `Reveal`); add a writer — `Create(ctx, Snippet) (id string, error)` and
+  `Update(ctx, Snippet) error`. URL mode uses the existing endpoints (`POST
+  /api/snippets`, `PUT /api/snippets/{id}`); local mode uses `store.Create` /
+  `store.Update`. Unlike `snp pick`, local mode must **open-or-create** the
+  database and the key (`store.LoadOrCreateKey`): creating a sensitive snippet
+  needs the key, so the picker's deliberate "never create" rule does not carry
+  over.
+- **E2 — the editor panel** (`internal/edit`): one Bubble Tea model with the
+  field set above, Tab / Shift-Tab between fields, a multi-line body editor,
+  `internal/template` driving the template flag and the variable list, and
+  `var_defaults` carried forward pruned to the variables the body still uses
+  (the same rule the GUI save uses). A sensitive body stays masked until
+  revealed; a write that fails shows the mapped error inline and keeps the
+  draft; `Esc` honors the dirty guard.
+- **E3 — pickers and bindings**: the folder picker over the same tree the GUI
+  shows, the tag input with suggestions from the tag list, and the language
+  list — all in `internal/pick`'s style and palette so the panel and the picker
+  read as one tool.
+- **E4 — CLI and docs**: `snp add` opens the panel empty; `snp edit <id|query>`
+  opens it on a row (a query reuses the picker's search to disambiguate).
+  Non-interactive flags / `--stdin` are a later add. The panel is a
+  self-contained full-screen TUI — it needs no shell widget, so it works in any
+  shell (zsh, bash, fish); only `snp pick`'s inline binding is zsh-only. Update
+  README ("From the shell" gains an add/edit part), spec §6, and the AGENTS /
+  CLAUDE subcommand lists.
+
+**Done when**: a snippet is created and edited from the terminal in both `--url`
+and local modes with every field above; a sensitive body round-trips encrypted
+and is never written empty; the template flag and `var_defaults` pruning match
+the GUI; validation errors (tag charset, folder sibling/collision, unknown id)
+surface inline and never lose the draft; `make test` green and `go vet` clean.
