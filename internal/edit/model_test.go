@@ -131,7 +131,7 @@ func TestTabRingAndToggles(t *testing.T) {
 	if m.focus != stopTitle {
 		t.Fatalf("focus = %d", m.focus)
 	}
-	stops := []stop{stopBody, stopNotes, stopLanguage, stopTags, stopSensitive, stopPinned}
+	stops := []stop{stopBody, stopNotes, stopLanguage, stopFolder, stopTags, stopSensitive, stopPinned}
 	for _, want := range stops {
 		m, _ = apply(m, press(tea.KeyTab, "", 0))
 		if m.focus != want {
@@ -364,6 +364,169 @@ func TestDirtyGuardOnEsc(t *testing.T) {
 	}
 	if _, ok := m.Result(); ok {
 		t.Fatal("discard produced a save")
+	}
+}
+
+func TestFolderPickerSelectAndAdvance(t *testing.T) {
+	ed := &fakeEditor{folders: []pick.Folder{
+		{ID: "p1", Name: "ops"},
+		{ID: "f1", ParentID: strPtr("p1"), Name: "deploy"},
+	}}
+	m := start(t, ed, nil)
+	// title → body → notes → language → folder
+	for range 4 {
+		m, _ = apply(m, press(tea.KeyTab, "", 0))
+	}
+	if m.focus != stopFolder {
+		t.Fatalf("focus = %d", m.focus)
+	}
+	if !strings.Contains(m.View().Content, "(none)") || !strings.Contains(m.View().Content, "ops/deploy") {
+		t.Fatalf("list missing: %s", m.View().Content)
+	}
+	m, _ = apply(m, press(tea.KeyDown, "", 0))
+	if m.folderCursor != 1 {
+		t.Fatalf("cursor = %d", m.folderCursor)
+	}
+	m, _ = apply(m, enter())
+	if m.folderID == nil || *m.folderID != "p1" || m.focus != stopTags {
+		t.Fatalf("pick: folder=%v focus=%d", m.folderID, m.focus)
+	}
+	// Back to the folder stop (8 stops → 7 tabs from tags), re-pick
+	// Unfiled: create goes back to nil.
+	for range 7 {
+		m, _ = apply(m, press(tea.KeyTab, "", 0))
+	}
+	m, _ = apply(m, press(tea.KeyUp, "", 0))
+	m, _ = apply(m, enter())
+	if m.folderID != nil {
+		t.Fatalf("unfiled pick: %v", *m.folderID)
+	}
+	// A create with a picked folder carries it.
+	m, _ = apply(m, press(tea.KeyTab, "", 0))
+	m, _ = apply(m, press(tea.KeyTab, "", 0))
+	m.title.SetValue("t")
+	m, cmd := apply(m, ctrlS())
+	m, _ = apply(m, cmd())
+	if in := ed.creates[len(ed.creates)-1]; in.FolderID != nil {
+		t.Fatalf("create folder = %v", *in.FolderID)
+	}
+}
+
+func TestFolderPickerSeedCursorAndSamePickNotDirty(t *testing.T) {
+	ed := &fakeEditor{snippet: *seedSnippet(), folders: []pick.Folder{
+		{ID: "p1", Name: "ops"},
+		{ID: "f1", ParentID: strPtr("p1"), Name: "deploy"},
+	}}
+	m := start(t, ed, seedSnippet())
+	if m.folderName != "ops/deploy" || m.folderChoices[m.folderCursor].path != "ops/deploy" {
+		t.Fatalf("seed cursor: name=%q cursor=%d", m.folderName, m.folderCursor)
+	}
+	// Re-picking the same folder yields a new pointer with the same
+	// value — the draft must not read as dirty for that alone.
+	for range 4 {
+		m, _ = apply(m, press(tea.KeyTab, "", 0))
+	}
+	m, _ = apply(m, enter())
+	if m.dirty() {
+		t.Fatal("same-value re-pick flagged dirty")
+	}
+}
+
+func TestTagSuggestions(t *testing.T) {
+	ed := &fakeEditor{tags: []pick.TagCount{
+		{Name: "ops", Count: 2}, {Name: "caddy", Count: 1}, {Name: "other", Count: 1},
+	}}
+	m := start(t, ed, nil)
+	// title → body → notes → language → folder → tags
+	for range 5 {
+		m, _ = apply(m, press(tea.KeyTab, "", 0))
+	}
+	for _, r := range "ca" {
+		m, _ = apply(m, press(r, string(r), 0))
+	}
+	if !strings.Contains(m.View().Content, "caddy") {
+		t.Fatalf("no suggestion shown: %s", m.View().Content)
+	}
+	// Down activates; Enter accepts into the field and keeps focus there.
+	m, _ = apply(m, press(tea.KeyDown, "", 0))
+	if m.suggActive != 0 {
+		t.Fatalf("suggActive = %d", m.suggActive)
+	}
+	m, _ = apply(m, enter())
+	if m.tags.Value() != "caddy" || m.focus != stopTags {
+		t.Fatalf("accept: tags=%q focus=%d", m.tags.Value(), m.focus)
+	}
+	if m.suggActive != -1 {
+		t.Fatalf("suggActive after accept = %d", m.suggActive)
+	}
+	// Enter with no highlight advances.
+	m, _ = apply(m, enter())
+	if m.focus != stopSensitive {
+		t.Fatalf("advance: focus = %d", m.focus)
+	}
+	// A word with no matches suggests nothing and Enter still advances.
+	m2 := start(t, ed, nil)
+	for range 5 {
+		m2, _ = apply(m2, press(tea.KeyTab, "", 0))
+	}
+	for _, r := range "zz" {
+		m2, _ = apply(m2, press(r, string(r), 0))
+	}
+	m2, _ = apply(m2, enter())
+	if m2.focus != stopSensitive {
+		t.Fatalf("no-match advance: focus = %d", m2.focus)
+	}
+}
+
+func TestLanguageSuggestions(t *testing.T) {
+	m := start(t, &fakeEditor{}, nil)
+	for range 3 {
+		m, _ = apply(m, press(tea.KeyTab, "", 0))
+	}
+	if m.focus != stopLanguage {
+		t.Fatalf("focus = %d", m.focus)
+	}
+	for _, r := range "ya" {
+		m, _ = apply(m, press(r, string(r), 0))
+	}
+	m, _ = apply(m, press(tea.KeyDown, "", 0))
+	m, _ = apply(m, enter())
+	if m.language.Value() != "yaml" {
+		t.Fatalf("language = %q", m.language.Value())
+	}
+	// Esc clears a highlight first instead of leaving the panel. The
+	// seed's language is itself a suggestion match, so the highlight
+	// exists without any edit and Esc must only clear it.
+	seeded := seedSnippet()
+	seeded.Language = "js"
+	m = start(t, &fakeEditor{snippet: *seeded}, seeded)
+	for range 3 {
+		m, _ = apply(m, press(tea.KeyTab, "", 0))
+	}
+	m, _ = apply(m, press(tea.KeyDown, "", 0))
+	m, _ = apply(m, press(tea.KeyEsc, "", 0))
+	if m.suggActive != -1 || m.quitting || m.asking {
+		t.Fatalf("esc clear: active=%d quit=%v asking=%v", m.suggActive, m.quitting, m.asking)
+	}
+}
+
+func TestCreateDirtyIncludesTogglesAndFolder(t *testing.T) {
+	// A fresh create with only the sensitive toggle on must read as
+	// dirty: Esc asks instead of silently dropping it.
+	ed := &fakeEditor{folders: []pick.Folder{{ID: "p1", Name: "ops"}}}
+	m := start(t, ed, nil)
+	m.sensitive = true
+	if !m.dirty() {
+		t.Fatal("sensitive-only create not dirty")
+	}
+	m2 := start(t, ed, nil)
+	for range 4 {
+		m2, _ = apply(m2, press(tea.KeyTab, "", 0))
+	}
+	m2, _ = apply(m2, press(tea.KeyDown, "", 0))
+	m2, _ = apply(m2, enter())
+	if !m2.dirty() {
+		t.Fatal("folder-only create not dirty")
 	}
 }
 

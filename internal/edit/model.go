@@ -2,6 +2,7 @@ package edit
 
 import (
 	"context"
+	"sort"
 	"strings"
 
 	"charm.land/bubbles/v2/textarea"
@@ -22,11 +23,29 @@ const (
 	stopBody
 	stopNotes
 	stopLanguage
+	stopFolder
 	stopTags
 	stopSensitive
 	stopPinned
 	stopCount
 )
+
+// languages mirrors the user-facing spellings the read view can highlight
+// (web/src/lib/highlight.ts ALIASES keys). Suggestions only — free text is
+// still accepted — so drift is cosmetic, but keep the two in step.
+var languages = []string{
+	"bash", "c", "c++", "cpp", "css", "diff", "dockerfile", "go", "golang",
+	"html", "ini", "java", "javascript", "js", "json", "make", "makefile",
+	"markdown", "md", "nginx", "node", "php", "py", "python", "rb", "rs",
+	"ruby", "rust", "sh", "shell", "sql", "toml", "ts", "typescript",
+	"xml", "yaml", "yml", "zsh",
+}
+
+// folderChoice is one row of the folder picker: nil id is Unfiled.
+type folderChoice struct {
+	id   *string
+	path string
+}
 
 // Model is the editor panel: one form mirroring the GUI editor (spec §6),
 // the same fields, validation, and template / var_defaults rules.
@@ -52,13 +71,27 @@ type Model struct {
 	sensitive bool
 	pinned    bool
 
-	// A sensitive body is masked until revealed (Ctrl+R). While masked
-	// the box stays empty and saves carry the seed body verbatim.
+	// revealed is set for non-sensitive seeds: the body box is live.
+	// A sensitive body stays masked until revealed (Ctrl+R); while
+	// masked the box is empty and saves carry the seed body verbatim.
 	revealed bool
 
-	// folderID is carried unchanged; folderName is its display label.
+	// folderID is the current selection, carried into every write;
+	// folderName is its display label until the picker list loads.
 	folderID   *string
 	folderName string
+
+	// folder picker state. choices[0] is always Unfiled (nil id); the
+	// paths are parent/child labels sorted for a stable list.
+	folderChoices []folderChoice
+	folderCursor  int
+
+	// tagNames backs the tag suggestions; suggActive is the highlighted
+	// suggestion for the focused suggestible field (-1 = none). The
+	// focused field decides which list it indexes; it resets on text
+	// change and on focus change.
+	tagNames   []string
+	suggActive int
 
 	err     string
 	asking   bool // dirty-quit confirm
@@ -92,6 +125,8 @@ func New(ctx context.Context, ed pick.Editor, seed *pick.Snippet) Model {
 		title:    title,
 		language: language,
 		tags:     tags,
+		// no suggestion is highlighted until Down picks one
+		suggActive: -1,
 	}
 	m.body = textarea.New()
 	m.body.Placeholder = "the snippet body"
@@ -120,14 +155,18 @@ func New(ctx context.Context, ed pick.Editor, seed *pick.Snippet) Model {
 }
 
 func (m Model) Init() tea.Cmd {
+	ed, ctx := m.ed, m.ctx
 	cmds := []tea.Cmd{tea.RequestBackgroundColor, m.title.Focus()}
-	if m.seed != nil && m.seed.FolderID != nil {
-		ed, ctx, id := m.ed, m.ctx, *m.seed.FolderID
-		cmds = append(cmds, func() tea.Msg {
+	cmds = append(cmds,
+		func() tea.Msg {
 			folders, err := ed.Folders(ctx)
-			return foldersMsg{folders: folders, id: id, err: err}
-		})
-	}
+			return foldersMsg{folders: folders, err: err}
+		},
+		func() tea.Msg {
+			tags, err := ed.Tags(ctx)
+			return tagsMsg{tags: tags, err: err}
+		},
+	)
 	return tea.Batch(cmds...)
 }
 
@@ -141,8 +180,12 @@ func (m Model) Result() (pick.Snippet, bool) {
 
 type foldersMsg struct {
 	folders []pick.Folder
-	id      string
 	err     error
+}
+
+type tagsMsg struct {
+	tags []pick.TagCount
+	err  error
 }
 
 type savedMsg struct {
@@ -169,10 +212,20 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.err != nil {
 			// The folder is carried by ID regardless; only the label
 			// is missing.
-			m.folderName = msg.id
 			return m, nil
 		}
-		m.folderName = folderLabel(msg.folders, msg.id)
+		m.setFolders(msg.folders)
+		return m, nil
+	case tagsMsg:
+		if msg.err != nil {
+			// Suggestions are optional decoration; a failed load must
+			// not break the editor.
+			return m, nil
+		}
+		m.tagNames = make([]string, len(msg.tags))
+		for i, t := range msg.tags {
+			m.tagNames[i] = t.Name
+		}
 		return m, nil
 	case savedMsg:
 		m.saving = false
@@ -233,6 +286,12 @@ func (m Model) onKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m.focusStop(stop(next))
 	}
 	if k.Code == tea.KeyEsc {
+		// A highlighted suggestion clears first, like the picker's
+		// "esc clears, then cancels".
+		if m.suggActive >= 0 {
+			m.suggActive = -1
+			return m, nil
+		}
 		if !m.dirty() {
 			m.quitting = true
 			m.saved = nil
@@ -243,14 +302,34 @@ func (m Model) onKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	}
 	if k.Code == tea.KeyEnter {
 		switch m.focus {
-		case stopTitle, stopLanguage, stopTags:
-			// Enter in a single-line field advances, like Tab; the
-			// textareas keep Enter for newlines.
+		case stopTitle:
+			next := (int(m.focus) + 1) % int(stopCount)
+			return m.focusStop(stop(next))
+		case stopLanguage, stopTags:
+			// Enter accepts a highlighted suggestion; without one it
+			// advances like the other single-line fields.
+			if m.suggActive >= 0 {
+				m.acceptSuggestion()
+				return m, nil
+			}
 			next := (int(m.focus) + 1) % int(stopCount)
 			return m.focusStop(stop(next))
 		}
 	}
 	switch m.focus {
+	case stopFolder:
+		switch k.Code {
+		case tea.KeyUp:
+			m.folderCursor = (m.folderCursor - 1 + len(m.folderChoices)) % len(m.folderChoices)
+		case tea.KeyDown:
+			m.folderCursor = (m.folderCursor + 1) % len(m.folderChoices)
+		case tea.KeyEnter:
+			m.folderID = m.folderChoices[m.folderCursor].id
+			m.folderName = m.folderChoices[m.folderCursor].path
+			next := (int(m.focus) + 1) % int(stopCount)
+			return m.focusStop(stop(next))
+		}
+		return m, nil
 	case stopSensitive, stopPinned:
 		if k.Code == ' ' || k.Code == tea.KeyEnter {
 			if m.focus == stopSensitive {
@@ -266,13 +345,9 @@ func (m Model) onKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.title, cmd = m.title.Update(msg)
 		return m, cmd
 	case stopLanguage:
-		var cmd tea.Cmd
-		m.language, cmd = m.language.Update(msg)
-		return m, cmd
+		return m.updateSuggestible(&m.language, msg)
 	case stopTags:
-		var cmd tea.Cmd
-		m.tags, cmd = m.tags.Update(msg)
-		return m, cmd
+		return m.updateSuggestible(&m.tags, msg)
 	case stopBody:
 		var cmd tea.Cmd
 		m.body, cmd = m.body.Update(msg)
@@ -328,20 +403,77 @@ func (m Model) input() pick.Input {
 	}
 }
 
+// suggestions lists the prefix matches for the focused suggestible field:
+// the current tag word (text after the last comma) against the library's
+// tags, or the whole language field against the known list. An exact
+// match of the word itself is not suggested; five at most.
+func (m Model) suggestions() []string {
+	var word string
+	var pool []string
+	switch m.focus {
+	case stopTags:
+		parts := strings.Split(m.tags.Value(), ",")
+		word = strings.TrimSpace(parts[len(parts)-1])
+		pool = m.tagNames
+	case stopLanguage:
+		word = strings.TrimSpace(m.language.Value())
+		pool = languages
+	default:
+		return nil
+	}
+	if word == "" {
+		return nil
+	}
+	lower := strings.ToLower(word)
+	var out []string
+	for _, name := range pool {
+		if name != word && strings.HasPrefix(strings.ToLower(name), lower) {
+			out = append(out, name)
+			if len(out) == 5 {
+				break
+			}
+		}
+	}
+	return out
+}
+
+// acceptSuggestion replaces the focused field's word with the highlighted
+// suggestion and clears the highlight.
+func (m *Model) acceptSuggestion() {
+	suggs := m.suggestions()
+	if m.suggActive < 0 || m.suggActive >= len(suggs) {
+		return
+	}
+	picked := suggs[m.suggActive]
+	switch m.focus {
+	case stopTags:
+		parts := strings.Split(m.tags.Value(), ",")
+		parts[len(parts)-1] = picked
+		m.tags.SetValue(strings.Join(parts, ","))
+	case stopLanguage:
+		m.language.SetValue(picked)
+	}
+	m.suggActive = -1
+}
+
 // dirty reports whether the draft differs from the seed, mirroring the
 // GUI's dirty check: a masked sensitive body is its seed body.
 func (m Model) dirty() bool {
 	in := m.input()
 	if m.seed == nil {
 		return in.Title != "" || in.Body != "" || in.Notes != "" ||
-			in.Language != "" || len(in.Tags) > 0 || in.Pinned
+			in.Language != "" || len(in.Tags) > 0 || in.Pinned ||
+			in.IsSensitive || in.FolderID != nil
 	}
 	s := m.seed
+	// var_defaults is deliberately not compared: the panel has no UI for
+	// it and pruning happens at save (the GUI's dirty check skips it
+	// too), so a seed carrying defaults its body no longer uses must
+	// still open as clean.
 	return in.Title != s.Title || in.Body != s.Body || in.Notes != s.Notes ||
-		in.Language != s.Language || m.folderID != s.FolderID ||
+		in.Language != s.Language || !sameFolderID(m.folderID, s.FolderID) ||
 		in.IsSensitive != s.Sensitive || in.UsesVariables != s.UsesVariables ||
-		in.Pinned != s.Pinned || !sameTags(in.Tags, s.Tags) ||
-		!sameDefaults(in.VarDefaults, s.VarDefaults)
+		in.Pinned != s.Pinned || !sameTags(in.Tags, s.Tags)
 }
 
 func (m Model) save() (tea.Model, tea.Cmd) {
@@ -367,8 +499,40 @@ func (m Model) save() (tea.Model, tea.Cmd) {
 	}
 }
 
+// updateSuggestible routes a key for the language or tags field: Up/Down
+// cycle the suggestion highlight while matches exist; any text change
+// drops the highlight; everything else goes to the input.
+func (m *Model) updateSuggestible(in *textinput.Model, msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	k := msg.Key()
+	if k.Code == tea.KeyUp || k.Code == tea.KeyDown {
+		n := len(m.suggestions())
+		if n > 0 {
+			if k.Code == tea.KeyDown {
+				m.suggActive++
+			} else {
+				m.suggActive--
+			}
+			if m.suggActive < 0 {
+				m.suggActive = n - 1
+			}
+			if m.suggActive >= n {
+				m.suggActive = 0
+			}
+			return *m, nil
+		}
+	}
+	prev := in.Value()
+	var cmd tea.Cmd
+	*in, cmd = in.Update(msg)
+	if in.Value() != prev {
+		m.suggActive = -1
+	}
+	return *m, cmd
+}
+
 func (m Model) focusStop(s stop) (tea.Model, tea.Cmd) {
 	m.focus = s
+	m.suggActive = -1
 	m.title.Blur()
 	m.language.Blur()
 	m.tags.Blur()
@@ -427,6 +591,32 @@ func (m Model) contentWidth() int {
 	return w
 }
 
+// setFolders builds the picker list — Unfiled first, then every live
+// folder as a parent/child path, sorted — and points the cursor at the
+// current selection.
+func (m *Model) setFolders(folders []pick.Folder) {
+	choices := make([]folderChoice, 0, len(folders)+1)
+	choices = append(choices, folderChoice{path: "(none)"})
+	rest := make([]folderChoice, 0, len(folders))
+	for _, f := range folders {
+		fid := f.ID
+		rest = append(rest, folderChoice{id: &fid, path: folderLabel(folders, f.ID)})
+	}
+	sort.Slice(rest, func(i, j int) bool { return rest[i].path < rest[j].path })
+	choices = append(choices, rest...)
+	m.folderChoices = choices
+	m.folderCursor = 0
+	if m.folderID != nil {
+		for i, c := range choices {
+			if c.id != nil && *c.id == *m.folderID {
+				m.folderCursor = i
+				break
+			}
+		}
+	}
+	m.folderName = choices[m.folderCursor].path
+}
+
 // folderLabel builds a parent/child path from the flat folder list. The
 // store forbids cycles; the visited set is cheap insurance anyway.
 func folderLabel(folders []pick.Folder, id string) string {
@@ -451,6 +641,13 @@ func folderLabel(folders []pick.Folder, id string) string {
 	return strings.Join(parts, "/")
 }
 
+func sameFolderID(a, b *string) bool {
+	if a == nil || b == nil {
+		return a == nil && b == nil
+	}
+	return *a == *b
+}
+
 func sameTags(a, b []string) bool {
 	if len(a) != len(b) {
 		return false
@@ -468,14 +665,3 @@ func sameTags(a, b []string) bool {
 	return true
 }
 
-func sameDefaults(a, b map[string]string) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	for k, v := range a {
-		if w, ok := b[k]; !ok || v != w {
-			return false
-		}
-	}
-	return true
-}

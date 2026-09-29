@@ -35,8 +35,11 @@ func (m Model) View() tea.View {
 	}
 	fmt.Fprintf(&b, "%s\n", m.notes.View())
 	fmt.Fprintf(&b, "%s\n", m.language.View())
-	fmt.Fprintf(&b, "%s\n", m.tags.View())
+	m.writeSuggestions(&b, th)
 	fmt.Fprintf(&b, "%s\n", m.folderLine(th))
+	m.writeFolderList(&b, th)
+	fmt.Fprintf(&b, "%s\n", m.tags.View())
+	m.writeSuggestions(&b, th)
 
 	fmt.Fprintf(&b, "%s\n", m.toggleLine(th, "Sensitive", m.sensitive, stopSensitive))
 	fmt.Fprintf(&b, "%s\n", m.toggleLine(th, "Pinned", m.pinned, stopPinned))
@@ -53,7 +56,7 @@ func (m Model) View() tea.View {
 		fmt.Fprintf(&b, "%s\n", th.Warn.Render("Discard changes? y discard   n keep editing"))
 		fmt.Fprintf(&b, "%s\n", th.Help.Render("y discard   n keep editing   ctrl+c quits anyway"))
 	} else {
-		fmt.Fprintf(&b, "%s\n", th.Help.Render("tab next   shift-tab back   enter advances   ctrl+s save   esc cancel"))
+		fmt.Fprintf(&b, "%s\n", th.Help.Render("tab next   shift-tab back   ↑↓ lists   enter pick or advance   ctrl+s save   esc cancel"))
 	}
 
 	v := tea.NewView(th.Frame.Width(m.frameWidth()).Render(strings.TrimRight(b.String(), "\n")))
@@ -61,19 +64,73 @@ func (m Model) View() tea.View {
 	return v
 }
 
-// folderLine renders the carried folder. E3 displays it read-only — the
-// full-replace write needs the ID intact; E4 replaces this with the picker.
+// folderLine renders the folder stop with its current selection. The
+// full-replace write needs the ID intact; the picker below edits it.
 func (m Model) folderLine(th tui.Theme) string {
-	label := "Unfiled"
-	if m.folderID != nil && m.folderName != "" {
-		label = m.folderName
-	} else if m.folderID != nil {
-		label = *m.folderID
+	label := m.folderName
+	if label == "" {
+		if m.folderID != nil {
+			label = *m.folderID
+		} else {
+			label = "(none)"
+		}
 	}
-	if m.seed == nil {
-		label = "—"
+	line := th.Dim.Render("Folder     ") + th.Meta.Render(label)
+	if m.focus == stopFolder {
+		return th.Selected.Render(line)
 	}
-	return th.Dim.Render("Folder     ") + th.Meta.Render(label)
+	return line
+}
+
+// writeFolderList renders the picker's inline list while the folder stop
+// is focused: a six-row window over Unfiled + the sorted paths, the
+// cursor row highlighted.
+func (m Model) writeFolderList(b *strings.Builder, th tui.Theme) {
+	if m.focus != stopFolder || len(m.folderChoices) == 0 {
+		return
+	}
+	const rows = 6
+	start := m.folderCursor - rows/2
+	if start < 0 {
+		start = 0
+	}
+	end := start + rows
+	if end > len(m.folderChoices) {
+		end = len(m.folderChoices)
+		start = end - rows
+		if start < 0 {
+			start = 0
+		}
+	}
+	w := m.contentWidth()
+	for i := start; i < end; i++ {
+		if i == m.folderCursor {
+			fmt.Fprintf(b, "%s\n", th.Selected.Width(w).Render("  "+m.folderChoices[i].path))
+		} else {
+			fmt.Fprintf(b, "%s\n", th.Dim.Render("  "+m.folderChoices[i].path))
+		}
+	}
+}
+
+// writeSuggestions renders the focused suggestible field's matches below
+// it, the highlighted one first-class. Everything is derived from focus,
+// so the wrong field can never show another's suggestions.
+func (m Model) writeSuggestions(b *strings.Builder, th tui.Theme) {
+	if m.focus != stopTags && m.focus != stopLanguage {
+		return
+	}
+	suggs := m.suggestions()
+	if len(suggs) == 0 {
+		return
+	}
+	w := m.contentWidth()
+	for i, s := range suggs {
+		if i == m.suggActive {
+			fmt.Fprintf(b, "%s\n", th.Selected.Width(w).Render("  "+s))
+		} else {
+			fmt.Fprintf(b, "%s\n", th.Dim.Render("  "+s))
+		}
+	}
 }
 
 // toggleLine renders a boolean stop with its state.
