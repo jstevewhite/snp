@@ -14,6 +14,11 @@ Spec: `docs/snp-design.md` · Plan: `docs/snp-implementation-plan.md`
 
 ## Current status
 
+- **`v0.6.0` released (2026-09-29)** — doctor, picker, CLI editor, and CLI
+  AI, with the interactive pty smoke verified by hand in both local and
+  `--url` modes (`snp add` / `snp edit` / `snp ask`, error texts, the
+  sensitive round-trip, and no local state touched in `--url` mode).
+  See the newest log entry.
 - CLI AI (2026-09-29): **A1–A3 done — complete.** `internal/ask`
   (Service over Local + HTTP, server policy replicated both ways),
   `snp ask` (stdout-pure generation, `--add` into the editor), and the
@@ -2576,3 +2581,23 @@ Spec: `docs/snp-design.md` · Plan: `docs/snp-implementation-plan.md`
   the four unreleased features the next tag ships.
 - Verified: `go vet ./...` and `go test ./...` green after the edits
   (docs only, but cheap to confirm).
+
+### 2026-09-29 — `v0.6.0` released; pty smoke closed
+
+- Gate before the tag: `make test` green (428 web tests + Go suite +
+  svelte-check), `make build` artifact proof (`snp version` reporting
+  `v0.5.0-27-gcfb8725`), tree clean. Tagged annotated `v0.6.0`, pushed
+  `main` then the tag; the release workflow built every platform
+  (8m34s) and published all seven assets.
+- The interactive pty smoke — the item the editor and CLI AI slices
+  had left riding with the release checklist — was run by hand after
+  the release, in both transports: local mode first, then `--url`
+  against the dev listener (`snp pick` / `add` / `edit` / `ask`,
+  `--add`, the chooser from a query, the sensitive mask/reveal
+  round-trip, the server's own error texts inline, and the no-local-
+  state guarantee in `--url` mode). Both passed.
+- Docs: the plan's header, roadmap, Shipped table, and release
+  history now record `v0.6.0` and the closed smoke; the "Cut a
+  release" and CLI AI items left the Next list (done), and the
+  remaining numbering was restored.
+- Docs only; no code changed.

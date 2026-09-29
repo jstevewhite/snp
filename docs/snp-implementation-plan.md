@@ -4,8 +4,8 @@ Date: 2026-09-02 · Last updated: 2026-09-29
 Status: Phases 0–11 complete and merged; follow-on session work through
 `snp pick` (2026-09-28), the CLI snippet editor `snp add` / `snp edit`,
 and CLI AI — `snp ask` + the editor's AI controls (2026-09-29) — complete
-on `main`. `main` is 25 commits past the `v0.5.0` tag — the doctor,
-picker, editor, and CLI AI work is unreleased. Open work is listed under
+and released as **`v0.6.0`** (2026-09-29), interactive pty smoke verified
+in both local and `--url` modes. Open work is listed under
 "Status and roadmap" below.
 Spec: `docs/snp-design.md` (this plan implements that document; section refs
 like "spec §4" point there)
@@ -13,9 +13,9 @@ like "spec §4" point there)
 ## Status and roadmap (2026-09-29)
 
 Every numbered phase (0–11) is complete and merged to `main`, together with the
-follow-on session work. `main` is 25 commits past the `v0.5.0` tag, and the
-last commits (the doctor work, the shell picker, the CLI editor, and CLI
-AI) are **unreleased**.
+follow-on session work. **`v0.6.0` (2026-09-29)** released it all: the doctor
+work, the shell picker, the CLI editor, and CLI AI, with the interactive pty
+smoke verified by hand in both local and `--url` modes.
 
 ### Shipped
 
@@ -29,8 +29,8 @@ AI) are **unreleased**.
 | `snp doctor` | 2026-09-25 | merged `cfc2d87`; store, `/api/doctor[/repair]`, health dialog |
 | `snp pick` shell client | 2026-09-28 | merged `4bb6f33`; picker + `snp widget` zsh binding |
 | `web/dist` stub build fix | 2026-09-28 | merged `d14e82f`; `restore-dist-stub` runs after the compile |
-| CLI snippet editor | 2026-09-29 | `snp add` / `snp edit` — `internal/tui`, `internal/edit`, chooser, lazy key; interactive pty smoke rides with the release checklist |
-| CLI AI | 2026-09-29 | `snp ask` + the editor's Ask-AI / suggest-tags / explain-undo controls — `internal/ask`, Local + HTTP; pty smoke rides with the release checklist |
+| CLI snippet editor | 2026-09-29 | `snp add` / `snp edit` — `internal/tui`, `internal/edit`, chooser, lazy key; released in `v0.6.0`, pty smoke verified (local + `--url`) |
+| CLI AI | 2026-09-29 | `snp ask` + the editor's Ask-AI / suggest-tags / explain-undo controls — `internal/ask`, Local + HTTP; released in `v0.6.0`, pty smoke verified (local + `--url`) |
 
 ### Next (priority order)
 
@@ -38,22 +38,12 @@ AI) are **unreleased**.
    code is merged). iOS Safari as a tab and as the installed PWA (swipe-back at
    each depth); Android Chrome hardware back (drawer → detail → leaves the app);
    the wails app with Settings → Layout = Compact.
-2. **Cut a release** covering `snp doctor`, `snp pick`, the CLI editor, and
-   CLI AI — `main` is 25 commits past `v0.5.0`. Use the existing
-   tag-triggered multi-platform workflow, and smoke `snp add` /
-   `snp edit` / `snp ask` (pty, both `--url` and local) as part of it.
-3. **CLI AI — `snp ask` and Ask-AI in the terminal editor** (complete —
-   A1–A3 landed 2026-09-29; see the section below): AI at parity
-   with the web form — `snp ask` for one-shot generation, plus the
-   Ask-AI / suggest-tags / explain-with-undo controls inside the editor
-   panel, over the existing `/api/ai/*` endpoints and `internal/ai`.
-   The interactive pty smoke rides with the release checklist.
-4. **Linux desktop container build + verification** — podman with
+2. **Linux desktop container build + verification** — podman with
    `libgtk-3-dev` + `libwebkit2gtk-4.1-dev` + Go; `make web`, then the
    desktop build; exercise `install-desktop.sh` with a scratch `PREFIX=`.
-5. **Windows desktop port.**
-6. **Desktop follow-ons** — real app icon; surface startup errors in the window.
-7. **`snp doctor` deferred work** (its "Deferred" bullet below): `--deep`, the
+3. **Windows desktop port.**
+4. **Desktop follow-ons** — real app icon; surface startup errors in the window.
+5. **`snp doctor` deferred work** (its "Deferred" bullet below): `--deep`, the
    key-requiring `revisions` check that turns a wrong or replaced key file into a
    specific diagnosis instead of a generic 500; point a search that fails with
    index corruption at the health check; offer orphan repair in the UI, today
@@ -71,10 +61,11 @@ AI) are **unreleased**.
 
 ### Release history
 
-- Latest tag: **`v0.5.0`**. Signing/notarization and the per-platform release
+- Latest tag: **`v0.6.0`** (2026-09-29) — releases `snp doctor`, `snp pick`,
+  the CLI editor (`snp add` / `snp edit`), and CLI AI (`snp ask` + the
+  editor's controls). Signing/notarization and the per-platform release
   workflows are in place; releases are tag-triggered.
 - `v0.2.0-beta.4` tagged the Phase 11 branch, now merged to `main`.
-- No tag yet covers the doctor, picker, CLI editor, or CLI AI work.
 
 ## 0. Conventions
 
