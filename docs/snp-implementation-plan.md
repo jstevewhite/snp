@@ -40,8 +40,8 @@ last commits (the doctor work, the shell picker, and the CLI editor) are
    `main` is 21 commits past `v0.5.0`. Use the existing tag-triggered
    multi-platform workflow, and smoke `snp add` / `snp edit` (pty, both `--url`
    and local) as part of it.
-3. **CLI AI — `snp ask` and Ask-AI in the terminal editor** (planned
-   2026-09-29, ready to execute; see the section below): AI at parity
+3. **CLI AI — `snp ask` and Ask-AI in the terminal editor** (in progress —
+   A1 done 2026-09-29; see the section below): AI at parity
    with the web form — `snp ask` for one-shot generation, plus the
    Ask-AI / suggest-tags / explain-with-undo controls inside the editor
    panel, over the existing `/api/ai/*` endpoints and `internal/ai`.
@@ -1256,8 +1256,8 @@ The editor model gains an `ask.Service` field (nil = controls hidden);
 
 ### Slices
 
-- **A1 — `internal/ask`** (the client surface): `Service`, `Local`,
-  `HTTP`, and the tests — Local against the `internal/ai` httptest
+- **A1 — `internal/ask`** (done 2026-09-29) (the client surface): `Service`,
+  `Local`, `HTTP`, and the tests — Local against the `internal/ai` httptest
   provider pattern, HTTP against the endpoint shapes above. *Done when*:
   every policy listed above is pinned by test on both transports,
   including the two error texts.

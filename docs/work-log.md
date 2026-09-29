@@ -2437,3 +2437,30 @@ Spec: `docs/snp-design.md` · Plan: `docs/snp-implementation-plan.md`
   busy states blocking saves and controls hidden when unconfigured,
   matching the web form.
 - No code changed; `go test` not run.
+
+### 2026-09-29 — CLI AI A1: `internal/ask`, the client surface
+
+- `ask.Service` (Status / Generate / SuggestTags / Explain) with the two
+  transports: `Local` runs `internal/ai` in-process and applies the
+  server's handler policy itself — prompt required and ≤ 4000 chars,
+  `ai.ParseKind` for the kind, the store's tag vocabulary via
+  `ListTags`, `store.ValidTagName` filtering capped at 3, and the
+  server's own 503/403 texts as `ErrUnavailable` / `ErrSensitive`;
+  `HTTP` talks to `/api/ai/{status,generate,tags,explain}` with the wire
+  types mirroring the server's (cross-referenced like the `snippetReq`
+  pair) and surfaces error bodies **verbatim, unprefixed** — a prefix
+  would break the text parity Local keeps with its sentinels. HTTP's
+  client timeout is 75 s (the provider timeout is 60 s server-side).
+- Tests (8): the two error-text literals pinned against the server's
+  (change-both-together note); Local status/generate/suggest/explain
+  policies incl. a real temp store proving the vocabulary reaches the
+  provider's prompt; HTTP surface incl. request shapes and the
+  503/403 texts reading identically to Local's sentinels.
+- Gotchas found: `ai.SuggestTags` already lowercases/dedupes/caps at 3
+  (`parseTagList`) **before** the grammar filter, so junk tokens can
+  leave fewer than 3 suggestions — the server handler behaves the same
+  way, and the test documents it. And `ListTags` orders count-desc, so
+  vocabulary assertions are order-agnostic.
+- Verified: `go vet ./...` and `go test ./...` green (the suite is now
+  15 test packages). `make test` not run — the web tree was not
+  touched.
