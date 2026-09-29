@@ -14,11 +14,10 @@ Spec: `docs/snp-design.md` · Plan: `docs/snp-implementation-plan.md`
 
 ## Current status
 
-- CLI editor (2026-09-29): **E1–E2 done** — the shared `internal/tui` package
-  and the library write path (`Editor`; `Local` + `HTTP`), with `Snippet` now
-  carrying `FolderID`/`Pinned`. E3–E6 remain: the panel, the pickers, the
-  chooser, and `runAdd`/`runEdit`. The E2a review remediation (Local
-  validation tests, `snippetReq` mirror cross-refs) is folded into E2.
+- CLI editor (2026-09-29): **E1–E3 done** — the shared `internal/tui` package,
+  the library write path (`Editor`; `Local` + `HTTP`), and the editor panel
+  (`internal/edit`: field ring, GUI save rules, dirty guard, sensitive
+  masking). E4–E6 remain: the pickers, the chooser, and `runAdd`/`runEdit`.
   See the newest log entry.
 - Docs reorg (2026-09-29): the implementation plan gained a "Status and
   roadmap" section; `snp doctor` and `snp pick` are recorded there as complete;
@@ -2274,3 +2273,44 @@ Spec: `docs/snp-design.md` · Plan: `docs/snp-implementation-plan.md`
   detached worktree and on the full tree at E2. `make test` was not run —
   the web tree was not touched. Committed as three: E1, then E2 with this
   remediation folded in, then this docs update.
+
+### 2026-09-29 — `snp add` / `snp edit` E3: the editor panel (`internal/edit`)
+
+- One Bubble Tea model mirroring the GUI editor: title / body / notes /
+  language / tags inputs, sensitive + pinned toggles, the template flag
+  derived from the body (never hand-set) with the variable list in the
+  view, and the folder displayed read-only — resolved once via `Folders()`
+  in `Init` with a `parent/child` path label built from `ParentID` — and
+  carried unchanged into every write. `Run` returns the saved row or
+  `ErrCanceled` (wrapped around `pick`'s).
+- Save rules copied from the GUI's `submit` (`SnippetForm.svelte`): trims,
+  tag split/trim/drop-empty, `var_defaults` carried from the seed and
+  pruned to the variables the body still uses **and non-empty**, pinned
+  from the toggle (today's GUI carries `seed.pinned`; the plan's parity
+  table wants the toggle). A blank title blocks the write with an inline
+  "title required" instead of a round trip.
+- Keys: Tab / Shift-Tab walk the focus ring; Enter advances single-line
+  fields and is a newline in the body/notes textareas; space toggles the
+  boolean stops; `Ctrl+S` / `Ctrl+Enter` save; `Ctrl+R` reveals a masked
+  sensitive body; `Esc` quits clean, or asks `y`/`n` when dirty; `Ctrl+C`
+  quits unguarded (picker parity). The write is async (`savedMsg`): a
+  failure shows the mapped error inline and keeps the draft; a `saving`
+  flag blocks double-creates.
+- The E4 seam, fixed up front: the ring is the `stop` constants — the
+  folder picker joins as a ring stop, and the language list / tag
+  suggestions replace the plain inputs in place.
+- Gotchas, both in bubbletea v2 / bubbles v2: a cursor `Focus()` emits a
+  blink command that **sleeps its whole blink interval** (530 ms default)
+  before yielding a msg — invoking it synchronously in tests made every
+  `start` cost 0.53 s; the harness now runs cmds under a 50 ms bound and
+  drops the ones that do not answer (their state effect happens inside
+  `Focus()` itself, so nothing is lost). And Shift-Tab arrives as
+  `KeyTab` with `ModShift` — there is no separate shift-tab code; the
+  picker's form handler had it right.
+- `internal/edit/model_test.go` (10 tests) against a `fakeEditor` covering
+  the ring and toggles, Enter semantics, create/update save rules,
+  full-replace carry, derived template + pruning, failed write keeps the
+  draft and retries, blank title, sensitive mask/reveal/carry, the dirty
+  guard, and the folder path label.
+- Verified: `go vet ./...` and `go test ./...` green (edit package 0.8 s).
+  `make test` was not run — the web tree was not touched.

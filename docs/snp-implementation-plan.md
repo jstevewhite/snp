@@ -38,7 +38,7 @@ follow-on session work. `main` is at `v0.5.0-8-gd14e82f` — 8 commits past the
    the wails app with Settings → Layout = Compact.
 2. **Cut a release** covering `snp doctor` and `snp pick` — `main` is 8 commits
    past `v0.5.0`. Use the existing tag-triggered multi-platform workflow.
-3. **CLI snippet editor — `snp add` / `snp edit`** (in progress — E1/E2 done
+3. **CLI snippet editor — `snp add` / `snp edit`** (in progress — E1–E3 done
    2026-09-29; see below): a Bubble Tea
    panel that mirrors the GUI editor — the same fields, the same validation, the
    same template / `var_defaults` rules. The API (`POST` and `PUT
@@ -1103,7 +1103,7 @@ type Editor interface {
   covers and the panel will show inline; cross-reference comments on the two
   `snippetReq` mirrors (`internal/server/handlers.go` ↔
   `internal/pick/editor.go`) naming the full-replace drop hazard.
-- **E3 — the editor panel** (`internal/edit`, new): one Bubble Tea model with
+- **E3 — the editor panel** (`internal/edit`, done 2026-09-29): one Bubble Tea model with
   the field set above. Tab / Shift-Tab between fields; the body is a multi-line
   editor; `internal/template` drives the template flag and the variable list
   (never hand-set); `var_defaults` is carried forward pruned to the variables
@@ -1111,7 +1111,14 @@ type Editor interface {
   revealed; a write that fails shows the mapped error inline and keeps the
   draft; `Esc` honors the dirty guard; `Ctrl+S` / `Ctrl+Enter` saves. Tests:
   model update handlers against a fake `Editor` (the picker's `model_test.go` is
-  the pattern).
+  the pattern). Built with the E4 seam fixed up front: the Tab ring is the
+  `stop` constants — the folder picker joins as a ring stop and the language
+  list / tag suggestions replace plain inputs — and the folder is displayed
+  read-only (`Folders()` once in `Init`, path label from `ParentID`) and
+  carried unchanged into every write. Enter advances single-line fields and
+  inserts a newline in the textareas; `Ctrl+R` reveals a masked sensitive
+  body; the pinned toggle diverges from today's GUI (which carries
+  `seed.pinned`) per the parity table.
 - **E4 — pickers**: the folder picker over `Folders()`, with `parent/child`
   labels built from `ParentID` (there is no `path` field); the tag input with
   suggestions from `Tags()`; the language list. All in `tui.Theme`, so the panel
