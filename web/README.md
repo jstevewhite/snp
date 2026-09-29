@@ -26,4 +26,5 @@ From the repo root, `make test` runs the Go tests plus the web tests and
 check; `make build` builds the web app and then the binary.
 
 The checked-in `dist/index.html` is a stub so a bare `go build` works
-without a web build; `make build` replaces it with the real app.
+without a web build. `make build` embeds the real app, then restores
+that stub. `npm run build` leaves the rewritten file in place.

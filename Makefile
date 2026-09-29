@@ -10,7 +10,7 @@ NPM ?= npm
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 LDFLAGS := -X github.com/jstevewhite/snp/internal/buildinfo.Version=$(VERSION)
 
-.PHONY: web build test dev desktop desktop-install run-desktop app run-app clean web-install
+.PHONY: web build test dev desktop desktop-install run-desktop app run-app clean web-install restore-dist-stub
 
 # Install web dependencies when missing (a fresh clone has none, and
 # `npm test` cannot run without them). `web` also rebuilds web/dist.
@@ -21,6 +21,11 @@ web-install:
 
 # Build the Svelte app into web/dist. Skipped (using the checked-in
 # stub) until web/package.json exists in phase 6.
+#
+# This rewrites the tracked web/dist/index.html. Do not restore it here:
+# the go build below embeds whatever is on disk, and restoring first
+# would embed the stub. `make web` itself leaves the rewrite in place
+# because it does not compile.
 web:
 	@if [ -f web/package.json ]; then \
 		cd web && $(NPM) ci && $(NPM) run build; \
@@ -28,8 +33,18 @@ web:
 		echo "web: no package.json yet (phase 6); using stub dist"; \
 	fi
 
+# Put the tracked stub back after a compile has embedded the real bundle.
+# The hashed assets stay on disk and gitignored. Outside a git checkout
+# there is nothing to restore. `npm run build` in web/ does not come
+# through here.
+restore-dist-stub:
+	@if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then \
+		git checkout -q -- web/dist/index.html; \
+	fi
+
 build: web
 	$(GO) build -ldflags "$(LDFLAGS)" -o bin/snp ./cmd/snp
+	@$(MAKE) --no-print-directory restore-dist-stub
 
 # The Wails desktop app (spec §12). Built on macOS and Linux; Windows is
 # a follow-on. The `production` build tag is required on every platform —
@@ -61,6 +76,7 @@ endif
 
 desktop: web
 	CGO_LDFLAGS="$(DESKTOP_CGO_LDFLAGS)" $(GO) build -ldflags "$(LDFLAGS)" -tags "$(DESKTOP_TAGS)" -o bin/snp-desktop ./cmd/snp-desktop
+	@$(MAKE) --no-print-directory restore-dist-stub
 
 # Install the desktop app for the current user (Linux): binary, .desktop
 # entry, and icons under ~/.local. Override the prefix with

@@ -2132,3 +2132,12 @@ Spec: `docs/snp-design.md` · Plan: `docs/snp-implementation-plan.md`
   another chord after sourcing (`bindkey '^Xs' snp-pick` is the one that
   was confirmed). README section "From the shell" documents the picker,
   the wrapper, and the rebind.
+
+### 2026-09-28 — restore the dist stub after compile
+
+- `make build` and `make desktop` run `restore-dist-stub` after `go build`,
+  so the embedded bundle is the one Vite just wrote and `web/dist/index.html`
+  is the tracked stub again. The restore is not on the `web` target: that
+  runs before the compile, and restoring there would embed the stub.
+  `make web` and `npm run build` still leave the rewrite. Outside a git
+  checkout the restore is a no-op.

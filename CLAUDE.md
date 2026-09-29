@@ -113,20 +113,18 @@ purge tests.
 
 `web/embed.go` does `//go:embed all:dist`, so a missing `web/dist` breaks a
 bare `go build`. A stub `web/dist/index.html` is checked in for that reason
-(`.gitignore` ignores `web/dist/*` but negates `index.html`). `make build`
-replaces it with the real bundle. `server.New` panics if the embedded FS has
-no `dist` subtree.
+(`.gitignore` ignores `web/dist/*` but negates `index.html`). `server.New`
+panics if the embedded FS has no `dist` subtree.
 
-**Every web build dirties that stub.** It is the only tracked file under
-`web/dist`; the hashed assets it names are gitignored. `npm run build`
-(hence `make web` and `make build`) rewrites its `index-<hash>.js` and
-`index-<hash>.css` references, so committing it after a build points the
-checked-in stub at bundle files no fresh clone will have — the SPA then
-404s for anyone who runs a bare `go build`. Before committing, stage
-source paths explicitly (`git add <paths>`) instead of reaching for
-`git add -A`, or restore the stub with `git checkout -- web/dist/index.html`
-once the build has done its job. `make test` does not build, so it leaves
-the file alone.
+**Vite rewrites that stub.** It is the only tracked file under `web/dist`;
+the hashed assets it names are gitignored. Committing the rewritten file
+points a fresh clone at bundle files it does not have, and the SPA 404s
+for a bare `go build`. `make build` and `make desktop` embed the real
+bundle, then `restore-dist-stub` checks the stub back out. That restore
+must stay after the compile: `go:embed` reads the file on disk. `make web`
+and `npm run build` do not compile, so they leave the rewrite in place —
+`git checkout -- web/dist/index.html` before committing, and stage paths
+explicitly rather than `git add -A`. `make test` does not build.
 
 ## Invariants that bite
 
