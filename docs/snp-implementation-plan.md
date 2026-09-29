@@ -1,9 +1,70 @@
 # snp — Implementation Plan
 
-Date: 2026-09-02
-Status: ready to execute
+Date: 2026-09-02 · Last updated: 2026-09-28
+Status: Phases 0–11 complete and merged; follow-on session work through
+`snp pick` (2026-09-28) complete on `main`. `main` is 8 commits past the
+`v0.5.0` tag — the doctor and picker work is unreleased. Open work is listed
+under "Status and roadmap" below.
 Spec: `docs/snp-design.md` (this plan implements that document; section refs
 like "spec §4" point there)
+
+## Status and roadmap (2026-09-28)
+
+Every numbered phase (0–11) is complete and merged to `main`, together with the
+follow-on session work. `main` is at `v0.5.0-8-gd14e82f` — 8 commits past the
+`v0.5.0` tag, and the last commits (the doctor work and the shell picker) are
+**unreleased**. History since `v0.5.0`: icon updates, the doctor plan note,
+`snp doctor` (store, endpoints, dialog), a work-log refresh, `snp pick`, and the
+`web/dist` stub fix.
+
+### Shipped
+
+| Area | Landed | Notes |
+|---|---|---|
+| Phases 0–11 | through 2026-09-12 | core app, PWA/offline, deploy + ops, UI refinement pass, compact layout (T1–T6; T7 verification open) |
+| Recovery — trash + revision history | 2026-09-21 | 30-day trash, 50 revisions per snippet, online-only dialogs |
+| Data management — JSON + full backup | 2026-09-21 | import / export / backup from Settings and the palette |
+| Password-protected data files | 2026-09-21 | age passphrase encryption; offline `snp decrypt` |
+| Duplicate snippet | 2026-09-21 | guarded create draft; sensitivity preserved |
+| `snp doctor` | 2026-09-25 | merged `cfc2d87`; store, `/api/doctor[/repair]`, health dialog |
+| `snp pick` shell client | 2026-09-28 | merged `4bb6f33`; picker + `snp widget` zsh binding |
+| `web/dist` stub build fix | 2026-09-28 | merged `d14e82f`; `restore-dist-stub` runs after the compile |
+
+### Next (priority order)
+
+1. **Phase 11 T7 — on-device compact-layout checklist** (verification only; the
+   code is merged). iOS Safari as a tab and as the installed PWA (swipe-back at
+   each depth); Android Chrome hardware back (drawer → detail → leaves the app);
+   the wails app with Settings → Layout = Compact.
+2. **Cut a release** covering `snp doctor` and `snp pick` — `main` is 8 commits
+   past `v0.5.0`. Use the existing tag-triggered multi-platform workflow.
+3. **Linux desktop container build + verification** — podman with
+   `libgtk-3-dev` + `libwebkit2gtk-4.1-dev` + Go; `make web`, then the desktop
+   build; exercise `install-desktop.sh` with a scratch `PREFIX=`.
+4. **Windows desktop port.**
+5. **Desktop follow-ons** — real app icon; surface startup errors in the window.
+6. **`snp doctor` deferred work** (its "Deferred" bullet below): `--deep`, the
+   key-requiring `revisions` check that turns a wrong or replaced key file into a
+   specific diagnosis instead of a generic 500; point a search that fails with
+   index corruption at the health check; offer orphan repair in the UI, today
+   CLI-only behind `--fix-orphans`.
+
+### Backlog / later (v1 follow-ons)
+
+- **SnippetsLab converter** — the last named follow-on from spec §11; the CLI
+  client is done, as `snp pick`.
+- **Named variable presets per machine** — the follow-on named in Phase 10 T5.
+- **Real PWA icon set** — a generated placeholder has shipped since M5.
+- **bash / fish picker integration** — `snp pick` works in any terminal, but
+  `snp widget` and the inline binding are zsh-only; the other shells are a
+  later follow-on.
+
+### Release history
+
+- Latest tag: **`v0.5.0`**. Signing/notarization and the per-platform release
+  workflows are in place; releases are tag-triggered.
+- `v0.2.0-beta.4` tagged the Phase 11 branch, now merged to `main`.
+- No tag yet covers the doctor or picker work.
 
 ## 0. Conventions
 
@@ -818,6 +879,9 @@ web/desktop builds succeed, and compact navigation still preserves drafts.
 
 ## Health check and index repair — `snp doctor` (2026-09-25)
 
+**Status: complete** — merged to `main` (`cfc2d87`, 2026-09-25). D1–D3
+shipped; the deferred checks below are tracked in "Status and roadmap".
+
 One command, flags for the sub-features: `doctor` is the only interface,
 `--repair` fixes, `--only=<check>` narrows the run, `--reindex` is shorthand
 for `--repair --only=fts`, `--deep` adds the key-requiring checks, and
@@ -886,3 +950,34 @@ shell access may not be at hand.
   reported and never rewritten; doctor completes with no key set; `snp doctor`
   returns 0/1/2 as specified; the health dialog repairs from the UI and shows
   the before/after; `make test` is green and `web/dist/index.html` is unchanged.
+
+## Shell picker — `snp pick` (2026-09-28)
+
+**Status: complete** — merged to `main` (`4bb6f33`, 2026-09-28). This is the v1
+"CLI client" follow-on (spec §11); the SnippetsLab converter is the only named
+follow-on still open. Spec: `docs/snp-design.md`, "Shell picker (`snp pick`)".
+
+A terminal snippet picker plus the zsh binding that leaves the chosen command on
+the prompt. The binary writes only the accepted command to stdout and draws the
+screen on `/dev/tty`, so `out=$(snp pick)` still shows the UI and the widget can
+capture the command.
+
+- P1 — `internal/pick`: Bubble Tea v2 + Lip Gloss UI — a list with filter, the
+  variable form, `library.go` source resolution, `run.go`, `style.go`,
+  `view.go`. Pure Go, so `cmd/snp` still cross-compiles without cgo.
+- P2 — `internal/template`: the `{{var}}` / `{{var|default}}` grammar, shared
+  with `web/src/lib/templates.ts`. Each box starts from the saved default, then
+  the inline default; clearing a box leaves that spot empty.
+- P3 — CLI + shell: `snp pick` / `snp widget`, `deploy/snp.zsh`, Ctrl-G
+  inserting into `LBUFFER`, and a `print -z` wrapper so a typed `snp pick` lands
+  on the next prompt. Sensitive commands are emitted with a leading space for
+  `HIST_IGNORE_SPACE`.
+- Library resolution: `--url` / `SNP_URL` / config `url`, else `state_dir/snp.db`;
+  `--local` forces the file. `snp serve` ignores `url`, and a picker-only
+  machine needs no `owner`. Local mode never creates a database or a key —
+  `store.LoadKey` is the read-only loader split out of `LoadOrCreateKey`. Config
+  gains the `url` key (flag / env / file), same precedence as the rest.
+- Done when: `go test` green for template, pick, config, store, and `cmd/snp`;
+  `go vet` clean on the picker; `GOOS=linux GOARCH=amd64 go build` of `cmd/snp`;
+  a pty run of `snp pick --local` prints exactly the rendered command with empty
+  stderr. `make test` was green on `main` at merge.

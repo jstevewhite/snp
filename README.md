@@ -309,6 +309,12 @@ search at the top, the highlighted row filled in, language and tags faded
 on the right, and the command in a shaded block underneath. Search uses
 the same query language as the app (`tag:`, `lang:`, prefix terms).
 
+`snp pick` works in any terminal — it draws the screen on the terminal and
+prints the accepted command on stdout, so bash and fish users can run it and
+capture the result. The inline binding below, however, is **zsh-only** for
+now: `snp widget` prints a zsh function and a key binding, and bash and fish
+integration is a later follow-on.
+
 Enter on a plain snippet takes its body. Enter on a template opens every
 `{{var}}` as its own box, in the order it first appears. Tab and Shift-Tab
 move between the boxes. Each box starts from the saved default, then the

@@ -14,6 +14,10 @@ Spec: `docs/snp-design.md` · Plan: `docs/snp-implementation-plan.md`
 
 ## Current status
 
+- Docs reorg (2026-09-29): the implementation plan gained a "Status and
+  roadmap" section; `snp doctor` and `snp pick` are recorded there as complete;
+  the stale `Next:` line below now points at it. README's "From the shell" notes
+  the widget is zsh-only. Docs only. See the newest log entry.
 - `snp pick` (2026-09-28): shell picker. Draws on `/dev/tty` (Bubble Tea +
   Lip Gloss, app palette) and prints the accepted command on stdout.
   `snp widget` / `deploy/snp.zsh` bind Ctrl-G for in-line insert and wrap
@@ -55,7 +59,7 @@ Spec: `docs/snp-design.md` · Plan: `docs/snp-implementation-plan.md`
   smoke pass; see the newest entry. No new release/tag/push in this session.
 - Updated: 2026-09-13 (auto-deploy from the checkout on the dev box; command palette)
 - Phase: review fixes + desktop app (macOS **and Linux** builds) + appearance + AI generation (command/script/function kinds) + tag filter + .app bundle + **bundled starter pack** merged to main; **Markdown notes**, **read-view syntax highlighting**, **notarization in `make app`**, the **Linux desktop build/launcher** and **`snp seed`** landed; the **GitHub release workflows** and the **header version chip** (`GET /api/version`) landed; **v0.1.0 shipped** (signed + notarized macOS bundle, 7 assets, verified after publish); **draggable pane dividers** landed (spec §6, `web/src/lib/panes.ts`) and **Explain now replaces Notes** with an undo (spec §13); **Phase 10, the UI refinement pass**, is on branch `feat/ui-refinements` (**pushed**, and deployed to the tailnet from a dirty tree — `/api/version` reports `v0.1.0-14-g8e82a64-dirty`): explicit copy actions, distinct create labels, simplified timestamps, the search keyboard workflow, visible saved-default state, two-line titles, and the **Favorites** list on a new `pinned` column; plus the **service-worker update check** and **create/cancel test coverage** added while chasing a stale-shell report; `make test` green (go test + vet + 298 Vitest + svelte-check 0 errors / 0 warnings). The Linux desktop binary **build was verified on an ARM Ubuntu 24 host** (git bundle → `make desktop`), after a first attempt failed because that work was still uncommitted and the bundle therefore carried the old darwin-only tree.
-- Next: **Phase 11 on-device checklist** (plan Phase 11 T7; branch `claude/eloquent-maxwell-bcugjn`, T1–T6 built and green): iOS Safari as a tab and as the installed PWA (swipe-back at each depth), Android Chrome hardware back (drawer → detail → leaves the app), the wails app with Settings → Layout = Compact; then merge. After that, as before: **Linux desktop container build + verification** (podman; `libgtk-3-dev` + `libwebkit2gtk-4.1-dev` + Go, `make web` then the desktop build, and exercise `install-desktop.sh` with a scratch `PREFIX=`); then the Windows port, desktop follow-ons (real app icon, startup-error surfacing in the window); then remaining v1 follow-ons (CLI client, SnippetsLab converter, named variable presets per machine — the follow-on named in Phase 10 T5). `feat/ui-refinements` is merged to main and two betas are published (`v0.2.0-beta.1`, and `v0.2.0-beta.2` as the CI validation build); cutting `v0.2.0` is the next release step whenever wanted
+- Next: see `docs/snp-implementation-plan.md` → **Status and roadmap (2026-09-28)** for the ordered list. In short: Phase 11 T7 on-device checklist (verification only; the code is merged), then cut a release covering `snp doctor` + `snp pick` (`main` is 8 commits past `v0.5.0`), then the Linux desktop container build, the Windows port, desktop follow-ons, and the `snp doctor` deferred checks. `snp pick` closed the v1 CLI-client follow-on, leaving the SnippetsLab converter and per-machine variable presets.
 - Deferred from `snp doctor`, in rough priority order: `--deep` (the
   key-requiring `revisions` check, which is what would turn today's generic
   500 on a wrong or replaced key file into a specific diagnosis); pointing a
@@ -2141,3 +2145,29 @@ Spec: `docs/snp-design.md` · Plan: `docs/snp-implementation-plan.md`
   runs before the compile, and restoring there would embed the stub.
   `make web` and `npm run build` still leave the rewrite. Outside a git
   checkout the restore is a no-op.
+
+### 2026-09-29 — docs: plan status + roadmap, README picker caveat
+
+- `docs/snp-implementation-plan.md`: added a top-level "Status and roadmap
+  (2026-09-28)" section — a Shipped table (phases 0–11 plus the recovery,
+  data-management, password-protection, duplicate, doctor and pick sessions,
+  with commits), an ordered Next list (Phase 11 T7 on-device checklist → cut a
+  release for doctor + pick → Linux desktop container build → Windows port →
+  desktop follow-ons → the doctor deferred checks), the v1 backlog, and release
+  history. The header `Status:` line no longer says "ready to execute".
+- Marked `snp doctor` **complete** there (merged `cfc2d87`) and added the
+  missing `snp pick` section (complete, merged `4bb6f33`) with slices P1–P3,
+  library resolution and its done-when. The picker closes the v1 "CLI client"
+  follow-on; the SnippetsLab converter is the last named follow-on open.
+- `docs/work-log.md`: the "Current status" `Next:` line was stale (2026-09-13 —
+  still "then merge", CLI client outstanding, "cutting `v0.2.0`"); it now points
+  at the plan roadmap and the current next steps.
+- `README.md`: "From the shell" now states that `snp pick` runs in any terminal
+  (command on stdout) but `snp widget` and the inline binding are zsh-only, with
+  bash and fish a later follow-on (logged in the plan backlog).
+- Facts pinned for the roadmap: `main` is `v0.5.0-8-gd14e82f` (8 commits past
+  `v0.5.0`; doctor + pick unreleased); branch `claude/eloquent-maxwell-bcugjn`
+  (Phase 11) is merged, so only T7's on-device pass stays open.
+- Docs only — no Go or web code touched, so `go test`/`go vet` were not run. The
+  roadmap tables restate phase/session status; keep them in step when the next
+  phase lands.
