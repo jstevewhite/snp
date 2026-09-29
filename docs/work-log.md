@@ -14,11 +14,12 @@ Spec: `docs/snp-design.md` · Plan: `docs/snp-implementation-plan.md`
 
 ## Current status
 
-- CLI editor planned (2026-09-29): `snp add` / `snp edit` are fully planned and
-  ready to execute (plan "CLI snippet editor") — `internal/edit` over a shared
-  `internal/tui`, prefill flags incl. `--tags`, `snp edit` (no arg) opens the
-  picker, lazy key creation, folder creation out of scope. No code yet; see the
-  newest log entry.
+- CLI editor (2026-09-29): **E1–E2 done** — the shared `internal/tui` package
+  and the library write path (`Editor`; `Local` + `HTTP`), with `Snippet` now
+  carrying `FolderID`/`Pinned`. E3–E6 remain: the panel, the pickers, the
+  chooser, and `runAdd`/`runEdit`. The E2a review remediation (Local
+  validation tests, `snippetReq` mirror cross-refs) is folded into E2.
+  See the newest log entry.
 - Docs reorg (2026-09-29): the implementation plan gained a "Status and
   roadmap" section; `snp doctor` and `snp pick` are recorded there as complete;
   the stale `Next:` line below now points at it. README's "From the shell" notes
@@ -2224,3 +2225,52 @@ Spec: `docs/snp-design.md` · Plan: `docs/snp-implementation-plan.md`
   DB, but `LoadOrCreateKey` runs only when a sensitive body must be read or
   written, so a plain create or a metadata-only edit writes no key file.
 - Docs only — no code yet, so `go test`/`go vet` were not run.
+
+### 2026-09-29 — `snp add` / `snp edit` E1–E2: `internal/tui` + the library write path
+
+- E1: extracted the palette (`Theme`, `NewTheme`, `StyleInput`) and the tty
+  program setup (`Run`) from `internal/pick` into a new `internal/tui` package.
+  Deleted `internal/pick/style.go`; `pick` now calls into `tui` (`run.go`,
+  `view.go`, `model.go`). No behavior change — the picker's tests stay green.
+  One wording change: a missing terminal now reports "needs a terminal", not
+  "pick needs a terminal".
+- E2: added the write path on the library clients — `Input`, `Folder`,
+  `TagCount`, and the `Editor` interface (`Library` plus `Get` / `Folders` /
+  `Tags` / `Create` / `Update`). `Local` delegates to the held `*store.Store`;
+  `HTTP` adds `GET /api/folders`, `GET /api/tags`, `POST /api/snippets` (wants
+  201) and `PUT /api/snippets/{id}` (wants 200) through a new `send` helper,
+  reusing the existing error mapping for both `get` and `send`.
+- `Snippet` / `fromOut` now carry `FolderID` and `Pinned`, and `Reveal`
+  generalizes to `Get` with `Reveal` kept as a thin alias — so a full-replace
+  update cannot silently un-file or un-favorite a row.
+- Gotcha: `PUT /api/snippets/{id}` is a full replace, so the editor must load
+  the row and send every field back. The new tests pin it: both a local update
+  and an `httptest` update round-trip `folder_id`, `pinned` and `var_defaults`.
+- `internal/pick` gained `editor_test.go` (6 tests): Local create / update /
+  folders / tags, HTTP create / update / error, and the folders / tags shape.
+- Verified: `go build ./...`, `go vet ./...` and `go test ./...` green. `make
+  test` was not run — the web tree was not touched.
+
+### 2026-09-29 — `snp add` / `snp edit` E2a: review remediation, folded into E2
+
+- Review of the uncommitted E1/E2 raised four points; two were code and are
+  folded into E2 here rather than a separate slice.
+- `TestLocalValidation` in `internal/pick/editor_test.go`: the Local twins of
+  the HTTP error tests — `Create` with a bad tag name surfaces
+  `store.ErrInvalidTag` (the store wraps it with `%w`, so `errors.Is` works),
+  and `Update` on an unknown id surfaces `store.ErrNotFound`
+  (`ReplaceSnippet` returns it before any write). These pin the store-error
+  path the panel (E3) will show inline.
+- Cross-referenced the two `snippetReq` mirrors — the server's
+  (`internal/server/handlers.go`) and the CLI client's
+  (`internal/pick/editor.go`) now name each other and the hazard: a field
+  added on one side but not the other makes a full-replace PUT silently drop
+  it.
+- Decisions recorded in the plan, not code: the `Reveal` alias stays while
+  `pick`'s model calls it — E6 deletes it if the panel and chooser leave no
+  caller; `TestLocalFoldersAndTags`'s count assertion stands on `ListTags`'
+  deterministic ordering, no change.
+- Verified: `go vet ./...` and `go test ./...` green — at the E1 state in a
+  detached worktree and on the full tree at E2. `make test` was not run —
+  the web tree was not touched. Committed as three: E1, then E2 with this
+  remediation folded in, then this docs update.

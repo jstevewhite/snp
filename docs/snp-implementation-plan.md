@@ -38,8 +38,8 @@ follow-on session work. `main` is at `v0.5.0-8-gd14e82f` — 8 commits past the
    the wails app with Settings → Layout = Compact.
 2. **Cut a release** covering `snp doctor` and `snp pick` — `main` is 8 commits
    past `v0.5.0`. Use the existing tag-triggered multi-platform workflow.
-3. **CLI snippet editor — `snp add` / `snp edit`** (planned 2026-09-29, ready to
-   execute; see below): a Bubble Tea
+3. **CLI snippet editor — `snp add` / `snp edit`** (in progress — E1/E2 done
+   2026-09-29; see below): a Bubble Tea
    panel that mirrors the GUI editor — the same fields, the same validation, the
    same template / `var_defaults` rules. The API (`POST` and `PUT
    /api/snippets`) and the picker's library plumbing already exist; the new work
@@ -990,7 +990,8 @@ capture the command.
 
 ## CLI snippet editor — `snp add` / `snp edit` (2026-09-29)
 
-**Status: planned, ready to execute.** Decisions (2026-09-29): a separate
+**Status: in progress — E1 and E2 done (2026-09-29); E3–E6 remain.**
+Decisions (2026-09-29): a separate
 `internal/edit` package over a shared `internal/tui`; `snp add` takes prefill
 flags (including comma-separated `--tags`); `snp edit` with no argument opens the
 picker list to choose; local mode creates the key **lazily**; folder creation is
@@ -1084,18 +1085,24 @@ type Editor interface {
 
 ### Slices
 
-- **E1 — `internal/tui`.** Extract from `internal/pick`: the palette
+- **E1 — `internal/tui` (done 2026-09-29).** Extract from `internal/pick`: the palette
   (`theme` / `newTheme` / `styleInput` → `tui.Theme`, `tui.NewTheme(dark)`,
   `tui.StyleInput`) and the tty/program setup in `run.go` → `tui.Run(ctx,
   tea.Model) error` (`tea.OpenTTY`, `WithColorProfile(TrueColor)`,
   `WithContext`). `internal/pick` keeps its behavior by calling into `tui`; the
   existing picker tests must stay green. No user-visible change.
-- **E2 — the write path** (`internal/pick`): the `Editor` interface and the
+- **E2 — the write path** (`internal/pick`, done 2026-09-29): the `Editor` interface and the
   `Input` / `Folder` / `TagCount` types above, the `Local` and `HTTP`
   implementations, and the `Snippet` / `fromOut` additions. Tests: `Local`
   against a temp-file store; `HTTP` against `httptest` — create returns a row,
   update round-trips `folder_id` and `pinned`, and a validation error surfaces
   the same message the API gives.
+- **E2a — review remediation** (2026-09-29, folded into E2 before commit): a
+  `Local` validation-error test — `ErrInvalidTag` on create, `ErrNotFound` on
+  update-by-unknown-id — pinning the store-error path the HTTP twin already
+  covers and the panel will show inline; cross-reference comments on the two
+  `snippetReq` mirrors (`internal/server/handlers.go` ↔
+  `internal/pick/editor.go`) naming the full-replace drop hazard.
 - **E3 — the editor panel** (`internal/edit`, new): one Bubble Tea model with
   the field set above. Tab / Shift-Tab between fields; the body is a multi-line
   editor; `internal/template` drives the template flag and the variable list
@@ -1112,7 +1119,9 @@ type Editor interface {
 - **E5 — the chooser for `snp edit`** (`internal/pick`): `Choose(ctx,
   lib) (Snippet, error)` runs the existing list model in a select-only mode (no
   template form, no stdout) and returns the highlighted row.
-- **E6 — CLI and docs** (`cmd/snp`): `runAdd` and `runEdit`.
+- **E6 — CLI and docs** (`cmd/snp`): `runAdd` and `runEdit`. Also deletes the
+  `Reveal` alias if no caller remains once the panel and chooser use `Get`
+  (`pick`'s model calls it today).
   - `snp add [--url URL | --local] [--title T] [--language L] [--folder PATH|ID]
     [--tags a,b] [--sensitive] [--pin]` opens the panel, prefilled. On save it
     exits 0 and prints nothing (like `pick`; a `--print-id` is a later add).
