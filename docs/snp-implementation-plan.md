@@ -38,7 +38,8 @@ follow-on session work. `main` is at `v0.5.0-8-gd14e82f` — 8 commits past the
    the wails app with Settings → Layout = Compact.
 2. **Cut a release** covering `snp doctor` and `snp pick` — `main` is 8 commits
    past `v0.5.0`. Use the existing tag-triggered multi-platform workflow.
-3. **CLI snippet editor — `snp add` / `snp edit`** (planned below): a Bubble Tea
+3. **CLI snippet editor — `snp add` / `snp edit`** (planned 2026-09-29, ready to
+   execute; see below): a Bubble Tea
    panel that mirrors the GUI editor — the same fields, the same validation, the
    same template / `var_defaults` rules. The API (`POST` and `PUT
    /api/snippets`) and the picker's library plumbing already exist; the new work
@@ -987,17 +988,22 @@ capture the command.
   a pty run of `snp pick --local` prints exactly the rendered command with empty
   stderr. `make test` was green on `main` at merge.
 
-## CLI snippet editor — `snp add` / `snp edit` (planned)
+## CLI snippet editor — `snp add` / `snp edit` (2026-09-29)
+
+**Status: planned, ready to execute.** Decisions (2026-09-29): a separate
+`internal/edit` package over a shared `internal/tui`; `snp add` takes prefill
+flags (including comma-separated `--tags`); `snp edit` with no argument opens the
+picker list to choose; local mode creates the key **lazily**; folder creation is
+out of scope.
 
 Goal: create and edit snippets from the terminal in a Bubble Tea panel that
 mirrors the GUI editor. The GUI editor is already plain inputs (spec §6: "a
 plain textarea for the body, a plain textarea for notes, a language text input,
 a folder picker, a comma-separated tag input with a sensitive checkbox, and a
 template checkbox that stays in sync with the body's `{{var}}` placeholders"),
-so the form ports cleanly. The work is the panel, the pickers, and a write path
-the picker does not have today. Reuse `internal/pick` for the Bubble Tea setup,
-the palette and `/dev/tty` handling, and its library resolution (`--url` /
-`SNP_URL` / config `url`, else `state_dir/snp.db`).
+so the form ports near 1:1. The only divergences are the read/render layer
+(syntax highlighting, Markdown notes) and the mouse-driven chrome — neither of
+which is the editor.
 
 ### Parity target (GUI → TUI)
 
@@ -1018,40 +1024,115 @@ the palette and `/dev/tty` handling, and its library resolution (`--url` /
 | Read view: syntax highlighting, Markdown notes, 10-line cap + Show all | none | **diverges** — plain text |
 | Three-pane mouse UI, palette, dialogs | keyboard only | **diverges** |
 
-The form and its rules can match the GUI nearly one-for-one; the read/render
-layer, which is not part of the editor, cannot.
+### Library surface (the delta)
+
+`internal/pick`'s `Library` is read-only (`Search`, `Reveal`). The editor needs
+reads for its pickers and a write path, and `Snippet` needs two fields it lacks.
+
+```go
+// Snippet gains FolderID and Pinned. Without them a full-replace PUT would
+// silently un-file or un-favorite the row (the hazard the GUI's replaceSnippet
+// helper guards against).
+type Snippet struct {
+	ID, Title, Body, Language, Notes string
+	Tags          []string
+	FolderID      *string
+	Sensitive     bool
+	UsesVariables bool
+	Pinned        bool
+	VarDefaults   map[string]string
+}
+
+// Input mirrors store.SnippetInput and the API's snippetReq.
+type Input struct {
+	Title, Body, Language, Notes string
+	FolderID                     *string
+	Tags                         []string
+	IsSensitive, UsesVariables, Pinned bool
+	VarDefaults                  map[string]string
+}
+
+type Folder struct {
+	ID       string
+	ParentID *string
+	Name     string
+}
+type TagCount struct {
+	Name  string
+	Count int
+}
+
+// Editor is the read + write surface; Library stays the read-only one the
+// picker uses.
+type Editor interface {
+	Library
+	Folders(ctx context.Context) ([]Folder, error)
+	Tags(ctx context.Context) ([]TagCount, error)
+	Get(ctx context.Context, id string) (Snippet, error)
+	Create(ctx context.Context, in Input) (Snippet, error)
+	Update(ctx context.Context, id string, in Input) (Snippet, error)
+}
+```
+
+- `Local` methods delegate to the held `*store.Store`: `ListFolders`,
+  `ListTags`, `GetSnippet`, `CreateSnippet`, `ReplaceSnippet`.
+- `HTTP` methods: `GET /api/folders`, `GET /api/tags`, `GET
+  /api/snippets/{id}`, `POST /api/snippets`, `PUT /api/snippets/{id}`. `PUT` is
+  a full replace, so the editor loads the row first and sends every field back.
+- `fromOut` maps the two new fields; `Reveal` generalizes to `Get`, with the
+  picker's `Reveal` kept as a thin alias.
 
 ### Slices
 
-- **E1 — write path.** `internal/pick`'s `Library` is read-only (`Search`,
-  `Reveal`); add a writer — `Create(ctx, Snippet) (id string, error)` and
-  `Update(ctx, Snippet) error`. URL mode uses the existing endpoints (`POST
-  /api/snippets`, `PUT /api/snippets/{id}`); local mode uses `store.Create` /
-  `store.Update`. Unlike `snp pick`, local mode must **open-or-create** the
-  database and the key (`store.LoadOrCreateKey`): creating a sensitive snippet
-  needs the key, so the picker's deliberate "never create" rule does not carry
-  over.
-- **E2 — the editor panel** (`internal/edit`): one Bubble Tea model with the
-  field set above, Tab / Shift-Tab between fields, a multi-line body editor,
-  `internal/template` driving the template flag and the variable list, and
-  `var_defaults` carried forward pruned to the variables the body still uses
-  (the same rule the GUI save uses). A sensitive body stays masked until
+- **E1 — `internal/tui`.** Extract from `internal/pick`: the palette
+  (`theme` / `newTheme` / `styleInput` → `tui.Theme`, `tui.NewTheme(dark)`,
+  `tui.StyleInput`) and the tty/program setup in `run.go` → `tui.Run(ctx,
+  tea.Model) error` (`tea.OpenTTY`, `WithColorProfile(TrueColor)`,
+  `WithContext`). `internal/pick` keeps its behavior by calling into `tui`; the
+  existing picker tests must stay green. No user-visible change.
+- **E2 — the write path** (`internal/pick`): the `Editor` interface and the
+  `Input` / `Folder` / `TagCount` types above, the `Local` and `HTTP`
+  implementations, and the `Snippet` / `fromOut` additions. Tests: `Local`
+  against a temp-file store; `HTTP` against `httptest` — create returns a row,
+  update round-trips `folder_id` and `pinned`, and a validation error surfaces
+  the same message the API gives.
+- **E3 — the editor panel** (`internal/edit`, new): one Bubble Tea model with
+  the field set above. Tab / Shift-Tab between fields; the body is a multi-line
+  editor; `internal/template` drives the template flag and the variable list
+  (never hand-set); `var_defaults` is carried forward pruned to the variables
+  the body still uses (the GUI save rule). A sensitive body is masked until
   revealed; a write that fails shows the mapped error inline and keeps the
-  draft; `Esc` honors the dirty guard.
-- **E3 — pickers and bindings**: the folder picker over the same tree the GUI
-  shows, the tag input with suggestions from the tag list, and the language
-  list — all in `internal/pick`'s style and palette so the panel and the picker
-  read as one tool.
-- **E4 — CLI and docs**: `snp add` opens the panel empty; `snp edit <id|query>`
-  opens it on a row (a query reuses the picker's search to disambiguate).
-  Non-interactive flags / `--stdin` are a later add. The panel is a
-  self-contained full-screen TUI — it needs no shell widget, so it works in any
-  shell (zsh, bash, fish); only `snp pick`'s inline binding is zsh-only. Update
-  README ("From the shell" gains an add/edit part), spec §6, and the AGENTS /
-  CLAUDE subcommand lists.
+  draft; `Esc` honors the dirty guard; `Ctrl+S` / `Ctrl+Enter` saves. Tests:
+  model update handlers against a fake `Editor` (the picker's `model_test.go` is
+  the pattern).
+- **E4 — pickers**: the folder picker over `Folders()`, with `parent/child`
+  labels built from `ParentID` (there is no `path` field); the tag input with
+  suggestions from `Tags()`; the language list. All in `tui.Theme`, so the panel
+  and the picker read as one tool.
+- **E5 — the chooser for `snp edit`** (`internal/pick`): `Choose(ctx,
+  lib) (Snippet, error)` runs the existing list model in a select-only mode (no
+  template form, no stdout) and returns the highlighted row.
+- **E6 — CLI and docs** (`cmd/snp`): `runAdd` and `runEdit`.
+  - `snp add [--url URL | --local] [--title T] [--language L] [--folder PATH|ID]
+    [--tags a,b] [--sensitive] [--pin]` opens the panel, prefilled. On save it
+    exits 0 and prints nothing (like `pick`; a `--print-id` is a later add).
+  - `snp edit [--url URL | --local] [id | query]` opens the panel on that row;
+    with no argument it runs `Choose`. A query runs `Search`: one hit edits it,
+    several open the chooser.
+  - `openEditorLibrary`: like `openPickLibrary` but it may **create** the
+    database, and it attaches the key **lazily** — `LoadOrCreateKey` runs only
+    when a sensitive body must be read or written, so a plain create or a
+    metadata-only edit never writes a key file. This is the one place the
+    picker's "never create" rule does not carry over.
+  - Docs: README ("From the shell" gains an add/edit part, noting the panel
+    needs no shell widget and works in any shell), spec §6, and the AGENTS /
+    CLAUDE subcommand lists.
 
-**Done when**: a snippet is created and edited from the terminal in both `--url`
-and local modes with every field above; a sensitive body round-trips encrypted
-and is never written empty; the template flag and `var_defaults` pruning match
-the GUI; validation errors (tag charset, folder sibling/collision, unknown id)
-surface inline and never lose the draft; `make test` green and `go vet` clean.
+**Done when**: `snp add` creates and `snp edit` updates a snippet from the
+terminal in both `--url` and local modes, with every field above; a full-replace
+update preserves `folder_id`, `pinned`, and `var_defaults`; a sensitive body
+round-trips encrypted and is never written empty; the template flag and
+`var_defaults` pruning match the GUI; validation errors (tag charset, folder
+sibling/collision, unknown id) surface inline and never lose the draft; local
+mode writes no key file unless a sensitive snippet needs one; `make test` green
+and `go vet` clean.

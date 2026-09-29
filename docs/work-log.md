@@ -14,9 +14,11 @@ Spec: `docs/snp-design.md` · Plan: `docs/snp-implementation-plan.md`
 
 ## Current status
 
-- CLI editor planned (2026-09-29): `snp add` / `snp edit` are on the roadmap
-  (plan "CLI snippet editor") — a Bubble Tea panel mirroring the GUI editor on
-  the picker's plumbing. No code yet; see the newest log entry.
+- CLI editor planned (2026-09-29): `snp add` / `snp edit` are fully planned and
+  ready to execute (plan "CLI snippet editor") — `internal/edit` over a shared
+  `internal/tui`, prefill flags incl. `--tags`, `snp edit` (no arg) opens the
+  picker, lazy key creation, folder creation out of scope. No code yet; see the
+  newest log entry.
 - Docs reorg (2026-09-29): the implementation plan gained a "Status and
   roadmap" section; `snp doctor` and `snp pick` are recorded there as complete;
   the stale `Next:` line below now points at it. README's "From the shell" notes
@@ -2198,4 +2200,27 @@ Spec: `docs/snp-design.md` · Plan: `docs/snp-implementation-plan.md`
 - Shell scope: `snp add` / `snp edit` are self-contained full-screen TUIs with no
   shell widget, so they work in any shell; only `snp pick`'s inline binding is
   zsh-only (backlog: bash / fish picker integration).
+- Docs only — no code yet, so `go test`/`go vet` were not run.
+
+### 2026-09-29 — plan: `snp add` / `snp edit` (executable)
+
+- Decisions locked: a separate `internal/edit` over a shared `internal/tui`
+  (palette + tty runner extracted from `internal/pick`); `snp add` takes prefill
+  flags including comma-separated `--tags`; `snp edit` with no argument opens the
+  picker list; local mode creates the key lazily; folder creation is out of
+  scope.
+- Wrote the executable plan into `docs/snp-implementation-plan.md` (parity
+  table, library delta, slices E1–E6, done-when), replacing the sketch.
+- Key finding that shaped it: the picker's `Library` is read-only, and
+  `pick.Snippet` lacks `FolderID` and `Pinned`. Since `PUT /api/snippets/{id}`
+  is a full replace, an editor that did not carry those two fields would
+  silently un-file or un-favorite on save. `Snippet` / `fromOut` must grow them;
+  the `Editor` interface adds `Folders` / `Tags` / `Get` / `Create` / `Update`;
+  `Local` delegates to `*store.Store`, `HTTP` adds `GET /api/folders`, `GET
+  /api/tags` and `POST`/`PUT /api/snippets`.
+- `store.SnippetInput` and the API's `snippetReq` already carry the whole field
+  set, so no store or server change is expected — the work is client-side.
+- Lazy key: `snp pick` never creates a DB or a key; the editor may create the
+  DB, but `LoadOrCreateKey` runs only when a sensitive body must be read or
+  written, so a plain create or a metadata-only edit writes no key file.
 - Docs only — no code yet, so `go test`/`go vet` were not run.
