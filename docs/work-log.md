@@ -2558,3 +2558,21 @@ Spec: `docs/snp-design.md` · Plan: `docs/snp-implementation-plan.md`
   CLI AI row).
 - This work log's "Current status" had no CLI AI bullet — added.
 - Docs only; no code changed, `go test` not run.
+
+### 2026-09-29 — Docs polish ahead of the release
+
+- README: the intro now names the terminal surface (pick / add / edit /
+  ask) alongside the browser, PWA, and desktop; the repository layout
+  gained the five terminal packages (`ask`, `pick`, `edit`, `template`,
+  `tui`) it had missed; the config table's `url` row and the `owner`
+  note now say "shell clients" instead of "`snp pick` only"; and the AI
+  features section cross-links the terminal surface
+  (`#asking-ai-from-the-shell`).
+- Spec §11's closer ("The shell client is `snp pick`, below") named one
+  of four clients — now lists the picker, the terminal editor, and
+  `snp ask`.
+- The plan's release-history line "No tag yet covers the doctor or
+  picker work" now covers the doctor, picker, CLI editor, and CLI AI —
+  the four unreleased features the next tag ships.
+- Verified: `go vet ./...` and `go test ./...` green after the edits
+  (docs only, but cheap to confirm).

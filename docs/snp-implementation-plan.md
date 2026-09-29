@@ -74,7 +74,7 @@ AI) are **unreleased**.
 - Latest tag: **`v0.5.0`**. Signing/notarization and the per-platform release
   workflows are in place; releases are tag-triggered.
 - `v0.2.0-beta.4` tagged the Phase 11 branch, now merged to `main`.
-- No tag yet covers the doctor or picker work.
+- No tag yet covers the doctor, picker, CLI editor, or CLI AI work.
 
 ## 0. Conventions
 

@@ -907,7 +907,8 @@ Makefile                 build/test/dev plus desktop/app targets
 Multi-user, sharing, offline writes,
 SnippetsLab converter, semantic search, encryption with a user passphrase.
 The SnippetsLab converter is the remaining named follow-on. The shell
-client is `snp pick`, below.
+clients are below: `snp pick` (picker), `snp add` / `snp edit`
+(terminal editor), and `snp ask` (one-shot AI generation).
 
 ## 12. Desktop app (Wails)
 

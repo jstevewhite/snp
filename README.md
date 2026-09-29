@@ -2,7 +2,9 @@
 
 A personal snippet manager with a Go backend and an embedded Svelte 5 UI.
 Run one server on your tailnet and use it through a browser or installed
-PWA, or run a local desktop app on macOS/Linux.
+PWA, or run a local desktop app on macOS/Linux — or drive it from the
+terminal: `snp pick` puts a command on your prompt, `snp add` / `snp edit`
+are the full editor, and `snp ask` generates a snippet with AI.
 
 Store anything from a one-liner to a whole script, with full-text search,
 nested folders, tags, Markdown notes, `{{template}}` variables, and offline
@@ -615,12 +617,12 @@ beats file:
 | `ai_endpoint` | `--ai-endpoint` | `SNP_AI_ENDPOINT` | [OpenAI][ai-default] |
 | `ai_model` | `--ai-model` | `SNP_AI_MODEL` | `gpt-4o-mini` |
 | `ai_key` | `--ai-key` | `SNP_AI_KEY` | (AI disabled until set) |
-| `url` | `--url` | `SNP_URL` | (local database; `snp pick` only) |
+| `url` | `--url` | `SNP_URL` | (local database; shell clients) |
 
 [ai-default]: https://api.openai.com/v1
 
-`owner` is optional for the desktop app, dev mode, and `snp pick`.
-`snp serve` ignores `url`.
+`owner` is optional for the desktop app, dev mode, and the shell clients
+(`pick`, `add`, `edit`, `ask`). `snp serve` ignores `url`.
 
 For the systemd service, `HOME=/var/lib/snp`, so the defaults resolve to
 `/var/lib/snp/.config/snp/config.toml` and `/var/lib/snp/.local/share/snp`.
@@ -679,6 +681,10 @@ ai_key      = "ollama"                       # any non-empty value
 
 When unconfigured the AI controls are hidden; `GET /api/ai/status` reports
 whether it is on, and the model name — never the endpoint key.
+
+The same feature is in the terminal: `snp ask` prints a generation (or
+`--add` reviews it in the editor), and the editor panel carries the same
+controls — see [Asking AI from the shell](#asking-ai-from-the-shell).
 
 ## Backups
 
@@ -832,6 +838,11 @@ internal/server/         router, middleware, handlers, embedded static
 internal/tsauth/         tsnet listener and whois identity
 internal/desktop/        in-process API bridge (no wails import)
 internal/ai/             one-shot snippet generator
+internal/ask/            the AI feature surface for the terminal clients
+internal/pick/           the shell picker, its Library clients, the edit chooser
+internal/edit/           the terminal editor panel (snp add / snp edit)
+internal/template/       the {{var}} / {{var|default}} grammar, shared with the web
+internal/tui/            terminal chrome shared by pick and edit
 internal/starter/        bundled starter snippet pack
 web/                     svelte app; web/dist is embedded
 deploy/                  snp.service, install.sh, backup.sh; user-unit
