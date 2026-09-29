@@ -83,7 +83,8 @@ knows nothing about HTTP; the server maps store errors to status codes in
 `statusCode()` (`internal/server/server.go`) and never leaks 5xx detail to
 the client.
 
-**AI rule** (`internal/ai`): generation is strictly one-shot — never
+**AI rule** (`internal/ai`; the terminal surface is `internal/ask`):
+generation is strictly one-shot — never
 accumulate history, never include existing snippet content, and never
 log prompts, responses, or the API key (the request-logging middleware
 already omits bodies). The feature is enabled only when `ai_key` is set

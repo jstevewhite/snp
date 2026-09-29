@@ -2493,3 +2493,42 @@ Spec: `docs/snp-design.md` · Plan: `docs/snp-implementation-plan.md`
 - Verified: `go vet ./...`, `go test ./...` (15 packages),
   `GOOS=linux GOARCH=amd64 go build ./cmd/snp` (no-wails rule holds).
   `make test` not run — the web tree was not touched.
+
+### 2026-09-29 — CLI AI A3: the editor panel's AI controls
+
+- The panel grew the web form's three controls, key for key: `Ctrl+A`
+  opens the Ask-AI box (its own frame, the picker's form pattern;
+  Tab cycles the kind, Enter generates, Esc returns without touching
+  the draft; the draft's language rides the request), `Ctrl+T`
+  suggests tags merged into the Tags field (lowercase, nothing
+  duplicated), `Ctrl+E` explains into Notes with the snapshot kept
+  and `Ctrl+Z` restoring it once. Hand-editing Notes drops the
+  snapshot; an explain error replaces nothing and takes no snapshot;
+  an empty generation is the web's "AI returned an empty snippet" and
+  leaves the draft and the box alone.
+- Guards are the web buttons' disabled states, expressed as silent
+  no-ops: controls hidden when the status reports unconfigured (the
+  Init fetch mirrors the form's aiKnown/aiEnabled); suggest-tags and
+  explain never offered for a sensitive draft (the help line shows
+  only `ctrl+a` there); an empty body never calls. Any AI action in
+  flight blocks saves and new AI actions — `aiPending` parity — with
+  asking/suggesting/explaining busy lines like the saving one.
+- One decision the plan had not spelled out, now recorded: a
+  generation into a **masked sensitive draft** sets `revealed = true` —
+  the generated body is what the user saw and chose; a save must send
+  it, not the seed body the mask path would otherwise carry. Pinned by
+  test.
+- Wiring: `Run`/`RunCreate` grew the `ask.Service` parameter (nil hides
+  the controls); `cmd/snp` resolves it by the editor's transport rule,
+  attaching the local database in local mode so the tag vocabulary
+  reaches the provider. The provider client still gets no logger.
+- Tests (8, `internal/edit/ai_test.go` against a `fakeAsk` Service):
+  hidden-when-disabled, the fill rules (overwrite when produced, keep
+  when not), the empty-generation error path, the masked-sensitive
+  reveal decision, the tags merge + guards, explain/undo/invalidation,
+  and busy blocking saves plus recovery. Docs: spec §13 gained its
+  "Terminal" bullet; README documents the panel keys; the AGENTS/CLAUDE
+  AI rule now names `internal/ask` as the terminal surface.
+- Verified: `go vet ./...`, `go test ./...` (15 packages),
+  `GOOS=linux GOARCH=amd64 go build ./cmd/snp` (no-wails rule holds).
+  `make test` not run — the web tree was not touched.

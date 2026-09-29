@@ -8,6 +8,8 @@ import (
 	"charm.land/bubbles/v2/textarea"
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
+	"github.com/jstevewhite/snp/internal/ai"
+	"github.com/jstevewhite/snp/internal/ask"
 	"github.com/jstevewhite/snp/internal/pick"
 	"github.com/jstevewhite/snp/internal/template"
 	"github.com/jstevewhite/snp/internal/tui"
@@ -93,6 +95,28 @@ type Model struct {
 	tagNames   []string
 	suggActive int
 
+	// askMode is the Ask-AI box (Ctrl+A): a sub-view over the panel
+	// that generates into the draft. It is only reachable when the AI
+	// status reports the feature configured and enabled.
+	ai       ask.Service // nil = no AI; controls hidden
+	aiOn     bool
+	askMode  bool
+	askPrompt textinput.Model
+	askKind  ai.Kind
+
+	// Busy gating is the web form's aiPending: any AI action in flight
+	// blocks saves and new AI actions. aiDone is the transient
+	// "Generated — review and save." line.
+	aiBusy      bool
+	tagsBusy    bool
+	explainBusy bool
+	aiDone      string
+
+	// explainUndo snapshots Notes before an Explain replaces it, the
+	// web form's rule: taken only on success, dropped by hand-edits,
+	// restored once by Ctrl+Z.
+	explainUndo *string
+
 	err     string
 	asking   bool // dirty-quit confirm
 	saving   bool // a write is in flight
@@ -145,6 +169,10 @@ func New(ctx context.Context, ed pick.Editor, seed *pick.Snippet) Model {
 	tags.Prompt = "Tags       "
 	tags.Placeholder = "comma-separated"
 
+	askPrompt := textinput.New()
+	askPrompt.Prompt = "> "
+	askPrompt.Placeholder = "what should the snippet do?"
+
 	m := Model{
 		ed:       ed,
 		ctx:      ctx,
@@ -155,6 +183,8 @@ func New(ctx context.Context, ed pick.Editor, seed *pick.Snippet) Model {
 		title:    title,
 		language: language,
 		tags:     tags,
+		askPrompt: askPrompt,
+		askKind:  ai.KindCommand,
 		// no suggestion is highlighted until Down picks one
 		suggActive: -1,
 	}
@@ -197,6 +227,13 @@ func (m Model) Init() tea.Cmd {
 			return tagsMsg{tags: tags, err: err}
 		},
 	)
+	if m.ai != nil {
+		svc := m.ai
+		cmds = append(cmds, func() tea.Msg {
+			st, err := svc.Status(ctx)
+			return aiStatusMsg{status: st, err: err}
+		})
+	}
 	return tea.Batch(cmds...)
 }
 
@@ -216,6 +253,26 @@ type foldersMsg struct {
 type tagsMsg struct {
 	tags []pick.TagCount
 	err  error
+}
+
+type aiStatusMsg struct {
+	status ask.Status
+	err    error
+}
+
+type aiGeneratedMsg struct {
+	gen ask.Generation
+	err error
+}
+
+type aiTagsMsg struct {
+	tags []string
+	err  error
+}
+
+type aiExplainedMsg struct {
+	notes string
+	err   error
 }
 
 type savedMsg struct {
@@ -257,6 +314,39 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.tagNames[i] = t.Name
 		}
 		return m, nil
+	case aiStatusMsg:
+		// A failed status check hides the controls, the web form's
+		// aiKnown/aiEnabled outcome.
+		m.aiOn = msg.err == nil && msg.status.Enabled
+		return m, nil
+	case aiGeneratedMsg:
+		return m.onGenerated(msg)
+	case aiTagsMsg:
+		m.tagsBusy = false
+		if msg.err != nil {
+			m.err = msg.err.Error()
+			return m, nil
+		}
+		m.err = ""
+		m.mergeTags(msg.tags)
+		return m, nil
+	case aiExplainedMsg:
+		m.explainBusy = false
+		if msg.err != nil {
+			m.err = msg.err.Error()
+			return m, nil
+		}
+		if strings.TrimSpace(msg.notes) == "" {
+			// The web form's empty-explanation error: nothing replaced,
+			// no snapshot taken.
+			m.err = "AI returned an empty explanation"
+			return m, nil
+		}
+		m.err = ""
+		snapshot := m.notes.Value()
+		m.explainUndo = &snapshot
+		m.notes.SetValue(msg.notes)
+		return m, nil
 	case savedMsg:
 		m.saving = false
 		if msg.err != nil {
@@ -286,6 +376,9 @@ func (m Model) onKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	if m.saving {
 		return m, nil
 	}
+	if m.askMode {
+		return m.onAskKey(msg)
+	}
 	if m.asking {
 		switch k.Code {
 		case tea.KeyEsc, 'n', 'N':
@@ -305,6 +398,24 @@ func (m Model) onKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	if k.Code == 'r' && k.Mod&tea.ModCtrl != 0 && !m.revealed && m.seed != nil && m.seed.Sensitive {
 		m.revealed = true
 		m.body.SetValue(m.seed.Body)
+		return m, nil
+	}
+	// The AI controls (Ctrl+A ask, Ctrl+T suggest tags, Ctrl+E explain,
+	// Ctrl+Z undo explain) are panel-level keys; each no-ops silently
+	// when its web-form button would be disabled — unconfigured, busy,
+	// sensitive (for the two that send the body), or an empty body.
+	if k.Code == 'a' && k.Mod&tea.ModCtrl != 0 {
+		return m.openAsk()
+	}
+	if k.Code == 't' && k.Mod&tea.ModCtrl != 0 {
+		return m.suggestTagsCmd()
+	}
+	if k.Code == 'e' && k.Mod&tea.ModCtrl != 0 {
+		return m.explainCmd()
+	}
+	if k.Code == 'z' && k.Mod&tea.ModCtrl != 0 && m.explainUndo != nil {
+		m.notes.SetValue(*m.explainUndo)
+		m.explainUndo = nil
 		return m, nil
 	}
 	if k.Code == tea.KeyTab {
@@ -383,8 +494,15 @@ func (m Model) onKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.body, cmd = m.body.Update(msg)
 		return m, cmd
 	case stopNotes:
+		prev := m.notes.Value()
 		var cmd tea.Cmd
 		m.notes, cmd = m.notes.Update(msg)
+		// Hand-editing Notes drops the Explain undo snapshot (the web
+		// form's oninput rule), so Undo can never discard something
+		// written after the overwrite.
+		if m.notes.Value() != prev {
+			m.explainUndo = nil
+		}
 		return m, cmd
 	}
 	return m, nil
@@ -507,7 +625,9 @@ func (m Model) dirty() bool {
 }
 
 func (m Model) save() (tea.Model, tea.Cmd) {
-	if m.saving {
+	if m.saving || m.aiBusy || m.tagsBusy || m.explainBusy {
+		// aiPending parity: the web form disables Save while an AI
+		// action is in flight.
 		return m, nil
 	}
 	if strings.TrimSpace(m.title.Value()) == "" {
@@ -587,6 +707,7 @@ func (m *Model) applyChrome() {
 	tui.StyleInput(&m.title, m.dark)
 	tui.StyleInput(&m.language, m.dark)
 	tui.StyleInput(&m.tags, m.dark)
+	tui.StyleInput(&m.askPrompt, m.dark)
 	m.resize()
 }
 
@@ -669,6 +790,173 @@ func FolderPath(folders []pick.Folder, id string) string {
 		id = *f.ParentID
 	}
 	return strings.Join(parts, "/")
+}
+
+// aiAvailable reports whether the AI controls may be offered: a
+// service is wired and its status reported the feature enabled.
+func (m Model) aiAvailable() bool {
+	return m.ai != nil && m.aiOn && !m.aiBusy && !m.tagsBusy && !m.explainBusy
+}
+
+// aiBody is the body the body-sending actions would use. They are
+// never offered for a sensitive draft, so the masked box is not a
+// concern here.
+func (m Model) aiBody() string {
+	return m.body.Value()
+}
+
+// openAsk opens the Ask-AI box (Ctrl+A). Ask-AI sends only the typed
+// prompt, so — unlike suggest-tags and explain — it is available even
+// on a sensitive draft, exactly like the web form's button.
+func (m Model) openAsk() (tea.Model, tea.Cmd) {
+	if !m.aiAvailable() {
+		return m, nil
+	}
+	m.askMode = true
+	m.err = ""
+	return m, m.askPrompt.Focus()
+}
+
+// onAskKey drives the box: Tab cycles the kind, Enter generates, Esc
+// returns without touching the draft.
+func (m Model) onAskKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	k := msg.Key()
+	switch k.Code {
+	case tea.KeyEsc:
+		m.askMode = false
+		m.err = ""
+		return m, nil
+	case tea.KeyTab:
+		switch m.askKind {
+		case ai.KindCommand:
+			m.askKind = ai.KindScript
+		case ai.KindScript:
+			m.askKind = ai.KindFunction
+		default:
+			m.askKind = ai.KindCommand
+		}
+		return m, nil
+	case tea.KeyEnter:
+		prompt := strings.TrimSpace(m.askPrompt.Value())
+		if prompt == "" || m.aiBusy {
+			return m, nil
+		}
+		m.aiBusy = true
+		m.err = ""
+		svc, ctx, kind := m.ai, m.ctx, m.askKind
+		// The web form sends the draft's language when set.
+		lang := strings.TrimSpace(m.language.Value())
+		return m, func() tea.Msg {
+			gen, err := svc.Generate(ctx, prompt, kind, lang)
+			return aiGeneratedMsg{gen: gen, err: err}
+		}
+	}
+	var cmd tea.Cmd
+	m.askPrompt, cmd = m.askPrompt.Update(msg)
+	return m, cmd
+}
+
+// onGenerated applies the web form's fill rules (askAI): body always;
+// title, language, notes only when the model produced them; an empty
+// body is the web client's empty-snippet error and leaves the draft
+// (and the box) alone.
+func (m Model) onGenerated(msg aiGeneratedMsg) (tea.Model, tea.Cmd) {
+	m.aiBusy = false
+	if msg.err != nil {
+		m.err = msg.err.Error()
+		return m, nil
+	}
+	if msg.gen.Body == "" {
+		m.err = "AI returned an empty snippet"
+		return m, nil
+	}
+	m.err = ""
+	if msg.gen.Title != "" {
+		m.title.SetValue(msg.gen.Title)
+	}
+	if msg.gen.Language != "" {
+		m.language.SetValue(msg.gen.Language)
+	}
+	m.body.SetValue(msg.gen.Body)
+	if msg.gen.Notes != "" {
+		m.notes.SetValue(msg.gen.Notes)
+	}
+	// A generation into a masked sensitive draft is an explicit
+	// replacement of a body the user has now seen: save must send the
+	// generated body, not the masked seed body it would otherwise
+	// carry.
+	if m.seed != nil && m.seed.Sensitive && !m.revealed {
+		m.revealed = true
+	}
+	m.askMode = false
+	m.aiDone = "Generated — review and save."
+	return m, nil
+}
+
+// suggestTagsCmd runs the tag suggestion (Ctrl+T): the web form's
+// guards — not for a sensitive draft, needs a body — and the merge
+// rule: lowercase, nothing duplicated.
+func (m Model) suggestTagsCmd() (tea.Model, tea.Cmd) {
+	if !m.aiAvailable() || m.sensitive || strings.TrimSpace(m.aiBody()) == "" {
+		return m, nil
+	}
+	m.tagsBusy = true
+	m.err = ""
+	svc, ctx := m.ai, m.ctx
+	body := m.aiBody()
+	title := strings.TrimSpace(m.title.Value())
+	language := strings.TrimSpace(m.language.Value())
+	return m, func() tea.Msg {
+		tags, err := svc.SuggestTags(ctx, ask.TagInput{
+			Body: body, Title: title, Language: language,
+		})
+		return aiTagsMsg{tags: tags, err: err}
+	}
+}
+
+// explainCmd runs the explanation (Ctrl+E): the same guards as
+// suggest-tags; the result replaces Notes, snapshot kept (the web
+// form's Explain).
+func (m Model) explainCmd() (tea.Model, tea.Cmd) {
+	if !m.aiAvailable() || m.sensitive || strings.TrimSpace(m.aiBody()) == "" {
+		return m, nil
+	}
+	m.explainBusy = true
+	m.err = ""
+	svc, ctx := m.ai, m.ctx
+	body := m.aiBody()
+	return m, func() tea.Msg {
+		notes, err := svc.Explain(ctx, body, false)
+		return aiExplainedMsg{notes: notes, err: err}
+	}
+}
+
+// mergeTags merges suggested names into the tags field without
+// clobbering what is already typed — the web form's suggestTags merge.
+func (m *Model) mergeTags(suggested []string) {
+	current := []string{}
+	for _, t := range strings.Split(m.tags.Value(), ",") {
+		if t = strings.TrimSpace(strings.ToLower(t)); t != "" {
+			current = append(current, t)
+		}
+	}
+	for _, t := range suggested {
+		t = strings.ToLower(strings.TrimSpace(t))
+		if t == "" {
+			continue
+		}
+		dup := false
+		for _, c := range current {
+			if c == t {
+				dup = true
+				break
+			}
+		}
+		if !dup {
+			current = append(current, t)
+		}
+	}
+	m.tags.SetValue(strings.Join(current, ", "))
 }
 
 func sameFolderID(a, b *string) bool {

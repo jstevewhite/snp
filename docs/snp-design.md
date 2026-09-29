@@ -1076,6 +1076,24 @@ un-reviewed.
   a self-hosted OpenAI-compatible endpoint (e.g. ollama) is supported
   by pointing `ai_endpoint` at it. Treat generated snippets like any
   other snippet — review before running.
+- **Terminal**: `internal/ask` is the same feature for the terminal
+  clients (`snp ask` and the editor panel), over the same four
+  endpoints in `--url` mode and through `internal/ai` in-process in
+  local mode. `snp ask` prints exactly the generated body to stdout
+  (capture-pure, like `snp pick`), or `--add` opens the terminal editor
+  prefilled with the web fill rules. The editor panel offers the three
+  controls with the same guards: `Ctrl+A` opens an Ask-AI box (prompt
+  input, Tab cycles the kind, Enter generates, Esc returns; available
+  even on a sensitive draft because it sends only the prompt),
+  `Ctrl+T` suggests tags merged into the Tags field without
+  duplicates, and `Ctrl+E` explains into Notes with `Ctrl+Z` putting
+  the replaced text back — hand-editing Notes drops that undo point,
+  and the snapshot is taken only on success. Controls hide when the
+  status reports the feature unconfigured, and any AI action in
+  flight blocks saves exactly like the form's busy state. The local
+  transport applies the same validation the server does (prompt cap,
+  kind check, tag grammar filtering, the same refusal texts), so the
+  two transports are not a strong and a weak twin.
 
 ## Recovery: trash and revision history
 

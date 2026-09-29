@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/jstevewhite/snp/internal/ask"
 	"github.com/jstevewhite/snp/internal/pick"
 	"github.com/jstevewhite/snp/internal/tui"
 )
@@ -14,14 +15,19 @@ import (
 var ErrCanceled = fmt.Errorf("edit: %w", pick.ErrCanceled)
 
 // Run draws the editor panel on the terminal (tui.Run handles /dev/tty)
-// and returns the saved row. seed nil opens the create form.
-func Run(ctx context.Context, ed pick.Editor, seed *pick.Snippet) (pick.Snippet, error) {
-	return panel(tui.Run(ctx, New(ctx, ed, seed)))
+// and returns the saved row. seed nil opens the create form. svc is
+// the AI surface (spec §13); nil hides the AI controls.
+func Run(ctx context.Context, ed pick.Editor, svc ask.Service, seed *pick.Snippet) (pick.Snippet, error) {
+	m := New(ctx, ed, seed)
+	m.ai = svc
+	return panel(tui.Run(ctx, m))
 }
 
 // RunCreate is Run for `snp add`, prefilled from flags.
-func RunCreate(ctx context.Context, ed pick.Editor, prefill Prefill) (pick.Snippet, error) {
-	return panel(tui.Run(ctx, NewCreate(ctx, ed, prefill)))
+func RunCreate(ctx context.Context, ed pick.Editor, svc ask.Service, prefill Prefill) (pick.Snippet, error) {
+	m := NewCreate(ctx, ed, prefill)
+	m.ai = svc
+	return panel(tui.Run(ctx, m))
 }
 
 func panel(final tea.Model, err error) (pick.Snippet, error) {

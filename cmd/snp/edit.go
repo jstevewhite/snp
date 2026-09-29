@@ -7,11 +7,35 @@ import (
 	"os"
 	"strings"
 
+	"github.com/jstevewhite/snp/internal/ai"
+	"github.com/jstevewhite/snp/internal/ask"
 	"github.com/jstevewhite/snp/internal/config"
 	"github.com/jstevewhite/snp/internal/edit"
 	"github.com/jstevewhite/snp/internal/pick"
 	"github.com/jstevewhite/snp/internal/store"
 )
+
+// openAskService follows --local, then url, then the local AI config —
+// the same transport rule as the editor. st is the local database for
+// the tag vocabulary (Local.SuggestTags); nil when there is no library
+// (`snp ask` standalone). The provider client gets no logger: slog
+// writes to stdout, which would break `out=$(snp ask ...)`, and the AI
+// rule permits only status and duration anyway.
+func openAskService(cfg config.Config, forceLocal bool, st *store.Store) (ask.Service, error) {
+	if !forceLocal && cfg.URL != "" {
+		return ask.NewHTTP(cfg.URL)
+	}
+	return ask.Local{Client: ai.FromConfig(cfg, nil), Store: st}, nil
+}
+
+// editorStore returns the local database behind the editor's library,
+// nil in --url mode.
+func editorStore(ed pick.Editor) *store.Store {
+	if l, ok := ed.(*lazyKeyEditor); ok {
+		return l.st
+	}
+	return nil
+}
 
 // runAdd is `snp add`: the editor panel prefilled from flags, a create.
 // On save it exits 0 and prints nothing, like pick.
@@ -50,7 +74,12 @@ func runAdd(args []string) {
 		done()
 		fatal(err)
 	}
-	_, err = edit.RunCreate(context.Background(), ed, prefill)
+	svc, err := openAskService(cfg, *local, editorStore(ed))
+	if err != nil {
+		done()
+		fatal(err)
+	}
+	_, err = edit.RunCreate(context.Background(), ed, svc, prefill)
 	done()
 	if errors.Is(err, edit.ErrCanceled) {
 		os.Exit(1)
@@ -86,7 +115,12 @@ func runEdit(args []string) {
 		done()
 		fatal(err)
 	}
-	_, err = edit.Run(context.Background(), ed, &row)
+	svc, err := openAskService(cfg, *local, editorStore(ed))
+	if err != nil {
+		done()
+		fatal(err)
+	}
+	_, err = edit.Run(context.Background(), ed, svc, &row)
 	done()
 	if errors.Is(err, edit.ErrCanceled) {
 		os.Exit(1)

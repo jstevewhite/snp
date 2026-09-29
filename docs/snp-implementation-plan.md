@@ -40,12 +40,12 @@ last commits (the doctor work, the shell picker, and the CLI editor) are
    `main` is 21 commits past `v0.5.0`. Use the existing tag-triggered
    multi-platform workflow, and smoke `snp add` / `snp edit` (pty, both `--url`
    and local) as part of it.
-3. **CLI AI — `snp ask` and Ask-AI in the terminal editor** (in progress —
-   A1–A2 done 2026-09-29; see the section below): AI at parity
+3. **CLI AI — `snp ask` and Ask-AI in the terminal editor** (complete —
+   A1–A3 landed 2026-09-29; see the section below): AI at parity
    with the web form — `snp ask` for one-shot generation, plus the
    Ask-AI / suggest-tags / explain-with-undo controls inside the editor
    panel, over the existing `/api/ai/*` endpoints and `internal/ai`.
-   Slices A1–A3.
+   The interactive pty smoke rides with the release checklist.
 4. **Linux desktop container build + verification** — podman with
    `libgtk-3-dev` + `libwebkit2gtk-4.1-dev` + Go; `make web`, then the
    desktop build; exercise `install-desktop.sh` with a scratch `PREFIX=`.
@@ -1268,11 +1268,11 @@ The editor model gains an `ask.Service` field (nil = controls hidden);
   captures the body in both transports, a disabled feature errors with
   the configured message, and `--add` lands all four fields per the web
   fill rules.
-- **A3 — the panel controls** (`internal/edit` + its README/spec docs):
-  the Ask-AI box, `Ctrl+T`, `Ctrl+E`/`Ctrl+Z`, busy gating, the hidden
-  state, tested against a fake `Service`. *Done when*: the three
-  controls behave key-for-key like the web form's, a sensitive draft
-  offers only Ask-AI, saves are blocked while busy, and undo
+- **A3 — the panel controls** (`internal/edit` + its README/spec docs,
+  done 2026-09-29): the Ask-AI box, `Ctrl+T`, `Ctrl+E`/`Ctrl+Z`, busy
+  gating, the hidden state, tested against a fake `Service`. *Done when*:
+  the three controls behave key-for-key like the web form's, a sensitive
+  draft offers only Ask-AI, saves are blocked while busy, and undo
   survives/invalidates by the web snapshot rules.
 
 **Done when**: `snp ask` generates from the terminal in both transports;

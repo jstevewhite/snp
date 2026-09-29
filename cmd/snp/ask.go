@@ -47,7 +47,12 @@ func runAsk(args []string) {
 	if err != nil {
 		fatal(err)
 	}
-	_, err = edit.RunCreate(context.Background(), ed, prefillFromGeneration(gen))
+	svc, err := openAskService(cfg, *local, editorStore(ed))
+	if err != nil {
+		done()
+		fatal(err)
+	}
+	_, err = edit.RunCreate(context.Background(), ed, svc, prefillFromGeneration(gen))
 	done()
 	if errors.Is(err, edit.ErrCanceled) {
 		os.Exit(1)
@@ -57,23 +62,11 @@ func runAsk(args []string) {
 	}
 }
 
-// openAskService follows --local, then url, then the local AI config —
-// the same transport rule as the editor. No library is involved (only
-// --add opens one). The provider client gets no logger: slog writes
-// to stdout, which would break `out=$(snp ask ...)`, and the AI rule
-// permits only status and duration anyway.
-func openAskService(cfg config.Config, forceLocal bool) (ask.Service, error) {
-	if !forceLocal && cfg.URL != "" {
-		return ask.NewHTTP(cfg.URL)
-	}
-	return ask.Local{Client: ai.FromConfig(cfg, nil)}, nil
-}
-
 // askGenerate runs one generation over the resolved transport. The web
 // client's empty-body check (askAI) lands here: a generation with no
 // body is an error, not an empty print.
 func askGenerate(ctx context.Context, cfg config.Config, forceLocal bool, prompt, kind, language string) (ask.Generation, error) {
-	svc, err := openAskService(cfg, forceLocal)
+	svc, err := openAskService(cfg, forceLocal, nil)
 	if err != nil {
 		return ask.Generation{}, err
 	}

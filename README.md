@@ -359,6 +359,12 @@ the file). Unlike the picker it may create the database — a first
 `snp add` on a fresh machine works — and it creates the encryption key
 only when a sensitive body must be read or written.
 
+The panel has the web form's AI controls, when AI is configured:
+`Ctrl+A` asks AI (Tab cycles the output kind), `Ctrl+T` suggests tags,
+`Ctrl+E` writes an explanation into notes and `Ctrl+Z` undoes it.
+Tag suggestions and explain are not offered for sensitive snippets,
+like the web form; asking sends only your prompt.
+
 ### Asking AI from the shell
 
 `snp ask` generates a snippet from a prompt — every argument after the

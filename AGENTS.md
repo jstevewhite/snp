@@ -149,7 +149,8 @@ between rows. Toggling `is_sensitive` re-encrypts and rewrites the FTS row.
 Exports contain plaintext sensitive bodies; backups are unreadable without
 the key file.
 
-**AI rule** (`internal/ai`). Generation is strictly one-shot: never
+**AI rule** (`internal/ai`; the terminal surface is `internal/ask`).
+Generation is strictly one-shot: never
 accumulate history, never include existing snippet content, never log
 prompts, responses, or the API key. Enabled only when `ai_key` is set.
 
