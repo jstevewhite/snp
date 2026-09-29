@@ -59,6 +59,14 @@ internal/server/  ServeMux router, middleware, handlers, embedded-SPA handler
 internal/tsauth/  tsnet node + WhoIs identity; Dev resolver for --dev-listen
 internal/desktop/ desktop API bridge (spec §12; deliberately no wails import)
 internal/ai/      one-shot OpenAI-compatible snippet generator (spec §13)
+internal/ask/     the AI feature surface for the terminal clients: Local
+                  (provider in-process, server policy) + HTTP (/api/ai/*)
+internal/pick/    snp pick: the shell picker, its Library clients, and the
+                  snp edit chooser (select-only list)
+internal/edit/    snp add / snp edit: the terminal editor panel (field ring,
+                  GUI save rules, AI controls)
+internal/template/ the {{var}} / {{var|default}} grammar, shared with the web
+internal/tui/     terminal chrome shared by pick and edit: theme + /dev/tty setup
 internal/starter/ bundled starter snippet pack, applied on demand (spec §5)
 web/              Svelte 5 SPA; web/dist is go:embed-ed by web/embed.go
 deploy/           systemd unit, install.sh, backup.sh, make-app.sh,
@@ -66,6 +74,9 @@ deploy/           systemd unit, install.sh, backup.sh, make-app.sh,
 ```
 
 Dependency direction is one-way: `cmd` → `server` → {`store`, `tsauth`};
+`cmd` → {`pick`, `edit`, `ask`} for the terminal clients, where `edit` →
+{`pick`, `template`, `tui`, `ask`}, `ask` → {`ai`, `store`}, and
+`pick` → {`template`, `tui`};
 `cmd/snp-desktop` → `desktop` → {`server`, `store`, `tsauth`}. The store
 knows nothing about HTTP; the server maps store errors via `statusCode()`
 (`internal/server/server.go`) and never leaks 5xx detail to the client.

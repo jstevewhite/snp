@@ -2,19 +2,20 @@
 
 Date: 2026-09-02 · Last updated: 2026-09-29
 Status: Phases 0–11 complete and merged; follow-on session work through
-`snp pick` (2026-09-28) and the CLI snippet editor `snp add` / `snp edit`
-(2026-09-29) complete on `main`. `main` is 21 commits past the
-`v0.5.0` tag — the doctor, picker, and editor work is unreleased. Open
-work is listed under "Status and roadmap" below.
+`snp pick` (2026-09-28), the CLI snippet editor `snp add` / `snp edit`,
+and CLI AI — `snp ask` + the editor's AI controls (2026-09-29) — complete
+on `main`. `main` is 25 commits past the `v0.5.0` tag — the doctor,
+picker, editor, and CLI AI work is unreleased. Open work is listed under
+"Status and roadmap" below.
 Spec: `docs/snp-design.md` (this plan implements that document; section refs
 like "spec §4" point there)
 
 ## Status and roadmap (2026-09-29)
 
 Every numbered phase (0–11) is complete and merged to `main`, together with the
-follow-on session work. `main` is 21 commits past the `v0.5.0` tag, and the
-last commits (the doctor work, the shell picker, and the CLI editor) are
-**unreleased**.
+follow-on session work. `main` is 25 commits past the `v0.5.0` tag, and the
+last commits (the doctor work, the shell picker, the CLI editor, and CLI
+AI) are **unreleased**.
 
 ### Shipped
 
@@ -29,6 +30,7 @@ last commits (the doctor work, the shell picker, and the CLI editor) are
 | `snp pick` shell client | 2026-09-28 | merged `4bb6f33`; picker + `snp widget` zsh binding |
 | `web/dist` stub build fix | 2026-09-28 | merged `d14e82f`; `restore-dist-stub` runs after the compile |
 | CLI snippet editor | 2026-09-29 | `snp add` / `snp edit` — `internal/tui`, `internal/edit`, chooser, lazy key; interactive pty smoke rides with the release checklist |
+| CLI AI | 2026-09-29 | `snp ask` + the editor's Ask-AI / suggest-tags / explain-undo controls — `internal/ask`, Local + HTTP; pty smoke rides with the release checklist |
 
 ### Next (priority order)
 
@@ -36,10 +38,10 @@ last commits (the doctor work, the shell picker, and the CLI editor) are
    code is merged). iOS Safari as a tab and as the installed PWA (swipe-back at
    each depth); Android Chrome hardware back (drawer → detail → leaves the app);
    the wails app with Settings → Layout = Compact.
-2. **Cut a release** covering `snp doctor`, `snp pick`, and the CLI editor —
-   `main` is 21 commits past `v0.5.0`. Use the existing tag-triggered
-   multi-platform workflow, and smoke `snp add` / `snp edit` (pty, both `--url`
-   and local) as part of it.
+2. **Cut a release** covering `snp doctor`, `snp pick`, the CLI editor, and
+   CLI AI — `main` is 25 commits past `v0.5.0`. Use the existing
+   tag-triggered multi-platform workflow, and smoke `snp add` /
+   `snp edit` / `snp ask` (pty, both `--url` and local) as part of it.
 3. **CLI AI — `snp ask` and Ask-AI in the terminal editor** (complete —
    A1–A3 landed 2026-09-29; see the section below): AI at parity
    with the web form — `snp ask` for one-shot generation, plus the

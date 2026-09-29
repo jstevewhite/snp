@@ -42,6 +42,10 @@ The server is one binary, `snp`:
   settings panel.
 - `snp key show-path` — prints the encryption key path, for backup scripts.
 - `snp pick` — terminal picker. See [From the shell](#from-the-shell).
+- `snp add` / `snp edit` — create or edit a snippet in the terminal
+  editor, same fields and rules as the app.
+- `snp ask` — generate a snippet from a prompt with AI; prints the body,
+  or `--add` to review it in the editor.
 - `snp widget` — prints the zsh setup that leaves the chosen command on
   the prompt. Nothing runs until you press Enter.
 - `snp doctor` — check library health and repair the search index, see

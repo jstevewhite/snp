@@ -14,6 +14,12 @@ Spec: `docs/snp-design.md` · Plan: `docs/snp-implementation-plan.md`
 
 ## Current status
 
+- CLI AI (2026-09-29): **A1–A3 done — complete.** `internal/ask`
+  (Service over Local + HTTP, server policy replicated both ways),
+  `snp ask` (stdout-pure generation, `--add` into the editor), and the
+  editor panel's `Ctrl+A` / `Ctrl+T` / `Ctrl+E`/`Ctrl+Z` controls with
+  web-form parity. Pty smoke rides with the release checklist. See the
+  newest log entry.
 - CLI editor (2026-09-29): **E1–E6 done — complete.** The shared
   `internal/tui` package, the library write path, the editor panel, the
   pickers, the chooser, and the CLI wiring (`snp add` / `snp edit` with
@@ -2532,3 +2538,23 @@ Spec: `docs/snp-design.md` · Plan: `docs/snp-implementation-plan.md`
 - Verified: `go vet ./...`, `go test ./...` (15 packages),
   `GOOS=linux GOARCH=amd64 go build ./cmd/snp` (no-wails rule holds).
   `make test` not run — the web tree was not touched.
+
+### 2026-09-29 — Docs audit: the cross-cutting surfaces
+
+- A pass over the surfaces no single slice owns found them stale after
+  the editor and CLI AI work, and fixed all of them:
+- README's command list (near the top) had `snp pick` / `widget` /
+  `doctor` but not `add`, `edit`, or `ask` — added, pointing at the
+  "From the shell" sections.
+- The AGENTS/CLAUDE architecture trees predated the picker entirely:
+  `internal/pick`, `internal/template`, `internal/tui`, `internal/edit`,
+  and `internal/ask` were missing — added, and the dependency-direction
+  line now covers the terminal clients (`edit` → {`pick`, `template`,
+  `tui`, `ask`}, `ask` → {`ai`, `store`}, `pick` → {`template`, `tui`}).
+- The plan's header and roadmap said "21 commits past `v0.5.0`" and
+  listed only doctor/picker/editor as unreleased — now 25 commits, CLI
+  AI included in the unreleased list, the release item's smoke
+  (`snp add` / `edit` / `ask`), and the Shipped table (which gained a
+  CLI AI row).
+- This work log's "Current status" had no CLI AI bullet — added.
+- Docs only; no code changed, `go test` not run.
