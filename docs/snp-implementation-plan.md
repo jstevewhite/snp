@@ -41,24 +41,11 @@ last commits (the doctor work, the shell picker, and the CLI editor) are
    multi-platform workflow, and smoke `snp add` / `snp edit` (pty, both `--url`
    and local) as part of it.
 3. **CLI AI — `snp ask` and Ask-AI in the terminal editor** (planned
-   2026-09-29): AI is first-class in the web UI (spec §13 — Ask-AI fills
-   the body with a chosen output kind, Suggest-tags merges into the tag
-   field, Explain writes notes with Undo); the terminal gets the same.
-   `snp ask [--kind command|script|function] <prompt>` prints one
-   generation to stdout (or `--add` to open the `snp add` panel with the
-   body prefilled), and the editor panel gains the three controls:
-   Ctrl+A opens the Ask-AI prompt over the body, a suggest-tags action
-   over the tags field, an explain-with-undo over notes — the web form's
-   behaviors, key for key. Transport follows the library: `--url` uses
-   the server's `/api/ai/{status,generate,tags,explain}` (its key, its
-   policy — the status endpoint says whether it is on); local mode calls
-   `internal/ai` in-process from the local config (the `--ai-*` flags
-   already registered). Spec §13's rules carry over unchanged: strictly
-   one-shot, no history, no existing snippet content in a prompt, never
-   log prompts / responses / the key, off when no key is configured, and
-   never offered for a sensitive snippet. Suggested slices: A1 the client
-   surface (status/generate/tags/explain over both transports, the
-   `Editor` pattern), A2 `snp ask`, A3 the in-panel controls.
+   2026-09-29, ready to execute; see the section below): AI at parity
+   with the web form — `snp ask` for one-shot generation, plus the
+   Ask-AI / suggest-tags / explain-with-undo controls inside the editor
+   panel, over the existing `/api/ai/*` endpoints and `internal/ai`.
+   Slices A1–A3.
 4. **Linux desktop container build + verification** — podman with
    `libgtk-3-dev` + `libwebkit2gtk-4.1-dev` + Go; `make web`, then the
    desktop build; exercise `install-desktop.sh` with a scratch `PREFIX=`.
@@ -1185,3 +1172,111 @@ coverage is green (`go vet`, `go test`, the cross-compile check, and
 `make test`); the interactive part — a pty run of `snp add` / `snp edit`
 in both `--url` and local modes, the way the picker got one — is still
 to be done by hand and rides with the release checklist.
+
+## CLI AI — `snp ask` and Ask-AI in the terminal editor (2026-09-29)
+
+**Status: planned, ready to execute.** AI is first-class in the web UI
+(spec §13): Ask-AI generates a snippet into the form (title / language /
+notes filled when non-empty, body always), Suggest-tags merges 2-3 names
+into the Tags field without duplicates, Explain replaces Notes with an
+undo-able snapshot. The terminal gets the same, over the server's
+existing `/api/ai/{status,generate,tags,explain}` endpoints — no server
+changes.
+
+### Decisions (2026-29, fixed up front)
+
+- **Package `internal/ask`** — the AI feature surface, the Editor
+  pattern (interface + Local + HTTP). `cmd/snp` and `internal/edit` both
+  import it; `internal/ai` stays the provider client it is.
+- **Transport follows the library flag**: `--url` → the server's
+  endpoints (its key, its policy — its `status` says whether it is on);
+  local mode calls `internal/ai` in-process from the local config (the
+  `--ai-*` flags are already registered on every subcommand).
+- **Local mode replicates the server's policy exactly**, so the two
+  transports are not a strong and a weak twin: prompt required and
+  ≤ 4000 chars; kind validated via `ai.ParseKind`, unknown rejected;
+  suggested tags filtered by `store.ValidTagName`, capped at 3; the same
+  "AI generation is not configured (set ai_key / SNP_AI_KEY)" text; the
+  same sensitive refusal text as the server's 403.
+- **Sensitivity, precisely as the web form**: Ask-AI sends only the
+  typed prompt, so it is available even on a sensitive draft;
+  suggest-tags and explain send the body, so they are never offered for
+  one — Local refuses with the server's own message, and the server
+  would 403 anyway.
+- **`snp ask`**: the prompt is all positional args joined by spaces
+  (`snp ask give me a one-liner to ...`); stdout is the body exactly,
+  capture-pure like `pick`; `--kind command|script|function` (default
+  command, unknown rejected), `--language`, `--url`/`--local`. `--add`
+  opens the create panel prefilled with the web fill rules.
+- **Panel keys**: `Ctrl+A` opens the Ask-AI box over the body (prompt
+  input; Tab cycles the kind; Enter generates; Esc returns without
+  touching the draft); `Ctrl+T` suggests tags (merged lowercase, nothing
+  duplicated); `Ctrl+E` explains into Notes (replacing; the snapshot is
+  kept and `Ctrl+Z` puts it back — typing in Notes drops the snapshot,
+  exactly the web rules); busy states show asking/suggesting/explaining
+  and block saves (`aiPending` parity); errors land on the panel's
+  error line with the mapped message. Controls are hidden when status
+  reports unconfigured, as the web form hides its block.
+- **Logging unchanged**: prompts, responses, and the key are never
+  logged (the `internal/ai` rule); the ask surface logs status and
+  duration only, like `ai.complete` does.
+
+### The surface
+
+```go
+// internal/ask
+type Status struct{ Enabled bool; Model string }
+
+type Generation struct {
+    Title, Language, Body, Notes string
+    UsesVariables               bool
+}
+
+type TagInput struct {
+    Body, Title, Language string
+    Sensitive             bool // Local refuses, HTTP sends it
+}
+
+type Service interface {
+    Status(ctx context.Context) (Status, error)
+    Generate(ctx context.Context, prompt string, kind ai.Kind, language string) (Generation, error)
+    SuggestTags(ctx context.Context, in TagInput) ([]string, error)
+    Explain(ctx context.Context, body string, sensitive bool) (string, error)
+}
+
+var ErrUnavailable = errors.New("AI generation is not configured (set ai_key / SNP_AI_KEY)")
+var ErrSensitive = errors.New("AI actions are unavailable for sensitive snippets")
+
+type Local struct{ Client *ai.Client } // nil Client → ErrUnavailable
+type HTTP struct{ ... }                // the four endpoints; pick-style error mapping
+```
+
+The editor model gains an `ask.Service` field (nil = controls hidden);
+`Run`/`RunCreate` grow the parameter — the one signature change.
+
+### Slices
+
+- **A1 — `internal/ask`** (the client surface): `Service`, `Local`,
+  `HTTP`, and the tests — Local against the `internal/ai` httptest
+  provider pattern, HTTP against the endpoint shapes above. *Done when*:
+  every policy listed above is pinned by test on both transports,
+  including the two error texts.
+- **A2 — `snp ask`** (`cmd/snp/ask.go`, dispatch + usage + AGENTS/CLAUDE
+  lists): stdout prints exactly the body; `--add` opens the create panel
+  prefilled (which grows `Prefill.Body` and `Prefill.Notes`); exit 0 on
+  save/print, 1 on error, 2 on usage. *Done when*: `out=$(snp ask ...)`
+  captures the body in both transports, a disabled feature errors with
+  the configured message, and `--add` lands all four fields per the web
+  fill rules.
+- **A3 — the panel controls** (`internal/edit` + its README/spec docs):
+  the Ask-AI box, `Ctrl+T`, `Ctrl+E`/`Ctrl+Z`, busy gating, the hidden
+  state, tested against a fake `Service`. *Done when*: the three
+  controls behave key-for-key like the web form's, a sensitive draft
+  offers only Ask-AI, saves are blocked while busy, and undo
+  survives/invalidates by the web snapshot rules.
+
+**Done when**: `snp ask` generates from the terminal in both transports;
+the editor's AI controls match the web form; unconfigured and sensitive
+produce the server's own messages; nothing beyond status and duration is
+logged; `make test` green and `go vet` clean; the interactive pty smoke
+rides with the release checklist.

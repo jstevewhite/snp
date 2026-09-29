@@ -2416,3 +2416,24 @@ Spec: `docs/snp-design.md` · Plan: `docs/snp-implementation-plan.md`
   never for sensitive snippets). Suggested slices A1–A3, to be written
   up fully when picked up.
 - No code changed; `go test` not run.
+
+### 2026-09-29 — CLI AI: full plan written (slices A1–A3)
+
+- Docs only. The roadmap's CLI-AI item grew into a full plan section
+  ("CLI AI — `snp ask` and Ask-AI in the terminal editor"), grounded in
+  the shipped surfaces: `internal/ai` (provider client, spec §13) and
+  the server's `/api/ai/{status,generate,tags,explain}` — no server
+  changes needed.
+- Decisions pinned by reading the actual web form: Ask-AI fills
+  title/language/notes only when non-empty and the body always;
+  generate sends only the typed prompt, so it is available even on a
+  sensitive draft; suggest-tags and explain send the body and are
+  refused for sensitive (the server's own texts, enforced locally too);
+  local mode replicates every server policy (prompt cap 4000, kind
+  validation, tag grammar filter, cap 3) so the transports are twins.
+- `snp ask` prints exactly the body to stdout (capture-pure like pick),
+  `--add` opens the create panel prefilled. Panel keys: `Ctrl+A` ask,
+  `Ctrl+T` suggest tags, `Ctrl+E` explain, `Ctrl+Z` undo explain — with
+  busy states blocking saves and controls hidden when unconfigured,
+  matching the web form.
+- No code changed; `go test` not run.
