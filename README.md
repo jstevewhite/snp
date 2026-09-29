@@ -359,6 +359,23 @@ the file). Unlike the picker it may create the database — a first
 `snp add` on a fresh machine works — and it creates the encryption key
 only when a sensitive body must be read or written.
 
+### Asking AI from the shell
+
+`snp ask` generates a snippet from a prompt — every argument after the
+flags is the prompt, so no quotes needed: `snp ask one-liner to list
+open ports`. The generation goes to stdout, exactly the body and
+nothing else, so `out=$(snp ask ...)` captures it. `--kind
+command|script|function` picks the shape (a one-liner by default) and
+`--language` hints the language. `--add` opens the terminal editor on
+the result instead of printing — title, language and notes prefilled
+when the model produced them — so you review before saving.
+
+The provider follows the library like the editor: with `--url` the
+server's AI endpoints (its key, `ai_key` set there), else the local AI
+config (`SNP_AI_KEY`; the `--ai-endpoint` / `--ai-model` flags work on
+any subcommand). Generation is one-shot and nothing about the request
+is logged.
+
 In zsh, load the binding and the `snp pick` wrapper:
 
 ```sh

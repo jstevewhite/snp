@@ -100,11 +100,14 @@ type Model struct {
 	quitting bool
 }
 
-// Prefill carries the `snp add` flags into a create panel. The body is
-// not prefillable — it is the interactive part.
+// Prefill carries the `snp add` flags — or an Ask-AI generation — into
+// a create panel. Empty strings prefill nothing; the body is the one
+// field set unconditionally.
 type Prefill struct {
 	Title    string
 	Language string
+	Body     string
+	Notes    string
 	FolderID *string
 	Tags     []string
 	Sensitive bool
@@ -116,6 +119,8 @@ func NewCreate(ctx context.Context, ed pick.Editor, prefill Prefill) Model {
 	m := New(ctx, ed, nil)
 	m.title.SetValue(prefill.Title)
 	m.language.SetValue(prefill.Language)
+	m.body.SetValue(prefill.Body)
+	m.notes.SetValue(prefill.Notes)
 	if len(prefill.Tags) > 0 {
 		m.tags.SetValue(strings.Join(prefill.Tags, ", "))
 	}

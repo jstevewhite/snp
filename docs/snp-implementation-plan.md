@@ -41,7 +41,7 @@ last commits (the doctor work, the shell picker, and the CLI editor) are
    multi-platform workflow, and smoke `snp add` / `snp edit` (pty, both `--url`
    and local) as part of it.
 3. **CLI AI — `snp ask` and Ask-AI in the terminal editor** (in progress —
-   A1 done 2026-09-29; see the section below): AI at parity
+   A1–A2 done 2026-09-29; see the section below): AI at parity
    with the web form — `snp ask` for one-shot generation, plus the
    Ask-AI / suggest-tags / explain-with-undo controls inside the editor
    panel, over the existing `/api/ai/*` endpoints and `internal/ai`.
@@ -1262,7 +1262,7 @@ The editor model gains an `ask.Service` field (nil = controls hidden);
   every policy listed above is pinned by test on both transports,
   including the two error texts.
 - **A2 — `snp ask`** (`cmd/snp/ask.go`, dispatch + usage + AGENTS/CLAUDE
-  lists): stdout prints exactly the body; `--add` opens the create panel
+  lists, done 2026-09-29): stdout prints exactly the body; `--add` opens the create panel
   prefilled (which grows `Prefill.Body` and `Prefill.Notes`); exit 0 on
   save/print, 1 on error, 2 on usage. *Done when*: `out=$(snp ask ...)`
   captures the body in both transports, a disabled feature errors with

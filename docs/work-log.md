@@ -2464,3 +2464,32 @@ Spec: `docs/snp-design.md` · Plan: `docs/snp-implementation-plan.md`
 - Verified: `go vet ./...` and `go test ./...` green (the suite is now
   15 test packages). `make test` not run — the web tree was not
   touched.
+
+### 2026-09-29 — CLI AI A2: `snp ask`
+
+- `cmd/snp/ask.go`: the prompt is every positional joined by spaces
+  (no quotes needed); stdout is the body exactly, capture-pure like
+  pick; `--kind command|script|function` (unknown kinds rejected by the
+  service's own message, both transports), `--language`, and `--add` —
+  which opens the create panel on the generation instead of printing,
+  exits 1 on cancel like add/edit. Exit 0/1/2.
+- `edit.Prefill` grew `Body` and `Notes`; `NewCreate` prefills all
+  four generation fields — empty strings prefill nothing, which IS the
+  web form's fill rule (title/language/notes only when the model
+  produced them).
+- `openAskService` is the editor's transport rule (`--local`, then
+  url, then local AI config). The provider client gets **no logger**:
+  slog writes to stdout and would break `out=$(snp ask ...)`; the AI
+  rule permits only status+duration anyway. The web form's
+  empty-snippet check lands in `askGenerate`.
+- Tests (4, cmd/snp): local generation against an httptest provider
+  (prompt reaches the user message), the kind and empty-body policy
+  errors, disabled → the configured message + `--local` bypassing a
+  dead URL, the `--url` transport hitting `/api/ai/generate`, and the
+  prefill rules.
+- Docs: dispatch + usage; AGENTS/CLAUDE subcommand lists gained
+  `ask`; README gained "Asking AI from the shell". Spec §13's terminal
+  subsection stays with A3.
+- Verified: `go vet ./...`, `go test ./...` (15 packages),
+  `GOOS=linux GOARCH=amd64 go build ./cmd/snp` (no-wails rule holds).
+  `make test` not run — the web tree was not touched.

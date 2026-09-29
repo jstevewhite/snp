@@ -57,6 +57,8 @@ func main() {
 		runAdd(args)
 	case "edit":
 		runEdit(args)
+	case "ask":
+		runAsk(args)
 	case "widget":
 		runWidget(args)
 	case "version", "-v", "--version":
@@ -87,6 +89,7 @@ commands:
   pick        choose a snippet in the terminal and print it
   add         create a snippet in the terminal editor
   edit        edit a snippet in the terminal editor
+  ask         generate a snippet from a prompt with AI
   widget      print the zsh binding for pick
   version     print the snp version
 
