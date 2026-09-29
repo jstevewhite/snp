@@ -14,6 +14,11 @@ Spec: `docs/snp-design.md` · Plan: `docs/snp-implementation-plan.md`
 
 ## Current status
 
+- **Phase 11 T7, iOS leg done (2026-09-29)** — the compact-layout
+  checklist passed on a real iPhone, Safari tab and installed PWA both
+  (create, delete, copy, swipe-back at each depth). Remaining legs:
+  wails forced Compact (local) and Android hardware back (no device —
+  emulator or borrowed phone). See the newest log entry.
 - **`v0.6.0` released (2026-09-29)** — doctor, picker, CLI editor, and CLI
   AI, with the interactive pty smoke verified by hand in both local and
   `--url` modes (`snp add` / `snp edit` / `snp ask`, error texts, the
@@ -2601,3 +2606,21 @@ Spec: `docs/snp-design.md` · Plan: `docs/snp-implementation-plan.md`
   release" and CLI AI items left the Next list (done), and the
   remaining numbering was restored.
 - Docs only; no code changed.
+
+### 2026-09-29 — Phase 11 T7: the iOS checklist passed on a real device
+
+- The on-device part of the compact-layout checklist ran on an iPhone
+  used daily with `v0.6.0`, on **both** T7 surfaces — as a Safari tab
+  and as the installed PWA: snippet creation, deletion (trash), and
+  copying in compact mode, and the swipe-back gesture at each depth
+  (detail → list, drawer → closed). The standalone PWA has no browser
+  back button, so the gesture and the in-app ← control are the only
+  ways out; both behaved. The risky design point — the popstate
+  handler ignoring foreign/stale entries while the OS gesture drives
+  the same code path as the in-app controls — held up in practice.
+- T7's remaining legs: the wails app with Settings → Layout = Compact
+  (testable on the Mac), and Android Chrome hardware back — **no
+  Android device is on hand**, so that leg needs an emulator pass or
+  a borrowed phone before T7 closes. Recorded in the plan's roadmap
+  and the Phase 11 status so it cannot masquerade as done.
+- No code changed; `go test` not run.

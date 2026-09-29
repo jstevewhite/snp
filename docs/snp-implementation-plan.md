@@ -21,7 +21,7 @@ smoke verified by hand in both local and `--url` modes.
 
 | Area | Landed | Notes |
 |---|---|---|
-| Phases 0–11 | through 2026-09-12 | core app, PWA/offline, deploy + ops, UI refinement pass, compact layout (T1–T6; T7 verification open) |
+| Phases 0–11 | through 2026-09-12 | core app, PWA/offline, deploy + ops, UI refinement pass, compact layout (T1–T6; T7 iOS verified 2026-09-29, wails + Android legs open) |
 | Recovery — trash + revision history | 2026-09-21 | 30-day trash, 50 revisions per snippet, online-only dialogs |
 | Data management — JSON + full backup | 2026-09-21 | import / export / backup from Settings and the palette |
 | Password-protected data files | 2026-09-21 | age passphrase encryption; offline `snp decrypt` |
@@ -34,10 +34,11 @@ smoke verified by hand in both local and `--url` modes.
 
 ### Next (priority order)
 
-1. **Phase 11 T7 — on-device compact-layout checklist** (verification only; the
-   code is merged). iOS Safari as a tab and as the installed PWA (swipe-back at
-   each depth); Android Chrome hardware back (drawer → detail → leaves the app);
-   the wails app with Settings → Layout = Compact.
+1. **Phase 11 T7 — the checklist's last legs** (verification only; iOS
+   passed 2026-09-29 on a real iPhone, tab + PWA, swipe-back at each
+   depth): the wails app with Settings → Layout = Compact, and Android
+   Chrome hardware back (drawer → detail → leaves the app) — no Android
+   device is on hand, so an emulator pass or a borrowed phone.
 2. **Linux desktop container build + verification** — podman with
    `libgtk-3-dev` + `libwebkit2gtk-4.1-dev` + Go; `make web`, then the
    desktop build; exercise `install-desktop.sh` with a scratch `PREFIX=`.
@@ -545,12 +546,18 @@ needed a schema change. Each task is one commit with `make test` green.
 
 ## Phase 11 — Compact layout (phone / narrow window)
 
-Status (2026-09-12): T1–T6 landed on `claude/eloquent-maxwell-bcugjn`,
-`make test` green (324 Vitest); T7's docs are done and the flow was
-walked in headless Chromium at 400px and across the breakpoint (see the
-work log), but the on-device part of the checklist — iOS Safari tab and
-installed PWA, Android hardware back at each depth, the wails app with
-Layout = Compact — has not been run and stays open.
+Status: **iOS done (2026-09-29)** — the on-device checklist passed on
+a real iPhone, as a Safari tab and as the installed PWA: creating,
+deleting, and copying snippets in compact mode, and the swipe-back
+gesture at each depth (the standalone PWA has no browser back button,
+so the gesture and the in-app ← control are the only ways out — both
+work). T1–T6 landed 2026-09-12 on `claude/eloquent-maxwell-bcugjn`,
+`make test` green; T7's flow was walked in headless Chromium at 400px
+and across the breakpoint before that. Remaining: the wails app with
+Layout = Compact, and Android Chrome hardware back — **no Android
+device is on hand**, so that leg runs on an emulator (Android Studio +
+Chrome, hardware back at each depth) or any borrowed phone before T7
+closes; until then it stays the one unverified item.
 
 Spec §6 "Compact layout" (2026-09-12). One screen at a time below a
 width breakpoint or on request: the list is the root, a snippet pushes a
