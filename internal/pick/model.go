@@ -37,13 +37,19 @@ type Model struct {
 	cursor  int
 	err     string
 
-	mode   mode
+	mode    mode
 	form   Snippet
 	vars   []template.Var
 	fields []textinput.Model
 	focus  int
 
 	revealGen int
+
+	// selectOnly is the chooser mode (snp edit with no argument):
+	// Enter returns the highlighted row instead of inserting its
+	// command. No reveal, no template form.
+	selectOnly bool
+	chosen    *Snippet
 
 	result   *string
 	quitting bool
@@ -222,11 +228,24 @@ func (m Model) onFormKey(k tea.Key) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
+// Chosen is the row Enter picked in select-only mode.
+func (m Model) Chosen() (Snippet, bool) {
+	if m.chosen == nil {
+		return Snippet{}, false
+	}
+	return *m.chosen, true
+}
+
 func (m Model) choose() (tea.Model, tea.Cmd) {
 	if len(m.hits) == 0 || m.cursor >= len(m.hits) {
 		return m, nil
 	}
 	s := m.hits[m.cursor]
+	if m.selectOnly {
+		// The chooser returns the row as-is: the editor loads the
+		// body itself, sensitive or not.
+		return m.acceptRow(s)
+	}
 	if s.Sensitive {
 		return m.startReveal(s.ID)
 	}
@@ -234,6 +253,13 @@ func (m Model) choose() (tea.Model, tea.Cmd) {
 		return m.openForm(s)
 	}
 	return m.accept(s, s.Body)
+}
+
+// acceptRow quits with the highlighted row, nothing written to stdout.
+func (m Model) acceptRow(s Snippet) (tea.Model, tea.Cmd) {
+	m.chosen = &s
+	m.quitting = true
+	return m, tea.Quit
 }
 
 func (m Model) startReveal(id string) (tea.Model, tea.Cmd) {

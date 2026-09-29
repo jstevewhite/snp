@@ -40,7 +40,9 @@ func (m Model) writeList(b *strings.Builder) {
 	m.writeDetail(&body, th, inner)
 	body.WriteByte('\n')
 	hint := "↑↓ move   enter insert   esc clears, then cancels"
-	if s, ok := m.selected(); ok && s.IsTemplate() {
+	if m.selectOnly {
+		hint = "↑↓ move   enter edit   esc clears, then cancels"
+	} else if s, ok := m.selected(); ok && s.IsTemplate() {
 		hint = "↑↓ move   enter fill   esc clears, then cancels"
 	}
 	fmt.Fprintf(&body, "%s\n", th.Help.Render(hint))
@@ -90,7 +92,13 @@ func (m Model) writeDetail(b *strings.Builder, th tui.Theme, inner int) {
 		fmt.Fprintf(b, "%s\n", th.Dim.Render("Nothing selected"))
 		return
 	}
-	if s.Sensitive {
+	if m.selectOnly {
+		// The chooser hands the row to the editor, which masks a
+		// sensitive body until revealed there.
+		if s.Sensitive {
+			fmt.Fprintf(b, "%s\n", th.Warn.Render("Sensitive. The editor opens it masked."))
+		}
+	} else if s.Sensitive {
 		fmt.Fprintf(b, "%s\n", th.Warn.Render("Sensitive. Enter fetches it and inserts it with a leading space,"))
 		fmt.Fprintf(b, "%s\n", th.Warn.Render("so zsh history skips it when HIST_IGNORE_SPACE is set."))
 	} else if s.Body != "" {

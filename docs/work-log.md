@@ -14,10 +14,11 @@ Spec: `docs/snp-design.md` · Plan: `docs/snp-implementation-plan.md`
 
 ## Current status
 
-- CLI editor (2026-09-29): **E1–E4 done** — the shared `internal/tui` package,
-  the library write path (`Editor`; `Local` + `HTTP`), the editor panel, and
-  the pickers (folder chooser, tag and language suggestions). E5–E6 remain:
-  the chooser, and `runAdd`/`runEdit`. See the newest log entry.
+- CLI editor (2026-09-29): **E1–E5 done** — the shared `internal/tui` package,
+  the library write path (`Editor`; `Local` + `HTTP`), the editor panel, the
+  pickers (folder chooser, tag and language suggestions), and the select-only
+  chooser (`pick.Choose`). E6 remains: `runAdd`/`runEdit`. See the newest log
+  entry.
 - Docs reorg (2026-09-29): the implementation plan gained a "Status and
   roadmap" section; `snp doctor` and `snp pick` are recorded there as complete;
   the stale `Next:` line below now points at it. README's "From the shell" notes
@@ -2347,5 +2348,19 @@ Spec: `docs/snp-design.md` · Plan: `docs/snp-implementation-plan.md`
   and Unfiled, seed cursor + same-value re-pick not dirty, tag
   suggestions (accept / advance / no-match), language suggestions (accept
   / Esc-clears on a clean seed), and the create-dirty gaps.
+- Verified: `go vet ./...` and `go test ./...` green. `make test` was
+  not run — the web tree was not touched.
+
+### 2026-09-29 — `snp add` / `snp edit` E5: the chooser
+
+- `pick.Choose(ctx, lib)` runs the existing list model with a
+  `selectOnly` flag: Enter accepts the highlighted row via `Chosen()`
+  instead of building its command — no reveal for sensitive rows (the
+  editor loads the body itself), no template form, nothing on stdout.
+  Cancel still returns `ErrCanceled`. The hint reads "enter edit" and a
+  sensitive detail says the editor opens it masked.
+- `internal/pick/model_test.go` grew two chooser tests: Enter on a
+  sensitive hit returns the row with zero `Reveal` calls (the memLib
+  fake now counts them), and cursor+Enter picks the moved-to row.
 - Verified: `go vet ./...` and `go test ./...` green. `make test` was
   not run — the web tree was not touched.

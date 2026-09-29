@@ -15,6 +15,7 @@ type memLib struct {
 	full    map[string]Snippet
 	err     error
 	queries []string
+	reveals int
 }
 
 func (m *memLib) Search(ctx context.Context, q string) ([]Snippet, error) {
@@ -26,6 +27,7 @@ func (m *memLib) Search(ctx context.Context, q string) ([]Snippet, error) {
 }
 
 func (m *memLib) Reveal(ctx context.Context, id string) (Snippet, error) {
+	m.reveals++
 	if m.err != nil {
 		return Snippet{}, m.err
 	}
@@ -201,6 +203,46 @@ func TestSearchErrorStaysOnScreen(t *testing.T) {
 	}
 	if !strings.Contains(m.View().Content, "library: offline") {
 		t.Fatalf("view = %s", m.View().Content)
+	}
+}
+
+func TestChooseSelectOnly(t *testing.T) {
+	lib := &memLib{hits: []Snippet{
+		{ID: "s", Title: "token", Sensitive: true, Notes: "careful"},
+		{ID: "2", Title: "plain", Body: "echo hi"},
+	}}
+	m := loaded(t, lib)
+	m.selectOnly = true
+	// A sensitive row needs no reveal in the chooser: Enter returns it
+	// as-is — the editor loads the body itself.
+	m, _ = apply(m, press(tea.KeyEnter, "", 0))
+	got, ok := m.Chosen()
+	if !ok || got.ID != "s" || !got.Sensitive || !m.quitting {
+		t.Fatalf("chosen = %+v ok=%v quit=%v", got, ok, m.quitting)
+	}
+	if lib.reveals != 0 {
+		t.Fatalf("reveal called %d times in select mode", lib.reveals)
+	}
+	if m.result != nil {
+		t.Fatal("select mode wrote a command result")
+	}
+	if !strings.Contains(m.View().Content, "enter edit") {
+		t.Fatalf("hint: %s", m.View().Content)
+	}
+}
+
+func TestChooseSelectOnlyMovesFirst(t *testing.T) {
+	lib := &memLib{hits: []Snippet{
+		{ID: "1", Title: "a", Body: "x"},
+		{ID: "2", Title: "b", Body: "y"},
+	}}
+	m := loaded(t, lib)
+	m.selectOnly = true
+	m, _ = apply(m, press(tea.KeyDown, "", 0))
+	m, _ = apply(m, press(tea.KeyEnter, "", 0))
+	got, ok := m.Chosen()
+	if !ok || got.ID != "2" {
+		t.Fatalf("chosen = %+v ok=%v", got, ok)
 	}
 }
 

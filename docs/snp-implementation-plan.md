@@ -38,7 +38,7 @@ follow-on session work. `main` is at `v0.5.0-8-gd14e82f` — 8 commits past the
    the wails app with Settings → Layout = Compact.
 2. **Cut a release** covering `snp doctor` and `snp pick` — `main` is 8 commits
    past `v0.5.0`. Use the existing tag-triggered multi-platform workflow.
-3. **CLI snippet editor — `snp add` / `snp edit`** (in progress — E1–E4 done
+3. **CLI snippet editor — `snp add` / `snp edit`** (in progress — E1–E5 done
    2026-09-29; see below): a Bubble Tea
    panel that mirrors the GUI editor — the same fields, the same validation, the
    same template / `var_defaults` rules. The API (`POST` and `PUT
@@ -1133,9 +1133,11 @@ type Editor interface {
   in step). ↓ activates/cycles the highlight, Enter accepts it into the
   field and stays there, Enter without a highlight advances, Esc clears
   the highlight first (the picker's "clears, then cancels" rule).
-- **E5 — the chooser for `snp edit`** (`internal/pick`): `Choose(ctx,
+- **E5 — the chooser for `snp edit`** (`internal/pick`, done 2026-09-29): `Choose(ctx,
   lib) (Snippet, error)` runs the existing list model in a select-only mode (no
-  template form, no stdout) and returns the highlighted row.
+  template form, no stdout) and returns the highlighted row. Enter returns the
+  row as-is — sensitive rows need no reveal and template rows no form, because
+  the editor loads the body itself.
 - **E6 — CLI and docs** (`cmd/snp`): `runAdd` and `runEdit`. Also deletes the
   `Reveal` alias if no caller remains once the panel and chooser use `Get`
   (`pick`'s model calls it today).
