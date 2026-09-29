@@ -14,11 +14,10 @@ Spec: `docs/snp-design.md` · Plan: `docs/snp-implementation-plan.md`
 
 ## Current status
 
-- CLI editor (2026-09-29): **E1–E3 done** — the shared `internal/tui` package,
-  the library write path (`Editor`; `Local` + `HTTP`), and the editor panel
-  (`internal/edit`: field ring, GUI save rules, dirty guard, sensitive
-  masking). E4–E6 remain: the pickers, the chooser, and `runAdd`/`runEdit`.
-  See the newest log entry.
+- CLI editor (2026-09-29): **E1–E4 done** — the shared `internal/tui` package,
+  the library write path (`Editor`; `Local` + `HTTP`), the editor panel, and
+  the pickers (folder chooser, tag and language suggestions). E5–E6 remain:
+  the chooser, and `runAdd`/`runEdit`. See the newest log entry.
 - Docs reorg (2026-09-29): the implementation plan gained a "Status and
   roadmap" section; `snp doctor` and `snp pick` are recorded there as complete;
   the stale `Next:` line below now points at it. README's "From the shell" notes
@@ -2314,3 +2313,39 @@ Spec: `docs/snp-design.md` · Plan: `docs/snp-implementation-plan.md`
   guard, and the folder path label.
 - Verified: `go vet ./...` and `go test ./...` green (edit package 0.8 s).
   `make test` was not run — the web tree was not touched.
+
+### 2026-09-29 — `snp add` / `snp edit` E4: the pickers
+
+- The folder picker joined the Tab ring between language and tags (the seam
+  E3 fixed): a ring stop rendering an inline six-row list — Unfiled
+  (`(none)`) first, then every live folder as a `parent/child` path built
+  from `ParentID`, sorted. ↑↓ wrap, Enter picks and advances. `Folders()`
+  and `Tags()` are now always fetched in `Init` (create mode too), and the
+  cursor initializes on the seed's folder.
+- The tag and language inputs suggest prefix matches: tags for the current
+  word (text after the last comma) from `Tags()`; language from a static
+  list mirroring `web/src/lib/highlight.ts`'s ALIASES keys (suggestions
+  only, free text still accepted — drift is cosmetic but the two are
+  cross-referenced). ↓ activates and cycles the highlight (max 5, exact
+  matches excluded), Enter accepts into the field and keeps focus (tags
+  are a list), Enter without a highlight advances, Esc clears the
+  highlight first — the picker's "esc clears, then cancels" rule.
+- Three E3 bugs found while wiring the pickers, all fixed here: the
+  dirty check compared `folderID` by pointer, so re-picking the *same*
+  folder from the list read as dirty — now compared by value; the
+  create-mode dirty check ignored the sensitive toggle and a picked
+  folder, so a toggle-only draft Esc'd without the guard; and the dirty
+  check compared the *pruned* `var_defaults` against the seed's unpruned
+  map, so a seed carrying defaults its body no longer uses opened as
+  dirty — `var_defaults` is now excluded (the panel has no UI for it;
+  pruning happens at save; the GUI's dirty check skips it too).
+- One Go zero-value trap: `suggActive`'s zero value is 0, which read as
+  "the first suggestion is highlighted" on a fresh model — Esc was
+  swallowed once and Enter in tags/language could no-op. `New` now
+  initializes it to -1.
+- `internal/edit/model_test.go` grew to 15 tests: picker select/advance
+  and Unfiled, seed cursor + same-value re-pick not dirty, tag
+  suggestions (accept / advance / no-match), language suggestions (accept
+  / Esc-clears on a clean seed), and the create-dirty gaps.
+- Verified: `go vet ./...` and `go test ./...` green. `make test` was
+  not run — the web tree was not touched.

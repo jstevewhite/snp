@@ -38,7 +38,7 @@ follow-on session work. `main` is at `v0.5.0-8-gd14e82f` — 8 commits past the
    the wails app with Settings → Layout = Compact.
 2. **Cut a release** covering `snp doctor` and `snp pick` — `main` is 8 commits
    past `v0.5.0`. Use the existing tag-triggered multi-platform workflow.
-3. **CLI snippet editor — `snp add` / `snp edit`** (in progress — E1–E3 done
+3. **CLI snippet editor — `snp add` / `snp edit`** (in progress — E1–E4 done
    2026-09-29; see below): a Bubble Tea
    panel that mirrors the GUI editor — the same fields, the same validation, the
    same template / `var_defaults` rules. The API (`POST` and `PUT
@@ -1119,10 +1119,20 @@ type Editor interface {
   inserts a newline in the textareas; `Ctrl+R` reveals a masked sensitive
   body; the pinned toggle diverges from today's GUI (which carries
   `seed.pinned`) per the parity table.
-- **E4 — pickers**: the folder picker over `Folders()`, with `parent/child`
-  labels built from `ParentID` (there is no `path` field); the tag input with
-  suggestions from `Tags()`; the language list. All in `tui.Theme`, so the panel
-  and the picker read as one tool.
+- **E4 — pickers** (done 2026-09-29): the folder picker over `Folders()`,
+  with `parent/child` labels built from `ParentID` (there is no `path`
+  field); the tag input with suggestions from `Tags()`; the language list.
+  All in `tui.Theme`, so the panel and the picker read as one tool. Built
+  as: the folder picker is a ring stop between language and tags — an
+  inline six-row list (Unfiled first, paths sorted), ↑↓ wrap, Enter picks
+  and advances; `Folders()` and `Tags()` are always fetched in `Init`
+  (create mode too). The tag input suggests prefix matches for the current
+  word (after the last comma) from `Tags()`; the language input suggests
+  from a static list mirroring `web/src/lib/highlight.ts`'s ALIASES keys
+  (suggestions only — free text stays accepted, drift is cosmetic but kept
+  in step). ↓ activates/cycles the highlight, Enter accepts it into the
+  field and stays there, Enter without a highlight advances, Esc clears
+  the highlight first (the picker's "clears, then cancels" rule).
 - **E5 — the chooser for `snp edit`** (`internal/pick`): `Choose(ctx,
   lib) (Snippet, error)` runs the existing list model in a select-only mode (no
   template form, no stdout) and returns the highlighted row.
