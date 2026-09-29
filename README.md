@@ -340,6 +340,25 @@ The picker looks for snippets in this order:
 The picker does not create a database or a key. `snp serve` ignores `url`.
 A machine that only runs the picker does not need `owner`.
 
+### Adding and editing from the shell
+
+`snp add` and `snp edit` open the same form as the app, in the terminal:
+title, body, notes, language, folder, tags, sensitive, pinned — Tab and
+Shift-Tab walk the fields, `Ctrl+S` saves, `Esc` cancels (asking first if
+you have unsaved changes). They work in any shell; no widget is needed.
+
+`snp add` starts empty and takes prefill flags — `--title`, `--language`,
+`--folder` (a folder id or `parent/child` path), `--tags a,b`,
+`--sensitive`, `--pin`. `snp edit` takes an id or a search query; one
+match opens it, several open the picker's list to choose from, and no
+argument opens that list directly.
+
+The editor looks for snippets exactly like `snp pick` (`--url` /
+`SNP_URL` / config `url`, else the local database, `--local` to force
+the file). Unlike the picker it may create the database — a first
+`snp add` on a fresh machine works — and it creates the encryption key
+only when a sensitive body must be read or written.
+
 In zsh, load the binding and the `snp pick` wrapper:
 
 ```sh

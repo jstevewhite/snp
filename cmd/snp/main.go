@@ -53,6 +53,10 @@ func main() {
 		runKey(args)
 	case "pick":
 		runPick(args)
+	case "add":
+		runAdd(args)
+	case "edit":
+		runEdit(args)
 	case "widget":
 		runWidget(args)
 	case "version", "-v", "--version":
@@ -81,6 +85,8 @@ commands:
   doctor      check library health and repair the search index
   key         key management (show-path)
   pick        choose a snippet in the terminal and print it
+  add         create a snippet in the terminal editor
+  edit        edit a snippet in the terminal editor
   widget      print the zsh binding for pick
   version     print the snp version
 

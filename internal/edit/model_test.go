@@ -535,10 +535,10 @@ func TestFolderLabel(t *testing.T) {
 		{ID: "p1", Name: "ops"},
 		{ID: "c1", ParentID: strPtr("p1"), Name: "deploy"},
 	}
-	if got := folderLabel(folders, "c1"); got != "ops/deploy" {
+	if got := FolderPath(folders, "c1"); got != "ops/deploy" {
 		t.Fatalf("label = %q", got)
 	}
-	if got := folderLabel(folders, "nope"); got != "" {
+	if got := FolderPath(folders, "nope"); got != "" {
 		t.Fatalf("unknown = %q", got)
 	}
 }

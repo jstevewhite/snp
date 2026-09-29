@@ -1,21 +1,20 @@
 # snp — Implementation Plan
 
-Date: 2026-09-02 · Last updated: 2026-09-28
+Date: 2026-09-02 · Last updated: 2026-09-29
 Status: Phases 0–11 complete and merged; follow-on session work through
-`snp pick` (2026-09-28) complete on `main`. `main` is 8 commits past the
-`v0.5.0` tag — the doctor and picker work is unreleased. Open work is listed
-under "Status and roadmap" below.
+`snp pick` (2026-09-28) and the CLI snippet editor `snp add` / `snp edit`
+(2026-09-29) complete on `main`. `main` is 21 commits past the
+`v0.5.0` tag — the doctor, picker, and editor work is unreleased. Open
+work is listed under "Status and roadmap" below.
 Spec: `docs/snp-design.md` (this plan implements that document; section refs
 like "spec §4" point there)
 
-## Status and roadmap (2026-09-28)
+## Status and roadmap (2026-09-29)
 
 Every numbered phase (0–11) is complete and merged to `main`, together with the
-follow-on session work. `main` is at `v0.5.0-8-gd14e82f` — 8 commits past the
-`v0.5.0` tag, and the last commits (the doctor work and the shell picker) are
-**unreleased**. History since `v0.5.0`: icon updates, the doctor plan note,
-`snp doctor` (store, endpoints, dialog), a work-log refresh, `snp pick`, and the
-`web/dist` stub fix.
+follow-on session work. `main` is 21 commits past the `v0.5.0` tag, and the
+last commits (the doctor work, the shell picker, and the CLI editor) are
+**unreleased**.
 
 ### Shipped
 
@@ -29,6 +28,7 @@ follow-on session work. `main` is at `v0.5.0-8-gd14e82f` — 8 commits past the
 | `snp doctor` | 2026-09-25 | merged `cfc2d87`; store, `/api/doctor[/repair]`, health dialog |
 | `snp pick` shell client | 2026-09-28 | merged `4bb6f33`; picker + `snp widget` zsh binding |
 | `web/dist` stub build fix | 2026-09-28 | merged `d14e82f`; `restore-dist-stub` runs after the compile |
+| CLI snippet editor | 2026-09-29 | `snp add` / `snp edit` — `internal/tui`, `internal/edit`, chooser, lazy key; interactive pty smoke rides with the release checklist |
 
 ### Next (priority order)
 
@@ -36,20 +36,16 @@ follow-on session work. `main` is at `v0.5.0-8-gd14e82f` — 8 commits past the
    code is merged). iOS Safari as a tab and as the installed PWA (swipe-back at
    each depth); Android Chrome hardware back (drawer → detail → leaves the app);
    the wails app with Settings → Layout = Compact.
-2. **Cut a release** covering `snp doctor` and `snp pick` — `main` is 8 commits
-   past `v0.5.0`. Use the existing tag-triggered multi-platform workflow.
-3. **CLI snippet editor — `snp add` / `snp edit`** (in progress — E1–E5 done
-   2026-09-29; see below): a Bubble Tea
-   panel that mirrors the GUI editor — the same fields, the same validation, the
-   same template / `var_defaults` rules. The API (`POST` and `PUT
-   /api/snippets`) and the picker's library plumbing already exist; the new work
-   is a write path and the form.
-4. **Linux desktop container build + verification** — podman with
+2. **Cut a release** covering `snp doctor`, `snp pick`, and the CLI editor —
+   `main` is 21 commits past `v0.5.0`. Use the existing tag-triggered
+   multi-platform workflow, and smoke `snp add` / `snp edit` (pty, both `--url`
+   and local) as part of it.
+3. **Linux desktop container build + verification** — podman with
    `libgtk-3-dev` + `libwebkit2gtk-4.1-dev` + Go; `make web`, then the desktop
    build; exercise `install-desktop.sh` with a scratch `PREFIX=`.
-5. **Windows desktop port.**
-6. **Desktop follow-ons** — real app icon; surface startup errors in the window.
-7. **`snp doctor` deferred work** (its "Deferred" bullet below): `--deep`, the
+4. **Windows desktop port.**
+5. **Desktop follow-ons** — real app icon; surface startup errors in the window.
+6. **`snp doctor` deferred work** (its "Deferred" bullet below): `--deep`, the
    key-requiring `revisions` check that turns a wrong or replaced key file into a
    specific diagnosis instead of a generic 500; point a search that fails with
    index corruption at the health check; offer orphan repair in the UI, today
@@ -990,8 +986,8 @@ capture the command.
 
 ## CLI snippet editor — `snp add` / `snp edit` (2026-09-29)
 
-**Status: in progress — E1 and E2 done (2026-09-29); E3–E6 remain.**
-Decisions (2026-09-29): a separate
+**Status: complete — E1–E6 landed 2026-09-29** (E1–E2 with the E2a review
+remediation, then E3–E6). Decisions (2026-09-29): a separate
 `internal/edit` package over a shared `internal/tui`; `snp add` takes prefill
 flags (including comma-separated `--tags`); `snp edit` with no argument opens the
 picker list to choose; local mode creates the key **lazily**; folder creation is
@@ -1138,9 +1134,9 @@ type Editor interface {
   template form, no stdout) and returns the highlighted row. Enter returns the
   row as-is — sensitive rows need no reveal and template rows no form, because
   the editor loads the body itself.
-- **E6 — CLI and docs** (`cmd/snp`): `runAdd` and `runEdit`. Also deletes the
-  `Reveal` alias if no caller remains once the panel and chooser use `Get`
-  (`pick`'s model calls it today).
+- **E6 — CLI and docs** (`cmd/snp`, done 2026-09-29): `runAdd` and `runEdit`
+  (`cmd/snp/edit.go`); the `Reveal` alias stayed — `pick`'s model still
+  calls it.
   - `snp add [--url URL | --local] [--title T] [--language L] [--folder PATH|ID]
     [--tags a,b] [--sensitive] [--pin]` opens the panel, prefilled. On save it
     exits 0 and prints nothing (like `pick`; a `--print-id` is a later add).
@@ -1148,13 +1144,13 @@ type Editor interface {
     with no argument it runs `Choose`. A query runs `Search`: one hit edits it,
     several open the chooser.
   - `openEditorLibrary`: like `openPickLibrary` but it may **create** the
-    database, and it attaches the key **lazily** — `LoadOrCreateKey` runs only
-    when a sensitive body must be read or written, so a plain create or a
-    metadata-only edit never writes a key file. This is the one place the
-    picker's "never create" rule does not carry over.
+    database, and it attaches the key **lazily** — a `lazyKeyEditor` wrapper
+    retries a `store.ErrNoKey` failure once after `LoadOrCreateKey`, so a
+    plain create or a metadata-only edit never writes a key file. This is the
+    one place the picker's "never create" rule does not carry over.
   - Docs: README ("From the shell" gains an add/edit part, noting the panel
-    needs no shell widget and works in any shell), spec §6, and the AGENTS /
-    CLAUDE subcommand lists.
+    needs no shell widget and works in any shell), a "Terminal editor" spec
+    section after the picker's, and the AGENTS / CLAUDE subcommand lists.
 
 **Done when**: `snp add` creates and `snp edit` updates a snippet from the
 terminal in both `--url` and local modes, with every field above; a full-replace
@@ -1164,3 +1160,9 @@ round-trips encrypted and is never written empty; the template flag and
 sibling/collision, unknown id) surface inline and never lose the draft; local
 mode writes no key file unless a sensitive snippet needs one; `make test` green
 and `go vet` clean.
+
+Status (2026-09-29): **complete** — E1–E6 landed. Unit and integration
+coverage is green (`go vet`, `go test`, the cross-compile check, and
+`make test`); the interactive part — a pty run of `snp add` / `snp edit`
+in both `--url` and local modes, the way the picker got one — is still
+to be done by hand and rides with the release checklist.

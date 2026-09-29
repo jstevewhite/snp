@@ -1352,4 +1352,42 @@ A sensitive command is printed with a leading space when it does not
 already start with whitespace, and the screen says that zsh history skips
 it when `HIST_IGNORE_SPACE` is set.
 
-Creating and editing stay in the app. The first widget is zsh.
+Creating and editing from the shell arrived after the picker shipped, as
+the terminal editor below. The first widget is zsh.
+
+## Terminal editor (`snp add` / `snp edit`)
+
+The editor mirrors the GUI form in the terminal: the same fields, the
+same validation, the same template / `var_defaults` rules. `snp add`
+opens the panel empty, prefilled from flags (`--title`, `--language`,
+`--folder`, `--tags`, `--sensitive`, `--pin`); `snp edit` opens it on
+one row — an id, or a search query (one hit edits it directly, several
+open the picker's list in a select-only chooser), and no argument opens
+that chooser unfiltered. On save the command exits 0 and prints
+nothing.
+
+Tab and Shift-Tab walk the fields: title, body, notes, language,
+folder, tags, sensitive, pinned. Enter advances single-line fields and
+is a newline in the body and notes. The folder stop lists Unfiled and
+every live folder as a `parent/child` path; the tag field suggests the
+library's tags for the word being typed; the language field suggests
+the labels the read view can highlight — free text stays accepted for
+both. `Ctrl+S` / `Ctrl+Enter` save, `Ctrl+R` reveals a masked sensitive
+body, `Esc` cancels (asking first when the draft is dirty), and
+`Ctrl+C` quits without asking.
+
+A save applies the GUI's rules: trimmed fields, tags split on commas,
+the template flag derived from the body, `var_defaults` carried forward
+pruned to the variables the body still uses. The write is the API's
+full replace, so an edit sends every field back — an untouched row
+keeps its folder and favorite flag, and a masked sensitive body is
+carried, never emptied. A failed write shows the server's own message
+inline and keeps the draft.
+
+The library is the picker's: `--url` / `SNP_URL` / the `url` config
+key, else the local database, with `--local` forcing the file. Unlike
+the picker, the editor may create the database — a first `snp add` on a
+fresh machine works — and it attaches the encryption key lazily: the
+key file is created only when a sensitive body must be read or
+written, so a plain create or a metadata-only edit of a non-sensitive
+row writes no key.

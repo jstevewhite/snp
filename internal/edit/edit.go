@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	tea "charm.land/bubbletea/v2"
 	"github.com/jstevewhite/snp/internal/pick"
 	"github.com/jstevewhite/snp/internal/tui"
 )
@@ -15,7 +16,15 @@ var ErrCanceled = fmt.Errorf("edit: %w", pick.ErrCanceled)
 // Run draws the editor panel on the terminal (tui.Run handles /dev/tty)
 // and returns the saved row. seed nil opens the create form.
 func Run(ctx context.Context, ed pick.Editor, seed *pick.Snippet) (pick.Snippet, error) {
-	final, err := tui.Run(ctx, New(ctx, ed, seed))
+	return panel(tui.Run(ctx, New(ctx, ed, seed)))
+}
+
+// RunCreate is Run for `snp add`, prefilled from flags.
+func RunCreate(ctx context.Context, ed pick.Editor, prefill Prefill) (pick.Snippet, error) {
+	return panel(tui.Run(ctx, NewCreate(ctx, ed, prefill)))
+}
+
+func panel(final tea.Model, err error) (pick.Snippet, error) {
 	if err != nil {
 		return pick.Snippet{}, err
 	}

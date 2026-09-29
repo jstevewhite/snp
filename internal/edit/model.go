@@ -100,6 +100,31 @@ type Model struct {
 	quitting bool
 }
 
+// Prefill carries the `snp add` flags into a create panel. The body is
+// not prefillable — it is the interactive part.
+type Prefill struct {
+	Title    string
+	Language string
+	FolderID *string
+	Tags     []string
+	Sensitive bool
+	Pinned    bool
+}
+
+// NewCreate builds the panel for `snp add`, prefilled from flags.
+func NewCreate(ctx context.Context, ed pick.Editor, prefill Prefill) Model {
+	m := New(ctx, ed, nil)
+	m.title.SetValue(prefill.Title)
+	m.language.SetValue(prefill.Language)
+	if len(prefill.Tags) > 0 {
+		m.tags.SetValue(strings.Join(prefill.Tags, ", "))
+	}
+	m.sensitive = prefill.Sensitive
+	m.pinned = prefill.Pinned
+	m.folderID = prefill.FolderID
+	return m
+}
+
 // New builds the panel. seed nil opens the create form.
 func New(ctx context.Context, ed pick.Editor, seed *pick.Snippet) Model {
 	if ctx == nil {
@@ -600,7 +625,7 @@ func (m *Model) setFolders(folders []pick.Folder) {
 	rest := make([]folderChoice, 0, len(folders))
 	for _, f := range folders {
 		fid := f.ID
-		rest = append(rest, folderChoice{id: &fid, path: folderLabel(folders, f.ID)})
+		rest = append(rest, folderChoice{id: &fid, path: FolderPath(folders, f.ID)})
 	}
 	sort.Slice(rest, func(i, j int) bool { return rest[i].path < rest[j].path })
 	choices = append(choices, rest...)
@@ -617,9 +642,9 @@ func (m *Model) setFolders(folders []pick.Folder) {
 	m.folderName = choices[m.folderCursor].path
 }
 
-// folderLabel builds a parent/child path from the flat folder list. The
+// FolderPath builds a parent/child path from the flat folder list. The
 // store forbids cycles; the visited set is cheap insurance anyway.
-func folderLabel(folders []pick.Folder, id string) string {
+func FolderPath(folders []pick.Folder, id string) string {
 	byID := make(map[string]pick.Folder, len(folders))
 	for _, f := range folders {
 		byID[f.ID] = f

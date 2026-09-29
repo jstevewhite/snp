@@ -14,11 +14,11 @@ Spec: `docs/snp-design.md` · Plan: `docs/snp-implementation-plan.md`
 
 ## Current status
 
-- CLI editor (2026-09-29): **E1–E5 done** — the shared `internal/tui` package,
-  the library write path (`Editor`; `Local` + `HTTP`), the editor panel, the
-  pickers (folder chooser, tag and language suggestions), and the select-only
-  chooser (`pick.Choose`). E6 remains: `runAdd`/`runEdit`. See the newest log
-  entry.
+- CLI editor (2026-09-29): **E1–E6 done — complete.** The shared
+  `internal/tui` package, the library write path, the editor panel, the
+  pickers, the chooser, and the CLI wiring (`snp add` / `snp edit` with
+  the lazy key). The interactive pty smoke rides with the release
+  checklist. See the newest log entry.
 - Docs reorg (2026-09-29): the implementation plan gained a "Status and
   roadmap" section; `snp doctor` and `snp pick` are recorded there as complete;
   the stale `Next:` line below now points at it. README's "From the shell" notes
@@ -2364,3 +2364,41 @@ Spec: `docs/snp-design.md` · Plan: `docs/snp-implementation-plan.md`
   fake now counts them), and cursor+Enter picks the moved-to row.
 - Verified: `go vet ./...` and `go test ./...` green. `make test` was
   not run — the web tree was not touched.
+
+### 2026-09-29 — `snp add` / `snp edit` E6: CLI wiring, lazy key, docs
+
+- `cmd/snp/edit.go`: `runAdd` (prefill flags — `--title`, `--language`,
+  `--folder`, comma-separated `--tags`, `--sensitive`, `--pin`; on save
+  exit 0, print nothing, like `pick`) and `runEdit` (`id | query`; no
+  argument opens the chooser; a query runs `Search` — one hit edits it,
+  several open the chooser). `edit.RunCreate` backs the create panel
+  with a `Prefill` struct; `NewCreate` reuses `New`.
+- `openEditorLibrary`: like the picker's but it may **create** the
+  database (a first `snp add` on a fresh machine works), and the key is
+  attached by a `lazyKeyEditor` wrapper — it retries once after
+  `store.ErrNoKey`, creating the key file only then. So a plain create
+  or a full-replace edit of a non-sensitive row never writes a key file
+  (pinned by test, plus a black-box scan that the plaintext body is in
+  neither `snp.db` nor its WAL). This is the one place the picker's
+  "never create" rule does not carry over, per the plan decision.
+- `resolveTarget`: an id that resolves is edited directly; anything
+  else is a search — sensitive hits are fetched whole (`fullRow`), since
+  search results omit sensitive bodies; several hits or no argument run
+  `pick.Choose`. `resolveFolderID` resolves `--folder` by id then by
+  `parent/child` path (`edit.FolderPath`, exported for the CLI);
+  folder creation stays out of scope, so a miss is an error.
+- The `Reveal` alias stayed: `pick`'s model still calls it, and the
+  panel and chooser both go through `Get`.
+- Docs: README "Adding and editing from the shell"; the spec gained a
+  "Terminal editor" section after the picker's (and its old closer
+  "Creating and editing stay in the app" is now the opposite); the
+  AGENTS/CLAUDE subcommand lists gained `add, edit`; the plan marks the
+  phase complete and the release item now carries the pty smoke
+  (`snp add` / `snp edit` in both `--url` and local modes).
+- `cmd/snp/edit_test.go` (5 tests): plain work writes no key file;
+  sensitive create attaches on demand and the body lands encrypted;
+  folder resolution by id / path / miss; target resolution by id, by
+  query, by sensitive query, and the no-match error; `splitTags`.
+- Verified: `go vet ./...`, `go test ./...`,
+  `GOOS=linux GOARCH=amd64 go build ./cmd/snp` (the no-wails rule
+  holds), and `make test` green — no `web/dist` drift.

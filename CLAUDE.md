@@ -61,7 +61,7 @@ curl localhost:8080/api/me
 ## Architecture
 
 ```
-cmd/snp/         subcommand dispatch: serve, backup, export, import, decrypt, seed, doctor, key, pick, widget
+cmd/snp/         subcommand dispatch: serve, backup, export, import, decrypt, seed, doctor, key, pick, add, edit, widget
 cmd/snp-desktop/ wails desktop binary (darwin/linux; spec §12) +
                  platform_{darwin,linux}.go per-OS options
 internal/config/ TOML + flags + SNP_* env; precedence flag > env > file > default
