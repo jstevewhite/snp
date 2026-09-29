@@ -6,8 +6,7 @@ import (
 	"io"
 	"os"
 
-	tea "charm.land/bubbletea/v2"
-	"github.com/charmbracelet/colorprofile"
+	"github.com/jstevewhite/snp/internal/tui"
 	"golang.org/x/term"
 )
 
@@ -15,22 +14,7 @@ import (
 // out. The screen never uses out, so a shell widget can capture it with
 // command substitution. Cancel returns ErrCanceled and writes nothing.
 func Run(ctx context.Context, lib Library, out io.Writer) error {
-	in, tty, err := tea.OpenTTY()
-	if err != nil {
-		return fmt.Errorf("pick needs a terminal: %w", err)
-	}
-	defer in.Close()
-	defer tty.Close()
-
-	p := tea.NewProgram(newModel(ctx, lib),
-		tea.WithInput(in),
-		tea.WithOutput(tty),
-		tea.WithContext(ctx),
-		// A fresh pty often answers no color query, and the renderer then
-		// drops every color. The terminals this runs in can do truecolor.
-		tea.WithColorProfile(colorprofile.TrueColor),
-	)
-	final, err := p.Run()
+	final, err := tui.Run(ctx, newModel(ctx, lib))
 	if err != nil {
 		return err
 	}

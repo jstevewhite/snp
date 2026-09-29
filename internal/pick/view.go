@@ -4,28 +4,30 @@ import (
 	"fmt"
 	"strings"
 	"unicode/utf8"
+
+	"github.com/jstevewhite/snp/internal/tui"
 )
 
 func (m Model) writeList(b *strings.Builder) {
-	th := newTheme(m.dark)
+	th := tui.NewTheme(m.dark)
 	inner := m.contentWidth()
 	var body strings.Builder
 
-	fmt.Fprintf(&body, "%s%s\n", th.brand.Render("snp"), th.dim.Render("  pick"))
+	fmt.Fprintf(&body, "%s%s\n", th.Brand.Render("snp"), th.Dim.Render("  pick"))
 	fmt.Fprintf(&body, "%s\n", m.filter.View())
 	if m.err != "" {
-		fmt.Fprintf(&body, "%s\n", th.err.Render(m.err))
+		fmt.Fprintf(&body, "%s\n", th.Err.Render(m.err))
 	} else {
 		body.WriteByte('\n')
 	}
 
 	switch {
 	case !m.settled && m.err == "":
-		fmt.Fprintf(&body, "%s\n", th.dim.Render("searching…"))
+		fmt.Fprintf(&body, "%s\n", th.Dim.Render("searching…"))
 	case len(m.hits) == 0 && m.filter.Value() == "":
-		fmt.Fprintf(&body, "%s\n", th.dim.Render("No snippets yet"))
+		fmt.Fprintf(&body, "%s\n", th.Dim.Render("No snippets yet"))
 	case len(m.hits) == 0:
-		fmt.Fprintf(&body, "%s\n", th.dim.Render("No matches"))
+		fmt.Fprintf(&body, "%s\n", th.Dim.Render("No matches"))
 	default:
 		start, end := m.window()
 		for i := start; i < end; i++ {
@@ -34,20 +36,20 @@ func (m Model) writeList(b *strings.Builder) {
 	}
 
 	body.WriteByte('\n')
-	fmt.Fprintf(&body, "%s\n", th.rule.Render(strings.Repeat("─", inner)))
+	fmt.Fprintf(&body, "%s\n", th.Rule.Render(strings.Repeat("─", inner)))
 	m.writeDetail(&body, th, inner)
 	body.WriteByte('\n')
 	hint := "↑↓ move   enter insert   esc clears, then cancels"
 	if s, ok := m.selected(); ok && s.IsTemplate() {
 		hint = "↑↓ move   enter fill   esc clears, then cancels"
 	}
-	fmt.Fprintf(&body, "%s\n", th.help.Render(hint))
+	fmt.Fprintf(&body, "%s\n", th.Help.Render(hint))
 
-	b.WriteString(th.frame.Width(m.frameWidth()).Render(strings.TrimRight(body.String(), "\n")))
+	b.WriteString(th.Frame.Width(m.frameWidth()).Render(strings.TrimRight(body.String(), "\n")))
 	b.WriteByte('\n')
 }
 
-func (m Model) rowLine(th theme, s Snippet, selected bool, inner int) string {
+func (m Model) rowLine(th tui.Theme, s Snippet, selected bool, inner int) string {
 	title := s.Title
 	meta := rowMeta(s)
 	metaW := utf8.RuneCountInString(meta)
@@ -73,57 +75,57 @@ func (m Model) rowLine(th theme, s Snippet, selected bool, inner int) string {
 	}
 	plain := title + strings.Repeat(" ", pad) + meta
 	if selected {
-		return th.selected.Width(inner).Render(truncate(plain, inner))
+		return th.Selected.Width(inner).Render(truncate(plain, inner))
 	}
-	line := th.title.Render(title)
+	line := th.Title.Render(title)
 	if meta != "" {
-		line += strings.Repeat(" ", pad) + th.meta.Render(meta)
+		line += strings.Repeat(" ", pad) + th.Meta.Render(meta)
 	}
 	return line
 }
 
-func (m Model) writeDetail(b *strings.Builder, th theme, inner int) {
+func (m Model) writeDetail(b *strings.Builder, th tui.Theme, inner int) {
 	s, ok := m.selected()
 	if !ok {
-		fmt.Fprintf(b, "%s\n", th.dim.Render("Nothing selected"))
+		fmt.Fprintf(b, "%s\n", th.Dim.Render("Nothing selected"))
 		return
 	}
 	if s.Sensitive {
-		fmt.Fprintf(b, "%s\n", th.warn.Render("Sensitive. Enter fetches it and inserts it with a leading space,"))
-		fmt.Fprintf(b, "%s\n", th.warn.Render("so zsh history skips it when HIST_IGNORE_SPACE is set."))
+		fmt.Fprintf(b, "%s\n", th.Warn.Render("Sensitive. Enter fetches it and inserts it with a leading space,"))
+		fmt.Fprintf(b, "%s\n", th.Warn.Render("so zsh history skips it when HIST_IGNORE_SPACE is set."))
 	} else if s.Body != "" {
-		fmt.Fprintf(b, "%s\n", th.code.Width(inner).Render(clipLines(s.Body, 5)))
+		fmt.Fprintf(b, "%s\n", th.Code.Width(inner).Render(clipLines(s.Body, 5)))
 	}
 	if s.Notes != "" {
-		fmt.Fprintf(b, "%s\n", th.dim.Render(clipLines(s.Notes, 2)))
+		fmt.Fprintf(b, "%s\n", th.Dim.Render(clipLines(s.Notes, 2)))
 	}
 }
 
 func (m Model) writeForm(b *strings.Builder) {
-	th := newTheme(m.dark)
+	th := tui.NewTheme(m.dark)
 	inner := m.contentWidth()
 	var body strings.Builder
 
-	fmt.Fprintf(&body, "%s\n", th.brand.Render("snp"))
-	fmt.Fprintf(&body, "%s\n", th.heading.Render(m.form.Title))
+	fmt.Fprintf(&body, "%s\n", th.Brand.Render("snp"))
+	fmt.Fprintf(&body, "%s\n", th.Heading.Render(m.form.Title))
 	if meta := rowMeta(m.form); meta != "" {
-		fmt.Fprintf(&body, "%s\n", th.meta.Render(meta))
+		fmt.Fprintf(&body, "%s\n", th.Meta.Render(meta))
 	}
 	body.WriteByte('\n')
 	for _, field := range m.fields {
 		fmt.Fprintf(&body, "%s\n", field.View())
 	}
 	body.WriteByte('\n')
-	fmt.Fprintf(&body, "%s\n", th.dim.Render("rendered"))
-	fmt.Fprintf(&body, "%s\n", th.code.Width(inner).Render(clipLines(m.rendered(), 8)))
+	fmt.Fprintf(&body, "%s\n", th.Dim.Render("rendered"))
+	fmt.Fprintf(&body, "%s\n", th.Code.Width(inner).Render(clipLines(m.rendered(), 8)))
 	if m.form.Sensitive {
 		body.WriteByte('\n')
-		fmt.Fprintf(&body, "%s\n", th.warn.Render("Inserted with a leading space so zsh history skips it when HIST_IGNORE_SPACE is set."))
+		fmt.Fprintf(&body, "%s\n", th.Warn.Render("Inserted with a leading space so zsh history skips it when HIST_IGNORE_SPACE is set."))
 	}
 	body.WriteByte('\n')
-	fmt.Fprintf(&body, "%s\n", th.help.Render("tab next   shift-tab back   enter insert   esc list"))
+	fmt.Fprintf(&body, "%s\n", th.Help.Render("tab next   shift-tab back   enter insert   esc list"))
 
-	b.WriteString(th.frame.Width(m.frameWidth()).Render(strings.TrimRight(body.String(), "\n")))
+	b.WriteString(th.Frame.Width(m.frameWidth()).Render(strings.TrimRight(body.String(), "\n")))
 	b.WriteByte('\n')
 }
 

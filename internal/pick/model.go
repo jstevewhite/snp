@@ -9,6 +9,7 @@ import (
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 	"github.com/jstevewhite/snp/internal/template"
+	"github.com/jstevewhite/snp/internal/tui"
 )
 
 const searchDelay = 100 * time.Millisecond
@@ -265,7 +266,7 @@ func (m Model) openForm(s Snippet) (tea.Model, tea.Cmd) {
 		ti.Prompt = fmt.Sprintf("%-*s  ", labelW, v.Name)
 		ti.SetValue(template.Initial(v, s.VarDefaults))
 		ti.SetWidth(boxW)
-		styleInput(&ti, m.dark)
+		tui.StyleInput(&ti, m.dark)
 		if i > 0 {
 			ti.Blur()
 		}
@@ -335,7 +336,7 @@ func (m *Model) move(d int) {
 }
 
 func (m *Model) applyChrome() {
-	styleInput(&m.filter, m.dark)
+	tui.StyleInput(&m.filter, m.dark)
 	m.resize()
 }
 
