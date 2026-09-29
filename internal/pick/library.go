@@ -4,6 +4,7 @@
 package pick
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -34,8 +35,10 @@ type Snippet struct {
 	Language      string
 	Notes         string
 	Tags          []string
+	FolderID      *string
 	Sensitive     bool
 	UsesVariables bool
+	Pinned        bool
 	VarDefaults   map[string]string
 }
 
@@ -63,8 +66,10 @@ func fromOut(o store.SnippetOut) Snippet {
 		Language:      o.Language,
 		Notes:         o.Notes,
 		Tags:          o.Tags,
+		FolderID:      o.FolderID,
 		Sensitive:     o.IsSensitive,
 		UsesVariables: o.UsesVariables,
+		Pinned:        o.Pinned,
 		VarDefaults:   o.VarDefaults,
 	}
 	if o.Body != nil {
@@ -88,12 +93,18 @@ func (l Local) Search(ctx context.Context, q string) ([]Snippet, error) {
 	return mapRows(rows), nil
 }
 
-func (l Local) Reveal(ctx context.Context, id string) (Snippet, error) {
+// Get returns one row with its body, sensitive or not. Reveal is the
+// picker's name for the same call.
+func (l Local) Get(ctx context.Context, id string) (Snippet, error) {
 	row, err := l.Store.GetSnippet(id)
 	if err != nil {
 		return Snippet{}, err
 	}
 	return fromOut(row), nil
+}
+
+func (l Local) Reveal(ctx context.Context, id string) (Snippet, error) {
+	return l.Get(ctx, id)
 }
 
 // HTTP talks to a snp server. Tailnet calls send no credential: WhoIs
@@ -130,7 +141,9 @@ func (h HTTP) Search(ctx context.Context, q string) ([]Snippet, error) {
 	return mapRows(rows), nil
 }
 
-func (h HTTP) Reveal(ctx context.Context, id string) (Snippet, error) {
+// Get returns one row with its body, sensitive or not. Reveal is the
+// picker's name for the same call.
+func (h HTTP) Get(ctx context.Context, id string) (Snippet, error) {
 	body, err := h.get(ctx, "/api/snippets/"+url.PathEscape(id), "")
 	if err != nil {
 		return Snippet{}, err
@@ -140,6 +153,10 @@ func (h HTTP) Reveal(ctx context.Context, id string) (Snippet, error) {
 		return Snippet{}, fmt.Errorf("library: %w", err)
 	}
 	return fromOut(row), nil
+}
+
+func (h HTTP) Reveal(ctx context.Context, id string) (Snippet, error) {
+	return h.Get(ctx, id)
 }
 
 func (h HTTP) get(ctx context.Context, path, rawQuery string) ([]byte, error) {
@@ -159,15 +176,53 @@ func (h HTTP) get(ctx context.Context, path, rawQuery string) ([]byte, error) {
 		return nil, fmt.Errorf("library: %w", err)
 	}
 	if resp.StatusCode != http.StatusOK {
-		var api struct {
-			Error string `json:"error"`
-		}
-		if json.Unmarshal(data, &api) == nil && api.Error != "" {
-			return nil, fmt.Errorf("library: %s", api.Error)
-		}
-		return nil, fmt.Errorf("library: HTTP %d", resp.StatusCode)
+		return nil, apiError(resp.StatusCode, data)
 	}
 	return data, nil
+}
+
+// send posts or puts a JSON payload and returns the row the server writes
+// back. create wants 201, update 200.
+func (h HTTP) send(ctx context.Context, method, path string, payload any, want int) (Snippet, error) {
+	buf, err := json.Marshal(payload)
+	if err != nil {
+		return Snippet{}, fmt.Errorf("library: %w", err)
+	}
+	u := h.Base.JoinPath(path)
+	req, err := http.NewRequestWithContext(ctx, method, u.String(), bytes.NewReader(buf))
+	if err != nil {
+		return Snippet{}, fmt.Errorf("library: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := h.Client.Do(req)
+	if err != nil {
+		return Snippet{}, fmt.Errorf("library: %w", err)
+	}
+	defer resp.Body.Close()
+	data, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if err != nil {
+		return Snippet{}, fmt.Errorf("library: %w", err)
+	}
+	if resp.StatusCode != want {
+		return Snippet{}, apiError(resp.StatusCode, data)
+	}
+	var row store.SnippetOut
+	if err := json.Unmarshal(data, &row); err != nil {
+		return Snippet{}, fmt.Errorf("library: %w", err)
+	}
+	return fromOut(row), nil
+}
+
+// apiError turns a non-2xx response into an error carrying the server's
+// own message when it sent one.
+func apiError(status int, data []byte) error {
+	var api struct {
+		Error string `json:"error"`
+	}
+	if json.Unmarshal(data, &api) == nil && api.Error != "" {
+		return fmt.Errorf("library: %s", api.Error)
+	}
+	return fmt.Errorf("library: HTTP %d", status)
 }
 
 func mapRows(rows []store.SnippetOut) []Snippet {

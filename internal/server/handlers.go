@@ -79,7 +79,10 @@ func (s *Server) handleVersion(w http.ResponseWriter, r *http.Request) {
 }
 
 // snippetReq is the JSON body for POST/PUT /api/snippets. The id and
-// timestamps are server-assigned and ignored on input.
+// timestamps are server-assigned and ignored on input. It is mirrored by
+// internal/pick's snippetReq (internal/pick/editor.go): the PUT is a full
+// replace, so a field added here but not there makes the CLI editor
+// silently drop it — change both together.
 type snippetReq struct {
 	Title         string   `json:"title"`
 	Body          string   `json:"body"`
