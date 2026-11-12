@@ -14,6 +14,11 @@ Spec: `docs/snp-design.md` · Plan: `docs/snp-implementation-plan.md`
 
 ## Current status
 
+- **Copy without reveal (2026-11-12)** — a hidden sensitive body's
+  **Copy snippet** (and the Enter / palette copy) now fetches the body
+  and copies it without showing it. Verified in Chromium against the dev
+  server; Safari and the wails webview not yet checked by hand. See the
+  newest log entry.
 - **Phase 11 T7, iOS leg done (2026-09-29)** — the compact-layout
   checklist passed on a real iPhone, Safari tab and installed PWA both
   (create, delete, copy, swipe-back at each depth). Remaining legs:
@@ -2624,3 +2629,37 @@ Spec: `docs/snp-design.md` · Plan: `docs/snp-implementation-plan.md`
   a borrowed phone before T7 closes. Recorded in the plan's roadmap
   and the Phase 11 status so it cannot masquerade as done.
 - No code changed; `go test` not run.
+
+### 2026-11-12 — Copy a sensitive snippet without revealing it
+
+- Request: copying a sensitive snippet should not require Show body
+  first. Spec §6 Copy / Sensitive updated (the button used to be
+  disabled until reveal).
+- `lib/clipboard.ts` gained `writeClipboardDeferred(produce)`: it calls
+  `navigator.clipboard.write([new ClipboardItem({'text/plain': promise})])`
+  synchronously, so the write starts inside the user gesture and waits on
+  the fetch, then falls back to awaiting the text and `writeClipboard`.
+  **Gotcha:** Safari rejects `writeText` after an `await` on the network —
+  the gesture has ended — so a plain `await getSnippet(); writeText()`
+  would work in Chromium and fail on the iPhone. The whole chain from the
+  click to `clip.write` must stay synchronous: `CopyButton.copy` calls
+  `oncopy` before its first await, and `App.copyHidden` calls
+  `writeClipboardDeferred` before any await.
+- `App.copyHidden(id)` fetches via `api.getSnippet`, renders a template
+  with its saved `var_defaults` (same rule as the copy shortcut while the
+  panel is not mounted), and never touches `revealed`, IndexedDB, or the
+  search index. `SnippetDetail` takes it as `oncopyhidden`; the hidden
+  button is disabled only offline. The Enter shortcut and the palette's
+  Copy use it too (the palette greys Copy as `Offline` instead of
+  `Body hidden`).
+- Tests: `clipboard.test.ts` (the write is issued before the text
+  resolves; writeText fallback; a failed fetch rejects without writing),
+  `SnippetDetail.test.ts` (hidden copy calls `oncopyhidden`, stays
+  masked, disabled offline, reports failure). `npm test` 434 passed,
+  `npm run check` clean. Playwright against `--dev-listen`: the button
+  and Enter shortcut both put the secret on the clipboard while the body
+  stays masked.
+- Not checked by hand: Safari/iOS and the wails WKWebView (which lacks
+  the async clipboard API and takes the `execCommand` fallback after the
+  in-process fetch).
+

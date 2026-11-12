@@ -33,6 +33,7 @@ function renderDetail(
     onsavedefaults?: (defaults: Record<string, string>) => Promise<boolean>
     onreveal?: () => void
     onpin?: () => void
+    oncopyhidden?: () => Promise<void>
   } = {},
 ) {
   return render(SnippetDetail, {
@@ -46,6 +47,7 @@ function renderDetail(
     onreveal: extra.onreveal ?? noop,
     onpin: extra.onpin ?? noop,
     onsavedefaults: extra.onsavedefaults ?? (async () => true),
+    oncopyhidden: extra.oncopyhidden,
   })
 }
 
@@ -177,10 +179,35 @@ describe('SnippetDetail', () => {
     const onreveal = vi.fn()
     renderDetail({ body: null, is_sensitive: true }, { onreveal })
     expect(screen.getByText('Show body')).toBeDefined()
-    const copyBtn = screen.getByText('Copy snippet').closest('button') as HTMLButtonElement
-    expect(copyBtn.disabled).toBe(true)
     await fireEvent.click(screen.getByText('Show body'))
     expect(onreveal).toHaveBeenCalled()
+  })
+
+  it('copies a hidden sensitive body without showing it', async () => {
+    const oncopy = vi.fn()
+    const oncopyhidden = vi.fn().mockResolvedValue(undefined)
+    renderDetail({ body: null, is_sensitive: true }, { oncopy, oncopyhidden })
+    const copyBtn = screen.getByText('Copy snippet').closest('button') as HTMLButtonElement
+    expect(copyBtn.disabled).toBe(false)
+    await fireEvent.click(copyBtn)
+    expect(oncopyhidden).toHaveBeenCalledTimes(1)
+    expect(oncopy).not.toHaveBeenCalled()
+    expect(await screen.findByText('Copied.')).toBeDefined()
+    // Still masked: copying is not revealing.
+    expect(screen.getByText('Show body')).toBeDefined()
+  })
+
+  it('disables copying a hidden sensitive body offline', () => {
+    renderDetail({ body: null, is_sensitive: true }, { offline: true, oncopyhidden: vi.fn() })
+    const copyBtn = screen.getByText('Copy snippet').closest('button') as HTMLButtonElement
+    expect(copyBtn.disabled).toBe(true)
+  })
+
+  it('reports a failed hidden copy', async () => {
+    const oncopyhidden = vi.fn().mockRejectedValue(new Error('nope'))
+    renderDetail({ body: null, is_sensitive: true }, { oncopyhidden })
+    await fireEvent.click(screen.getByText('Copy snippet'))
+    expect(await screen.findByText('Copy failed')).toBeDefined()
   })
 
   it('shows the revealed body of a sensitive snippet', () => {

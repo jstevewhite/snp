@@ -54,3 +54,36 @@ function legacyCopy(text: string): boolean {
     el.remove()
   }
 }
+
+/**
+ * Copy text that is not known yet — a sensitive body fetched on click
+ * (spec §6). Call it synchronously from the click or key handler.
+ *
+ * Safari only lets a page write the clipboard during a user gesture, and
+ * a network round-trip ends the gesture before `writeText` would run. A
+ * `ClipboardItem` built from a promise is the way around that: the write
+ * starts inside the gesture and the browser waits for the text. Engines
+ * without it (or that refuse it) fall back to awaiting the text and
+ * taking the ordinary `writeClipboard` path.
+ *
+ * `produce` runs exactly once; its rejection rejects the copy.
+ */
+export async function writeClipboardDeferred(produce: () => Promise<string>): Promise<void> {
+  const text = produce()
+  const clip = typeof navigator === 'undefined' ? undefined : navigator.clipboard
+  if (
+    clip !== undefined &&
+    typeof clip.write === 'function' &&
+    typeof ClipboardItem === 'function'
+  ) {
+    try {
+      const blob = text.then((t) => new Blob([t], { type: 'text/plain' }))
+      await clip.write([new ClipboardItem({ 'text/plain': blob })])
+      return
+    } catch {
+      // Unsupported promise items, or a denied write: retry below once the
+      // text is in hand. A failed fetch rejects again there and surfaces.
+    }
+  }
+  await writeClipboard(await text)
+}

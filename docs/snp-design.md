@@ -16,6 +16,7 @@ Revised: 2026-09-12 (§6 service-worker update check, so a stale precached shell
 Revised: 2026-09-12 (§5/§6 search: prefix terms, terms ANDed, operators literal — online and offline now match the same set)
 Revised: 2026-09-12 (§6 compact layout: the single-pane phone/narrow-window mode and the Layout setting — built, Phase 11; verified in headless Chromium, on-device checklist pending)
 Revised: 2026-09-25 (health check and index repair: `snp doctor`, `GET /api/doctor`, `POST /api/doctor/repair`, and the health dialog)
+Revised: 2026-11-12 (§6 a hidden sensitive body can be copied without being revealed)
 Status: approved design, revised after review, implemented
 
 > Revision note (2026-09-06): §6 originally specified a CodeMirror 6
@@ -665,8 +666,12 @@ model** instead: one screen at a time, with the list as the root.
   `uses_variables` set shows a variables panel: the Template box carries
   **Copy template** (the body with its `{{var}}` placeholders intact, for
   reusing the shape) and the Rendered box **Copy rendered** (filled in).
-  A sensitive body that has not been revealed shows **Copy snippet**
-  disabled. Every copy control briefly reports its own outcome — "Copied.",
+  A sensitive body that has not been revealed still offers **Copy
+  snippet**: it fetches the body for that one clipboard write and drops
+  it, so the body is copied without being shown, kept in view memory,
+  cached, or indexed. A template copied this way renders with its saved
+  defaults (the panel is not shown, so nothing has been typed). It needs
+  the server, so it is disabled offline. Every copy control briefly reports its own outcome — "Copied.",
   or "Copy failed" when the write is rejected — so a blocked clipboard is
   visible rather than silent. The inputs are pre-filled from the snippet's
   saved defaults (`var_defaults`, spec §4); precedence when copying is the
@@ -684,7 +689,11 @@ model** instead: one screen at a time, with the list as the root.
 - **Sensitive** snippets show a masked body with a reveal button. The body
   is fetched on reveal and held only in memory for that view. Offline, the
   reveal button is disabled (the body is never stored locally) and a hint
-  says an online connection is required; metadata stays visible.
+  says an online connection is required; metadata stays visible. Copying
+  does not require revealing (see Copy above). The browser write starts
+  inside the click or keypress and waits on the fetch (a promise-backed
+  `ClipboardItem`), because Safari refuses a clipboard write made after a
+  network round-trip has ended the gesture.
 - **Keyboard**: `Cmd/Ctrl+K` focuses the search box (selecting the current
   query, so typing replaces it) and is hinted inside the field. While the
   search box has focus, `Up`/`Down` move the selection through the visible
@@ -706,8 +715,8 @@ model** instead: one screen at a time, with the list as the root.
   selected snippet, New folder, Focus search, Resync, Full resync, Add
   starter snippets, and one entry per Layout mode. Every command stays
   listed; one that cannot run now is greyed with the reason where its
-  shortcut hint would be (`Offline`, `Select a snippet first`, `Body
-  hidden`, `Current`), so the palette also explains itself. Snippet
+  shortcut hint would be (`Offline`, `Select a snippet first`,
+  `Current`), so the palette also explains itself. Snippet
   commands are dropped while the editor is open so nothing can clobber an
   unsaved edit from the keyboard. Delete and Full resync go through the
   usual confirm dialogs. The shortcut is ignored while a dialog is open,
