@@ -27,6 +27,7 @@
     onpin,
     onsavedefaults,
     oncopytext,
+    oncopyhidden,
   }: {
     snippet: Snippet
     /** Revealed body for sensitive snippets (fetched on demand, never cached). */
@@ -61,6 +62,12 @@
      * into the panel included (spec §4).
      */
     oncopytext?: (id: string, text: string | null) => void
+    /**
+     * Copies a sensitive body that has not been revealed: the app fetches
+     * it and writes it to the clipboard without showing it (spec §6). The
+     * call must start the write synchronously — it runs inside the click.
+     */
+    oncopyhidden?: () => Promise<void>
   } = $props()
 
   /** True when the body is not available locally (sensitive, not revealed). */
@@ -300,10 +307,21 @@
       </div>
     {:else}
       <!-- A non-template body still carries its own copy action, so the
-           pane needs no footer Copy button. Inert while a sensitive body
-           is hidden. -->
+           pane needs no footer Copy button. A hidden sensitive body is
+           fetched and copied without being shown; that needs the server,
+           so it is inert offline. -->
       <div class="box-head">
-        <CopyButton small label="Copy snippet" text={copyText} disabled={hidden} {oncopy} />
+        {#if hidden}
+          <CopyButton
+            small
+            label="Copy snippet"
+            text=""
+            disabled={offline || oncopyhidden === undefined}
+            oncopy={() => oncopyhidden?.()}
+          />
+        {:else}
+          <CopyButton small label="Copy snippet" text={copyText} {oncopy} />
+        {/if}
       </div>
     {/if}
     {#if hidden}

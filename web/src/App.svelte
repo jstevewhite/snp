@@ -4,7 +4,7 @@
   import { closeDesktop, registerDesktopClose } from './lib/desktop'
   import { modal } from './lib/modal'
   import { folderOptions } from './lib/folders'
-  import { writeClipboard } from './lib/clipboard'
+  import { writeClipboard, writeClipboardDeferred } from './lib/clipboard'
   import { ApiError } from './lib/types'
   import {
     allFolders,
@@ -1063,13 +1063,35 @@
   /**
    * Copy the rendered body to the clipboard. SnippetDetail computes the
    * text — filling in template variables (spec §4) — and passes it here.
-   * The copy buttons are disabled while the body is hidden, so the text is
+   * A hidden sensitive body goes through copyHidden instead, so the text is
    * always available when this runs. lib/clipboard.ts performs the write
    * (with a webview fallback) and rejects when the text did not reach the
    * clipboard, which the button reports as "Copy failed".
    */
   async function copySelected(text: string): Promise<void> {
     await writeClipboard(text)
+  }
+
+  /**
+   * Copy a sensitive body that has not been revealed, without revealing it
+   * (spec §6). The body is fetched for this one write and dropped: it never
+   * reaches `revealed`, the cache, or the index. A template renders with its
+   * saved defaults, as the copy shortcut does while the panel is not shown.
+   * The clipboard write starts synchronously so it stays inside the click
+   * or keypress that asked for it (see writeClipboardDeferred).
+   */
+  function copyHidden(id: string): Promise<void> {
+    if (!online) return Promise.reject(new Error('Offline'))
+    return writeClipboardDeferred(async () => {
+      const s = await api.getSnippet(id)
+      if (s.body === null) throw new Error('Body unavailable')
+      return s.uses_variables ? renderTemplate(s.body, s.var_defaults ?? {}) : s.body
+    })
+  }
+
+  /** The selection's body is sensitive, hidden, and fetchable right now. */
+  function canCopyHidden(s: Snippet | null): s is Snippet {
+    return s !== null && s.is_sensitive && s.body === null && revealed[s.id] === undefined && online
   }
 
   /**
@@ -1148,9 +1170,10 @@
    */
   async function copyCurrentSelection(): Promise<void> {
     const text = copyTextForSelection()
-    if (text === null) return
+    const s = selectedSnippet
+    if (text === null && !canCopyHidden(s)) return
     try {
-      await copySelected(text)
+      await (text !== null ? copySelected(text) : copyHidden(s!.id))
       flashNotice('Copied.')
     } catch (e) {
       fail(e)
@@ -1230,7 +1253,12 @@
           label: 'Copy snippet',
           group: 'snippet',
           disabled:
-            needSelection ?? (copyTextForSelection() === null ? 'Body hidden' : undefined),
+            needSelection ??
+            (copyTextForSelection() !== null || canCopyHidden(s)
+              ? undefined
+              : online
+                ? 'Body hidden'
+                : 'Offline'),
           run: () => void copyCurrentSelection(),
         },
         {
@@ -1737,6 +1765,7 @@
           onreveal={() => void reveal(selectedSnippet.id)}
           onsavedefaults={(defaults) => saveDefaults(selectedSnippet.id, defaults)}
           oncopytext={(id, text) => (detailCopy = { id, text })}
+          oncopyhidden={() => copyHidden(selectedSnippet.id)}
           onpin={() => void setPinned(selectedSnippet.id, selectedSnippet.pinned !== true)}
         />
         {/key}
